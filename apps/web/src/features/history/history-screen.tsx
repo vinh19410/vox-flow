@@ -1,0 +1,55 @@
+import { useState } from "react";
+
+import { Card } from "@/components/ds/card";
+import { useApp } from "@/features/app-state/types";
+import { MODES } from "@/features/exam/data";
+import type { Mode } from "@/features/exam/types";
+import { cx } from "@/lib/cx";
+import { PageHead } from "@/layouts/page-head";
+
+import { AttemptList } from "./components/attempt-list";
+import { TrendChart } from "./components/trend-chart";
+
+export function HistoryScreen() {
+  const { s } = useApp();
+  const [filter, setFilter] = useState<Mode | "all">("all");
+  const list = s.attempts.filter((a) => filter === "all" || a.mode === filter);
+
+  return (
+    <>
+      <PageHead eyebrow="S19" title="Lịch sử bài làm" sub="Vùng mờ là khoảng tin cậy của từng bài — giúp bạn thấy tiến bộ thật, không phải dao động ngẫu nhiên." />
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        {([{ id: "all", title: "Tất cả" }, ...MODES] as { id: Mode | "all"; title: string }[]).map((m) => (
+          <button key={m.id} onClick={() => setFilter(m.id)} className={cx("h-9 rounded-full px-4 text-sm font-medium transition-colors", filter === m.id ? "bg-ink text-paper" : "border border-line bg-white hover:border-ink/30")}>
+            {m.title}
+          </button>
+        ))}
+      </div>
+
+      <Card className="p-6">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold">Band theo thời gian</h2>
+          <div className="flex items-center gap-4 text-xs text-subtle">
+            <span className="flex items-center gap-1.5">
+              <span className="h-0.5 w-4 bg-brand" /> Band
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-2.5 w-4 rounded-sm bg-brand/15" /> Khoảng tin cậy
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-0 w-4 border-t-2 border-dashed border-good" /> Mục tiêu
+            </span>
+          </div>
+        </div>
+        {list.length ? (
+          <TrendChart list={list} target={s.target} />
+        ) : (
+          <div className="py-16 text-center text-sm text-subtle">Chưa có bài nào cho bộ lọc này.</div>
+        )}
+      </Card>
+
+      <AttemptList list={list} />
+    </>
+  );
+}
