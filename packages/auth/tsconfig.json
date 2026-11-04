@@ -1,0 +1,6 @@
+{
+  "extends": "@vox-flow/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  }
+}

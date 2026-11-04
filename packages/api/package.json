@@ -1,0 +1,22 @@
+{
+  "name": "@vox-flow/api",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@trpc/client": "catalog:",
+    "@trpc/server": "catalog:",
+    "@vox-flow/auth": "workspace:*",
+    "@vox-flow/db": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@vox-flow/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
