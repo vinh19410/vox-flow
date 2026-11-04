@@ -2,10 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { HeadContent, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import { Toaster } from "@vox-flow/ui/components/sonner";
-
-import Header from "@/components/header";
-import { ThemeProvider } from "@/components/theme-provider";
 import type { trpc } from "@/utils/trpc";
 
 import "../index.css";
@@ -20,11 +16,11 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
       {
-        title: "vox-flow",
+        title: "ChấmRõ — Thi thử IELTS Speaking AI",
       },
       {
         name: "description",
-        content: "vox-flow is a web application",
+        content: "Giám khảo AI cho IELTS Speaking — Chấm 3 lần lấy trung vị, có bằng chứng rõ ràng.",
       },
     ],
     links: [
@@ -40,18 +36,7 @@ function RootComponent() {
   return (
     <>
       <HeadContent />
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="dark"
-        disableTransitionOnChange
-        storageKey="vite-ui-theme"
-      >
-        <div className="grid grid-rows-[auto_1fr] h-svh">
-          <Header />
-          <Outlet />
-        </div>
-        <Toaster richColors />
-      </ThemeProvider>
+      <Outlet />
       <TanStackRouterDevtools position="bottom-left" />
       <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
     </>

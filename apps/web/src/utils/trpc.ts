@@ -24,7 +24,7 @@ export const queryClient = new QueryClient({
 export const trpcClient = createTRPCClient<AppRouter>({
   links: [
     httpBatchLink({
-      url: `${ENV.VITE_SERVER_URL.replace(/\/$/, "")}/trpc`,
+      url: `${(ENV.VITE_SERVER_URL ?? "http://localhost:3000").replace(/\/$/, "")}/trpc`,
       fetch(url, options) {
         return fetch(url, {
           ...options,

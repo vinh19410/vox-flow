@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { trpc } from "@/utils/trpc";
 
-export const Route = createFileRoute("/_auth/dashboard")({
+export const Route = createFileRoute("/_app-legacy/_auth/dashboard")({
   component: RouteComponent,
 });
 
