@@ -64,7 +64,7 @@ Có bằng chứng thật về việc học viên có trả 4 mức giá 49k, 99
 | 1 | Bỏ sót điều kiện tuổi học viên & rủi ro thu thập giọng nói trẻ em dưới 16 tuổi trái luật | Critical | Accept | Phase 1 Task 1.1 Step 4 (Screener: tuổi $\ge 16$) |
 | 2 | Thu thập PII bên thứ ba trái phép qua cơ chế "giới thiệu bạn cùng thi" | High | Accept | Phase 1 Task 1.1 Step 5 (Loại bỏ giới thiệu bạn) |
 | 3 | Thiếu vòng đời xử lý ghi âm và rủi ro lộ verbal PII ngoài repo | High | Accept | Phase 1 Task 1.1 Step 7 (Mã hóa cục bộ, xóa trong 14 ngày) |
-| 4 | Bỏ qua cổng tư vấn pháp lý WI04 (#8) đối với khảo sát thương mại | High | Accept | Plan Constraints & Phase 2 Gate (giới hạn nghiên cứu sản phẩm/giá, không gửi audio ra dịch vụ AI ngoài) |
+| 4 | Bỏ qua cổng tư vấn pháp lý WI04 (#8) đối với khảo sát thương mại | High | Accept | docs/research/wtp-validation.md (Mục 5.2 cấm AI đám mây, Mục 3 Phần 4 không thu tiền cọc) |
 | 5 | Lỗ hổng dữ liệu giả mạo do tuyển dụng tự báo cáo trên group mở | Medium | Accept | Phase 1 Task 1.1 Step 4 (Minh chứng báo thi đã che mã định danh) |
 | 6 | Lệch đồng bộ roadmap và sai số học RICE khi cập nhật Evidence | Medium | Accept | Phase 2 Task 2.2 (Cập nhật Confidence 1.0, RICE 10.0, thu hồi ghi chú SSOT) |
 | 7 | Thống kê gãy vỡ: Áp dụng Van Westendorp trên N=20 chia 4 mô hình giá bất đối xứng | Critical | Accept | Phase 1 Task 1.1 Step 5 (VW chỉ là kiểm tra định tính phụ trợ) |
@@ -79,7 +79,7 @@ Có bằng chứng thật về việc học viên có trả 4 mức giá 49k, 99
 - Kiểm tra tiền đề billing: `grep -F '| \`billing\` |' docs/roadmap-chamro.md | grep -c 'Giả định'` in `1` (khớp dòng 55).
 - Kiểm tra work item 05: `grep -cF '| 05 |' docs/roadmap-work-items.md` in `1` (khớp dòng 20).
 - Kiểm tra định dạng plan: `ak plan validate plans/261105-0909-wi05-willingness-to-pay` in `[OK]`.
-- Kiểm tra kiểu mã nguồn: `pnpm check-types` thực thi thành công 7/7 gói (cached).
+- Kiểm tra kiểu mã nguồn: `pnpm check-types --force` thực thi sạch 7/7 gói trong workspace (0 cached, thời gian 1m6s).
 
 ### Whole-Plan Consistency Sweep
 - Liên kết giữa `plan.md`, `phase-01-chuan-bi-phuong-an-va-khung-khao-sat.md`, và `phase-02-thu-thap-du-lieu-va-ket-luan.md` khớp hoàn toàn về tên file, mục tiêu, và phân định trách nhiệm.

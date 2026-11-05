@@ -4,7 +4,7 @@ Trạng thái: Đề xuất — chờ PO xác nhận ngưỡng (Gate A)
 
 Phương pháp: Phỏng vấn 1-1 chuyên sâu (20–30 phút) theo phương pháp Mom Test tập trung vào hành vi chi tiêu quá khứ, đánh giá lựa chọn giữa 4 gói giá gắn với số ngày đến ngày thi, câu hỏi cảm nhận giá Van Westendorp định tính phụ trợ, và thang đo cam kết hành vi thực tế (Commitment Ladder).
 Cỡ mẫu: Tối thiểu 20 học viên IELTS mục tiêu có ngày thi trong vòng 60 ngày, phân bổ đều theo các nhóm thời gian đến ngày thi (≤14 ngày, 15–30 ngày, 31–60 ngày); không có kênh tuyển dụng nào chiếm quá 40% tổng mẫu.
-Ngưỡng giữ giá: Đề xuất quy tắc phê duyệt cho từng gói: (1) Mỗi gói phải có tối thiểu 5 học viên chọn để làm căn cứ đánh giá (gói 49k đánh giá trên toàn bộ mẫu, gói 99k/249k/349k đánh giá trên nhóm học viên có ngày thi phù hợp); (2) Đề xuất giữ giá nếu tỷ lệ cam kết hành vi đạt $\ge 35\%$ và tỷ lệ ý định mua (4–5/5) đạt $\ge 40\%$; (3) Đề xuất đổi giá nếu tỷ lệ ý định mua $< 20\%$ hoặc tỷ lệ người đánh giá mức "quá đắt" $\le$ giá niêm yết đạt $> 50\%$; (4) Khoảng trung gian (20%–40%): Chưa đủ căn cứ kết luận — cần mở rộng mẫu thêm 10 học viên ở vòng 2.
+Ngưỡng giữ giá: Đề xuất quy tắc phê duyệt cho từng gói (áp dụng theo thứ tự ưu tiên Đổi giá > Giữ giá > Chưa đủ căn cứ): (1) Đủ điều kiện mẫu: Mỗi gói phải có tối thiểu 5 học viên chọn để làm căn cứ đánh giá (gói 49k đánh giá trên toàn bộ mẫu, gói 99k/249k/349k đánh giá trên nhóm học viên có ngày thi phù hợp); (2) Đề xuất đổi giá (ưu tiên cao nhất): Nếu tỷ lệ ý định mua (4–5/5) < 20% HOẶC tỷ lệ người đánh giá mức "quá đắt" ≤ giá niêm yết đạt > 50%; (3) Đề xuất giữ giá: Nếu không thuộc diện đổi giá VÀ đạt đồng thời tỷ lệ cam kết hành vi ≥ 35% cùng tỷ lệ ý định mua ≥ 40%; (4) Chưa đủ căn cứ kết luận (mọi trường hợp còn lại, bao gồm ý định mua ≥ 40% nhưng cam kết < 35%, hoặc ý định mua từ 20% đến dưới 40%, hoặc số học viên chọn gói < 5): Giữ giá cơ sở và mở rộng mẫu thêm 10 học viên ở vòng 2.
 
 ---
 
@@ -81,9 +81,9 @@ Người phỏng vấn trình bày đồng thời cả 4 gói giá trên một m
 
 Tất cả dữ liệu thô sau phỏng vấn được tổng hợp vào bảng ẩn danh bên dưới. Tuyệt đối không ghi tên học viên, số điện thoại, email hay bất kỳ thông tin nhận dạng cá nhân (PII) nào vào bảng này.
 
-| Mã học viên | Khoảng ngày đến thi | Gói lựa chọn | Mức ý định (1–5) | VW Quá rẻ (VND) | VW Rẻ (VND) | VW Đắt (VND) | VW Quá đắt (VND) | Bậc cam kết đạt được | Kênh tiếp cận |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| *(Chờ thu thập)* | | | | | | | | | |
+| Mã học viên | Ngày phỏng vấn (YYYY-MM-DD) | Khoảng ngày đến thi | Gói lựa chọn | Mức ý định (1–5) | VW Quá rẻ (VND) | VW Rẻ (VND) | VW Đắt (VND) | VW Quá đắt (VND) | Bậc cam kết đạt được | Kênh tiếp cận |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| *(Chờ thu thập)* | | | | | | | | | | |
 
 ---
 
