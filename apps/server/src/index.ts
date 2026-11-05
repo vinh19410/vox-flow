@@ -1,6 +1,13 @@
 import { trpcServer } from "@hono/trpc-server";
 import { and, attempt, attemptAnswer, desc, eq, or, scoreDispute } from "@vox-flow/db";
-import { canAccessAudio } from "@vox-flow/api";
+import {
+  canAccessAudio,
+  buildAudioKey,
+  isValidAudioKey,
+  normalizeMimeType,
+  resolveAudioStreamResponse,
+  type AllowedAudioMimeType,
+} from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -66,9 +73,15 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
   const rawDuration = parseInt(c.req.query("durationMs") ?? "0", 10);
   const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
   const questionText = c.req.query("questionText") ?? "";
-  const rawContentType = (c.req.header("content-type") ?? "audio/webm").split(";")[0]?.trim().toLowerCase() ?? "audio/webm";
-  const allowedTypes = ["audio/webm", "audio/mp4", "audio/ogg", "audio/wav", "audio/mpeg"];
-  const contentType = allowedTypes.includes(rawContentType) ? rawContentType : "audio/webm";
+  const rawContentType = c.req.header("content-type");
+  let contentType: AllowedAudioMimeType = "audio/webm";
+  if (rawContentType) {
+    const normalized = normalizeMimeType(rawContentType);
+    if (!normalized) {
+      return c.json({ error: "Unsupported media type" }, 415);
+    }
+    contentType = normalized;
+  }
   const db = getDb();
   const [currentAttempt] = await db
     .select()
@@ -86,8 +99,7 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Cannot upload to finalized attempt" }, 400);
   }
 
-  const ext = contentType.includes("mp4") ? "mp4" : "webm";
-  const audioKey = `users/${session.user.id}/attempts/${attemptId}/${questionKey}.${ext}`;
+  const audioKey = buildAudioKey(session.user.id, attemptId, questionKey, contentType);
 
   const bucket = "AUDIO_BUCKET" in ENV ? (ENV.AUDIO_BUCKET as R2Bucket) : undefined;
   if (!bucket) {
@@ -193,6 +205,10 @@ app.get("/api/attempts/:attemptId/answers/:answerId/audio", async (c) => {
     return c.text("Not found", 404);
   }
 
+  if (!isValidAudioKey(ans.audioKey, currentAttempt.userId, attemptId)) {
+    return c.text("Forbidden", 403);
+  }
+
   const bucket = "AUDIO_BUCKET" in ENV ? (ENV.AUDIO_BUCKET as R2Bucket) : undefined;
   if (!bucket) {
     return c.text("Storage unavailable", 503);
@@ -202,19 +218,26 @@ app.get("/api/attempts/:attemptId/answers/:answerId/audio", async (c) => {
   const object = await bucket.get(ans.audioKey, {
     range: rangeHeader ? c.req.raw.headers : undefined,
   });
-  if (!object) {
-    return c.text("Audio not found", 404);
+
+  const streamResult = resolveAudioStreamResponse({
+    audioKey: ans.audioKey,
+    mimeType: ans.mimeType,
+    attemptOwnerId: currentAttempt.userId,
+    attemptId,
+    object,
+  });
+
+  if (streamResult.status === 403) {
+    return c.text(streamResult.body, 403);
+  }
+  if (streamResult.status === 404) {
+    return c.text(streamResult.body, 404);
   }
 
-  c.header("Content-Type", ans.mimeType || "audio/webm");
-  c.header("Accept-Ranges", "bytes");
-  if (object.range && "offset" in object.range && "length" in object.range) {
-    const range = object.range as { offset: number; length: number };
-    c.header("Content-Range", `bytes ${range.offset}-${range.offset + range.length - 1}/${object.size}`);
-    return c.body(object.body, 206);
+  for (const [k, v] of Object.entries(streamResult.headers)) {
+    c.header(k, v);
   }
-  c.header("Content-Disposition", "inline");
-  return c.body(object.body);
+  return c.body(streamResult.body as any, streamResult.status);
 });
 
 app.get("/", (c) => {

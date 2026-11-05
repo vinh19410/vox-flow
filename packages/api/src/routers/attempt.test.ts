@@ -163,7 +163,6 @@ describe("attemptRouter", () => {
           questionText: "Where do you live?",
           partNumber: 1,
           orderIndex: 0,
-          audioKey: "users/user-b/audio.webm",
           durationMs: 15000,
           mimeType: "audio/webm",
         }),
@@ -177,13 +176,38 @@ describe("attemptRouter", () => {
       ).rejects.toThrow("You are not authorized");
 
       // User A uploads and submits successfully
+      // Reject invalid or unsupported mimeType (e.g. text/html for stored XSS)
+      await expect(
+        callerA.attempt.uploadAnswer({
+          attemptId,
+          questionKey: "p1-1",
+          questionText: "Where do you live?",
+          partNumber: 1,
+          orderIndex: 0,
+          durationMs: 15000,
+          mimeType: "text/html",
+        }),
+      ).rejects.toThrow();
+
+      // Reject questionKey with path traversal or invalid characters
+      await expect(
+        callerA.attempt.uploadAnswer({
+          attemptId,
+          questionKey: "../evil",
+          questionText: "Where do you live?",
+          partNumber: 1,
+          orderIndex: 0,
+          durationMs: 15000,
+          mimeType: "audio/webm",
+        }),
+      ).rejects.toThrow();
+
       const uploadRes = await callerA.attempt.uploadAnswer({
         attemptId,
         questionKey: "p1-1",
         questionText: "Where do you live?",
         partNumber: 1,
         orderIndex: 0,
-        audioKey: "users/user-a/audio.webm",
         durationMs: 15000,
         mimeType: "audio/webm",
       });
@@ -192,6 +216,8 @@ describe("attemptRouter", () => {
       const activeRes = await callerA.attempt.getActive();
       expect(activeRes).not.toBeNull();
       expect(activeRes?.answers).toHaveLength(1);
+      expect(activeRes?.answers[0]?.audioKey).toBe(`users/user-a/attempts/${attemptId}/p1-1.webm`);
+      expect(activeRes?.answers[0]?.mimeType).toBe("audio/webm");
 
       const submitRes = await callerA.attempt.submit({ attemptId });
       expect(submitRes.status).toBe("submitted");
@@ -204,7 +230,6 @@ describe("attemptRouter", () => {
           questionText: "Another question?",
           partNumber: 1,
           orderIndex: 1,
-          audioKey: "users/user-a/audio2.webm",
           durationMs: 10000,
           mimeType: "audio/webm",
         }),

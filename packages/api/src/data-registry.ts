@@ -1,4 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
+import { isValidAudioKey } from "./audio";
 
 import type { Database } from "@vox-flow/db";
 import {
@@ -107,7 +108,9 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
           .where(eq(attemptAnswer.attemptId, att.id));
         if (ctx.audioBucket?.delete) {
           for (const ans of answers) {
-            await ctx.audioBucket.delete(ans.audioKey).catch(() => {});
+            if (isValidAudioKey(ans.audioKey, userId, att.id)) {
+              await ctx.audioBucket.delete(ans.audioKey).catch(() => {});
+            }
           }
         }
       }
