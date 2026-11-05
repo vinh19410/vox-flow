@@ -21,7 +21,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 06 | Dựng môi trường backend Cloudflare | Nền | 🟢 | [#10](https://github.com/vinh19410/vox-flow/issues/10) | – | Thêm ngoài roadmap. Báo cáo so giao diện ghi backend chưa chạy được vì thiếu thông tin xác thực Cloudflare. |
 | 07 | Đăng nhập Google | Nền | 🔒 | [#11](https://github.com/vinh19410/vox-flow/issues/11) | 06 | Thêm ngoài danh sách tính năng (roadmap chỉ coi là phụ thuộc ngoài). Code hiện chỉ có email + mật khẩu. |
 | 08 | Thiết lập SePay | Nền | 🟢 | [#12](https://github.com/vinh19410/vox-flow/issues/12) | 04 (mềm) | Nên chờ luật sư trả lời có cần đăng ký hộ kinh doanh trước khi thu tiền không. |
-| 09 | Landing (`landing-page`) | Now | 🟢 | [#13](https://github.com/vinh19410/vox-flow/issues/13) | – | Chưa có tài liệu BA. `pricing-teaser.tsx:22` ghi "Thi thử không giới hạn", trái với hạn mức đã chốt. |
+| 09 | Landing (`landing-page`) | Now | ✅ | [#13](https://github.com/vinh19410/vox-flow/issues/13) (đang mở) | – | PR #38 đã vào `dev`, chưa lên `main`; đóng issue khi code lên `main`. Đã sửa lời hứa hạn mức 3 điểm/ngày và kiểm tra luồng vào auth. |
 | 10 | Tài khoản & mục tiêu (`onboarding`) | Now | 🔒 | [#14](https://github.com/vinh19410/vox-flow/issues/14) | 07, 02, 09 (mềm) | SRS đang `stale`, cần cập nhật theo 02. |
 | 11 | Quyền riêng tư (`privacy-controls`) | Now | 🔒 | [#15](https://github.com/vinh19410/vox-flow/issues/15) | 10, 02 | Luồng chủ động xóa dữ liệu đang hold, chờ 04. Không tự xóa bài khi tắt lưu; chính sách và điều khoản sử dụng biên soạn sau. Đã chốt dùng nhãn "Hiệu chuẩn chấm điểm" (D-10). |
 | 12 | Thi thử AI (`mock-exam`) | Now | 🔒 | [#16](https://github.com/vinh19410/vox-flow/issues/16) | 03, 10, 11 | Mới có brainstorm, cần chạy `/srs`. |
