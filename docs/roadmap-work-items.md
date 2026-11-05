@@ -2,7 +2,7 @@
 type: roadmap-work-items
 status: draft
 updated: 2026-11-05
-links: [docs/roadmap-chamro.md]
+links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.md, docs/roadmap-chamro.md]
 ---
 
 # Vox Flow (ChấmRõ) — Danh sách công việc theo roadmap
@@ -14,7 +14,7 @@ links: [docs/roadmap-chamro.md]
 | # | Công việc | Giai đoạn | Trạng thái | GitHub issue | Phải chờ | Ghi chú |
 |---|---|---|---|---|---|---|
 | 01 | Clone UI prototype vào `apps/web` | Nền | ✅ | [#1](https://github.com/vinh19410/vox-flow/issues/1) (đang mở) | – | PR #2 đã vào `dev`, chưa lên `main`; đóng issue khi code lên `main`. Vẫn còn dữ liệu giả. Chưa thử đăng nhập thật. |
-| 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | 🟢 | [#6](https://github.com/vinh19410/vox-flow/issues/6) | – | Mở khóa việc viết SRS. Không có PRD gốc, sẽ dựng lại từ trích dẫn trong roadmap. PRD và feature map còn lệch về đăng nhập, paywall và nhiều điểm khác. |
+| 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | ✅ | [#6](https://github.com/vinh19410/vox-flow/issues/6) (đang mở) | – | PR đã vào `dev`, chưa lên `main`; đóng issue khi code lên `main`. Đã chốt 12 quyết định tại `docs/product-decisions.md`, dựng lại PRD và roadmap chính thức tại `docs/_product/`. Mở khóa việc viết SRS. |
 | 03 | Thử chấm 30 bài mẫu, chọn dịch vụ giọng nói + AI (OQ-5) | Nền | ⏸️ | [#7](https://github.com/vinh19410/vox-flow/issues/7) | 30 bài mẫu có đồng ý bằng văn bản | Rủi ro lớn nhất. Kết quả cũng quyết định trần miễn phí và giá. |
 | 04 | Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6) | Nền | ⏸️ | [#8](https://github.com/vinh19410/vox-flow/issues/8) | Buổi tư vấn | Hồ sơ câu hỏi sẵn sàng tại `docs/legal/oq-6-tu-van-luat-su.md`. Đang chờ buổi tư vấn luật sư để thực hiện Phase 2. Không chặn việc xây sản phẩm, chỉ chặn mở cho học viên thật. |
 | 05 | Kiểm chứng mức sẵn lòng trả | Nền | 🟢 | [#9](https://github.com/vinh19410/vox-flow/issues/9) | – | `billing` đang dựa trên giả định. |
@@ -23,7 +23,7 @@ links: [docs/roadmap-chamro.md]
 | 08 | Thiết lập SePay | Nền | 🟢 | [#12](https://github.com/vinh19410/vox-flow/issues/12) | 04 (mềm) | Nên chờ luật sư trả lời có cần đăng ký hộ kinh doanh trước khi thu tiền không. |
 | 09 | Landing (`landing-page`) | Now | 🟢 | [#13](https://github.com/vinh19410/vox-flow/issues/13) | – | Chưa có tài liệu BA. `pricing-teaser.tsx:22` ghi "Thi thử không giới hạn", trái với hạn mức đã chốt. |
 | 10 | Tài khoản & mục tiêu (`onboarding`) | Now | 🔒 | [#14](https://github.com/vinh19410/vox-flow/issues/14) | 07, 02, 09 (mềm) | SRS đang `stale`, cần cập nhật theo 02. |
-| 11 | Quyền riêng tư (`privacy-controls`) | Now | 🔒 | [#15](https://github.com/vinh19410/vox-flow/issues/15) | 10, 02 | Luồng chủ động xóa dữ liệu đang hold, chờ 04. Không tự xóa bài khi tắt lưu; chính sách và điều khoản sử dụng biên soạn sau. Còn phải chốt cách gọi "huấn luyện AI" hay "hiệu chuẩn". |
+| 11 | Quyền riêng tư (`privacy-controls`) | Now | 🔒 | [#15](https://github.com/vinh19410/vox-flow/issues/15) | 10, 02 | Luồng chủ động xóa dữ liệu đang hold, chờ 04. Không tự xóa bài khi tắt lưu; chính sách và điều khoản sử dụng biên soạn sau. Đã chốt dùng nhãn "Hiệu chuẩn chấm điểm" (D-10). |
 | 12 | Thi thử AI (`mock-exam`) | Now | 🔒 | [#16](https://github.com/vinh19410/vox-flow/issues/16) | 03, 10, 11 | Mới có brainstorm, cần chạy `/srs`. |
 | 13 | Chấm điểm & bằng chứng (`scoring-results`) | Now | 🔒 | [#17](https://github.com/vinh19410/vox-flow/issues/17) | 03, 11, 12 | Chưa có tài liệu. Ngưỡng đạt: ≥ 80% bài lệch trong 0.5 band. |
 | 14 | Hạn mức miễn phí (`free-quota`) | Now | 🔒 | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã chốt 3 điểm/ngày. Trần toàn hệ thống còn chỉnh theo 03. |
