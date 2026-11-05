@@ -1,6 +1,6 @@
-# Vox Flow (ChấmRõ)
+# Vox Flow
 
-Sản phẩm luyện thi IELTS Speaking với giám khảo và chấm điểm bằng AI. "Vox Flow" là tên repo và package `@vox-flow/*`; "ChấmRõ" là tên hiển thị trên giao diện. Không đổi tên nào cho tới khi tên sản phẩm được chốt trong PRD.
+Sản phẩm luyện thi IELTS Speaking với giám khảo và chấm điểm bằng AI. Tên chính thức của sản phẩm là "Vox Flow" (trên cả giao diện người dùng và package `@vox-flow/*`) theo quyết định D-01 đã chốt trong PRD.
 
 ## Lệnh
 

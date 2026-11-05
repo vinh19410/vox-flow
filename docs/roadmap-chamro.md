@@ -173,7 +173,7 @@ Xanh: Now · Vàng: Next · Xám nhạt: Later · Xám xanh: dịch vụ ngoài.
 | D-03 | Đăng nhập | Chỉ Google | Google hoặc link qua email | Chốt: Chỉ Google OAuth (`docs/product-decisions.md`) |
 | D-04 | Bằng chứng miễn phí | Bằng chứng khóa sau paywall | Miễn phí bằng chứng câu yếu nhất | Chốt: Miễn phí câu yếu nhất + band tổng; paywall 4 tiêu chí (`docs/product-decisions.md`) |
 | D-05 | Luyện lại câu yếu | Không có mục riêng | Thuộc `scoring-results` và là North Star | Chốt: Giữ là North Star trong `scoring-results` (`docs/product-decisions.md`) |
-| D-06 | Báo band thật sau ngày thi | Không có mục riêng | Thuộc `onboarding`, dùng để đối chiếu độ sát điểm | Chốt: Giữ ở Next (Should), nhắc sau ngày thi (`docs/product-decisions.md`) |
+| D-06 | Báo band thật sau ngày thi | Không có mục riêng | Thuộc `onboarding`, dùng để đối chiếu độ sát điểm | Chốt: Giữ ở Next, nhắc sau ngày thi (`docs/product-decisions.md`) |
 | D-07 | Nguồn đề forecast | Công cụ admin và tự động hóa, đi trước `forecast-practice` | Học viên báo đề, đội nội dung duyệt bằng công cụ có sẵn, không có giao diện quản trị trong v1 | Chốt: Công cụ admin do PO duyệt từ 3 nguồn (OQ-2) |
 | D-08 | Nhắc luyện | MVP, email và thông báo đẩy | Could, chỉ email | Chốt: MVP email + push, tối đa 1 lần/ngày (OQ-3) |
 | D-09 | Xử lý báo lỗi | Later | Must, phản hồi trong 72 giờ | Chốt: PO trực tiếp xử lý bản tối thiểu ở Next trong 72h (OQ-4) |

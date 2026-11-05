@@ -17,7 +17,7 @@ Nguồn quyết định: docs/product-decisions.md
   - ≥ 80% bài lệch trong khoảng 0.5 band so với điểm giám khảo người chấm thật [PRD-trích OQ-5].
   - 30% học viên luyện từ 3 ngày/tuần trở lên [PRD-trích Mục 8].
   - Dưới 3% lượt thi phát sinh báo lỗi chấm điểm [PRD-trích Mục 8].
-  - 100% báo lỗi chấm điểm được phản hồi trong vòng 72 giờ [PRD-trích 7.4] [D-09].
+  - % báo lỗi chấm điểm được phản hồi trong vòng 72 giờ [PRD-trích 7.4] [D-09] (chỉ tiêu % cụ thể: [chưa có]).
 
 ---
 
@@ -65,7 +65,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 ### 3.2. Ngoài phạm vi v1 (Later / Could) [D-02] [D-12]
 - Gói dành cho giáo viên / trung tâm (`teacher-plan`) [D-12] [PRD-trích].
 - Quy trình xử lý báo lỗi mở rộng phân công nhiều giám khảo cộng tác viên [GAP-03 mở rộng].
-- Ứng dụng di động native trên App Store / Google Play (v1 chạy Web responsive / PWA).
+- Ứng dụng di động native trên App Store / Google Play (v1 ưu tiên phiên bản web; hỗ trợ PWA: [chưa có]).
 - Hỗ trợ các phương thức đăng nhập khác ngoài Google [D-03].
 - Xuất hóa đơn đỏ VAT (v1 chỉ cung cấp biên nhận điện tử) [D-11].
 
@@ -86,15 +86,15 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 
 ### 4.2. Phòng thi thử AI [Feature map F-06..F-08, GAP-01]
 - **F-06 Chọn chế độ thi:** [Feature map S07]
-  - Full Test (khoảng 12–15 phút, gồm đủ Part 1, Part 2, Part 3) — Tiêu tốn 3 điểm hạn mức miễn phí [OQ-1].
+  - Full Test (gồm đủ Part 1, Part 2, Part 3; thời lượng cụ thể: [chưa có]) — Tiêu tốn 3 điểm hạn mức miễn phí [OQ-1].
   - Luyện riêng Part 1, Part 2, hoặc Part 3 — Tiêu tốn 1 điểm hạn mức/lượt [OQ-1].
-  - Chọn giọng giám khảo AI (Anh – Anh, Anh – Mỹ, Anh – Úc).
+  - Chọn giọng giám khảo AI (danh sách giọng cụ thể: [chưa có]).
 - **F-07 Giao diện phòng thi:** [Feature map S08–S10]
   - Giám khảo AI đọc câu hỏi bằng giọng nói tự nhiên.
   - Part 2 có cue card hiển thị rõ ràng, đồng hồ đếm ngược 1 phút chuẩn bị kèm ô nháp ghi chú, sau đó tự động chuyển sang 2 phút nói.
   - Câu hỏi nối tiếp linh hoạt dựa trên câu trả lời của thí sinh.
-- **F-08 Cảnh báo độ dài:** [Feature map S10] Nếu câu trả lời quá ngắn (< 3 từ hoặc dưới 3 giây), hệ thống hiện cảnh báo nhắc nhở trước khi chuyển câu.
-- **GAP-01 Thu âm & truyền tải:** Thu âm định dạng Opus/WebM từ trình duyệt, đảm bảo chất lượng âm thanh để chuyển tiếp xử lý ASR và chấm điểm.
+- **F-08 Cảnh báo độ dài:** [Feature map S10] Cảnh báo câu trả lời quá ngắn trước khi nộp (ngưỡng độ dài và thời gian cụ thể: [chưa có]).
+- **GAP-01 Thu âm & truyền tải:** Thu âm từ trình duyệt và gửi lên máy chủ để xử lý ASR và chấm điểm; định dạng âm thanh cụ thể: [chưa có] (sẽ quyết định khi thử nghiệm GAP-01 và OQ-5).
 
 ### 4.3. Chấm điểm & Báo cáo kết quả [Feature map F-09..F-12] [D-04, D-05]
 - **F-09 Cơ chế chấm 3 lần:** [Feature map S11]
@@ -156,7 +156,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 
 ### 5.1. Bảo vệ dữ liệu cá nhân & Chuyển dữ liệu quốc tế [D-10] [OQ-6]
 - Tuân thủ khung pháp lý bảo vệ dữ liệu cá nhân tại Việt Nam (Luật 91/2025/QH15 và Nghị định 356/2025 thay thế Nghị định 13/2023 từ 01/01/2026).
-- Việc chuyển dữ liệu giọng nói học viên tới các nhà cung cấp dịch vụ AI/ASR quốc tế (Azure, Anthropic, OpenAI) tuân thủ yêu cầu đánh giá tác động chuyển dữ liệu ra nước ngoài (Điều 20).
+- Việc chuyển dữ liệu giọng nói học viên tới các nhà cung cấp dịch vụ AI/ASR quốc tế cần rà soát yêu cầu chuyển dữ liệu ra nước ngoài; kết luận và thủ tục tuân thủ đang hold, chờ kết quả tư vấn luật sư tại OQ-6 / #8 [hold].
 - Các câu hỏi pháp lý chi tiết (quy định Điều 24 đối với học viên dưới 16 tuổi, phân loại giọng nói là dữ liệu nhạy cảm, quy trình đăng ký hộ kinh doanh) liên kết theo dõi tại OQ-6 và Work Item 04 (#8).
 
 ### 5.2. An toàn phân quyền & Kiểm soát truy cập
