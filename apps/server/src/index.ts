@@ -12,7 +12,7 @@ import { appRouter } from "@vox-flow/api/routers/index";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-
+import { z } from "zod";
 import { createContext } from "./context";
 import { ENV } from "./env.server";
 import { handleScheduled } from "./scheduled";
@@ -42,6 +42,21 @@ app.use(
     },
   }),
 );
+const AUDIO_EXT_MAP = {
+  "audio/webm": "webm",
+  "audio/mp4": "mp4",
+  "audio/ogg": "ogg",
+  "audio/wav": "wav",
+  "audio/mpeg": "mp3",
+} as const;
+type AllowedAudioType = keyof typeof AUDIO_EXT_MAP;
+
+const audioUploadQuerySchema = z.object({
+  part: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(1).max(3)).default(1),
+  order: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(100)).default(0),
+  durationMs: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(3_600_000)).default(0),
+  questionText: z.string().max(2000).default(""),
+});
 
 app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
   const auth = await createAuth();
@@ -57,31 +72,45 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Invalid question key" }, 400);
   }
 
-  // Enforce 10MB payload size limit
+  // Enforce Content-Length header checks
   const contentLengthHeader = c.req.header("content-length");
-  if (contentLengthHeader) {
-    const contentLength = parseInt(contentLengthHeader, 10);
-    if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
-      return c.json({ error: "Payload too large (max 10MB)" }, 413);
-    }
+  if (!contentLengthHeader) {
+    return c.json({ error: "Content-Length header required" }, 411);
+  }
+  if (!/^\d+$/.test(contentLengthHeader)) {
+    return c.json({ error: "Invalid Content-Length header" }, 400);
+  }
+  const contentLength = parseInt(contentLengthHeader, 10);
+  if (contentLength === 0) {
+    return c.json({ error: "Empty payload not allowed" }, 400);
+  }
+  if (contentLength > 10 * 1024 * 1024) {
+    return c.json({ error: "Payload too large (max 10MB)" }, 413);
   }
 
-  const rawPart = parseInt(c.req.query("part") ?? "1", 10);
-  const partNumber = Number.isFinite(rawPart) ? rawPart : 1;
-  const rawOrder = parseInt(c.req.query("order") ?? "0", 10);
-  const orderIndex = Number.isFinite(rawOrder) ? rawOrder : 0;
-  const rawDuration = parseInt(c.req.query("durationMs") ?? "0", 10);
-  const durationMs = Number.isFinite(rawDuration) ? rawDuration : 0;
-  const questionText = c.req.query("questionText") ?? "";
+  // Enforce Content-Type allowlist (no silent fallback)
   const rawContentType = c.req.header("content-type");
-  let contentType: AllowedAudioMimeType = "audio/webm";
-  if (rawContentType) {
-    const normalized = normalizeMimeType(rawContentType);
-    if (!normalized) {
-      return c.json({ error: "Unsupported media type" }, 415);
-    }
-    contentType = normalized;
+  if (!rawContentType) {
+    return c.json({ error: "Unsupported Media Type" }, 415);
   }
+  const baseContentType = rawContentType.split(";")[0]?.trim().toLowerCase();
+  if (!baseContentType || !Object.hasOwn(AUDIO_EXT_MAP, baseContentType)) {
+    return c.json({ error: "Unsupported Media Type" }, 415);
+  }
+  const contentType = baseContentType as AllowedAudioType;
+
+  // Validate query parameters via Zod
+  const queryResult = audioUploadQuerySchema.safeParse(c.req.query());
+  if (!queryResult.success) {
+    return c.json({ error: "Invalid query parameters", details: queryResult.error.flatten() }, 400);
+  }
+  const { part: partNumber, order: orderIndex, durationMs, questionText } = queryResult.data;
+
+  if (!c.req.raw.body) {
+    return c.json({ error: "Empty payload body" }, 400);
+  }
+
+
   const db = getDb();
   const [currentAttempt] = await db
     .select()
@@ -106,12 +135,9 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Storage unavailable" }, 503);
   }
 
-  if (c.req.raw.body) {
-    await bucket.put(audioKey, c.req.raw.body, {
-      httpMetadata: { contentType },
-    });
-  }
-
+  await bucket.put(audioKey, c.req.raw.body, {
+    httpMetadata: { contentType },
+  });
   await db
     .insert(attemptAnswer)
     .values({
@@ -244,6 +270,7 @@ app.get("/", (c) => {
   return c.text("OK");
 });
 
+export { app };
 export default {
   fetch: app.fetch,
   scheduled: handleScheduled,
