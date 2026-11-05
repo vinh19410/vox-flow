@@ -22,7 +22,7 @@ Tài liệu này hướng dẫn người sở hữu sản phẩm và đội ngũ
 ## Webhook
 
 ### 1. Thông số tích hợp webhook
-- **URL tiếp nhận:** `https://<server-domain>/api/webhooks/sepay` (được hiện thực hóa trong issue #19).
+- **URL tiếp nhận:** `https://<server-domain>/webhooks/sepay` (đường dẫn tiếp nhận webhook được hiện thực hóa trong issue #19).
 - **Phương thức HTTP:** `POST`
 - **Loại nội dung (Content-Type):** `application/json`
 - **Loại sự kiện:** Tiền vào (`Money in`)
