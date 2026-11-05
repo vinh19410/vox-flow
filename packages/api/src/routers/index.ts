@@ -1,6 +1,7 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { attemptRouter } from "./attempt";
 import { disputeRouter } from "./dispute";
+import { disputeAdminRouter } from "./dispute-admin";
 import { forecastRouter } from "./forecast";
 import { forecastAdminRouter } from "./forecast-admin";
 import { privacyRouter } from "./privacy";
@@ -18,6 +19,7 @@ export const appRouter = router({
   attempt: attemptRouter,
   privacy: privacyRouter,
   dispute: disputeRouter,
+  disputeAdmin: disputeAdminRouter,
   forecast: forecastRouter,
   forecastAdmin: forecastAdminRouter,
 });

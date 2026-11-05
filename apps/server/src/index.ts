@@ -1,5 +1,6 @@
 import { trpcServer } from "@hono/trpc-server";
-import { and, attempt, attemptAnswer, eq, or } from "@vox-flow/db";
+import { and, attempt, attemptAnswer, desc, eq, or, scoreDispute } from "@vox-flow/db";
+import { canAccessAudio } from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -7,6 +8,7 @@ import { logger } from "hono/logger";
 
 import { createContext } from "./context";
 import { ENV } from "./env.server";
+import { handleScheduled } from "./scheduled";
 import { createAuth, getDb } from "./services";
 const app = new Hono();
 
@@ -148,7 +150,31 @@ app.get("/api/attempts/:attemptId/answers/:answerId/audio", async (c) => {
     .where(eq(attempt.id, attemptId))
     .limit(1);
 
-  if (!currentAttempt || currentAttempt.userId !== session.user.id) {
+  if (!currentAttempt) {
+    return c.text("Forbidden", 403);
+  }
+
+  let disputeShareConsent: boolean | null = null;
+  if (currentAttempt.userId !== session.user.id) {
+    const [disputeRecord] = await db
+      .select({ shareConsent: scoreDispute.shareConsent })
+      .from(scoreDispute)
+      .where(eq(scoreDispute.attemptId, attemptId))
+      .orderBy(desc(scoreDispute.createdAt))
+      .limit(1);
+    disputeShareConsent = disputeRecord ? Boolean(disputeRecord.shareConsent) : null;
+  }
+
+  const adminEmails = "ADMIN_EMAILS" in ENV ? (ENV.ADMIN_EMAILS as string) : undefined;
+  const isAllowed = canAccessAudio({
+    userId: session.user.id,
+    userEmail: session.user.email,
+    attemptOwnerId: currentAttempt.userId,
+    adminEmails,
+    disputeShareConsent,
+  });
+
+  if (!isAllowed) {
     return c.text("Forbidden", 403);
   }
 
@@ -195,4 +221,7 @@ app.get("/", (c) => {
   return c.text("OK");
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled: handleScheduled,
+};

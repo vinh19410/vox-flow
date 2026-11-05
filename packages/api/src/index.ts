@@ -1,6 +1,9 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 
+import { isUserAdmin, canAccessAudio } from "./auth-utils";
 import type { Context } from "./context";
+
+export { isUserAdmin, canAccessAudio };
 
 export const t = initTRPC.context<Context>().create();
 
@@ -26,14 +29,7 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
 
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   const adminEmailsRaw = ctx.env?.ADMIN_EMAILS ?? "";
-  const adminEmails = new Set(
-    adminEmailsRaw
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
-  );
-  const userEmail = ctx.session.user.email?.trim().toLowerCase();
-  if (!userEmail || !adminEmails.has(userEmail)) {
+  if (!isUserAdmin(ctx.session.user.email, adminEmailsRaw)) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Admin access required",
