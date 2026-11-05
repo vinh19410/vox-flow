@@ -18,6 +18,7 @@ export const server = Cloudflare.Worker("server", {
     CORS_ORIGIN: Config.String("CORS_ORIGIN"),
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
+    SEPAY_WEBHOOK_API_KEY: Config.Redacted("SEPAY_WEBHOOK_API_KEY"),
   },
   dev: {
     port: 3000,
