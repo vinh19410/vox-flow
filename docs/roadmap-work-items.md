@@ -2,7 +2,7 @@
 type: roadmap-work-items
 status: draft
 updated: 2026-11-05
-links: [docs/roadmap-chamro.md]
+links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.md, docs/roadmap-chamro.md]
 ---
 
 # Vox Flow (ChấmRõ) — Danh sách công việc theo roadmap
@@ -14,7 +14,7 @@ links: [docs/roadmap-chamro.md]
 | # | Công việc | Giai đoạn | Trạng thái | GitHub issue | Phải chờ | Ghi chú |
 |---|---|---|---|---|---|---|
 | 01 | Clone UI prototype vào `apps/web` | Nền | ✅ | [#1](https://github.com/vinh19410/vox-flow/issues/1) (đang mở) | – | PR #2 đã vào `dev`, chưa lên `main`; đóng issue khi code lên `main`. Vẫn còn dữ liệu giả. Chưa thử đăng nhập thật. |
-| 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | 🟢 | [#6](https://github.com/vinh19410/vox-flow/issues/6) | – | Mở khóa việc viết SRS. Không có PRD gốc, sẽ dựng lại từ trích dẫn trong roadmap. PRD và feature map còn lệch về đăng nhập, paywall và nhiều điểm khác. |
+| 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | ✅ | [#6](https://github.com/vinh19410/vox-flow/issues/6) (đang mở) | – | PR đã vào `dev`, chưa lên `main`; đóng issue khi code lên `main`. Đã chốt 12 quyết định tại `docs/product-decisions.md`, dựng lại PRD và roadmap chính thức tại `docs/_product/`. Mở khóa việc viết SRS. |
 | 03 | Thử chấm 30 bài mẫu, chọn dịch vụ giọng nói + AI (OQ-5) | Nền | ⏸️ | [#7](https://github.com/vinh19410/vox-flow/issues/7) | 30 bài mẫu có đồng ý bằng văn bản | Rủi ro lớn nhất. Kết quả cũng quyết định trần miễn phí và giá. |
 | 04 | Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6) | Nền | ⏸️ | [#8](https://github.com/vinh19410/vox-flow/issues/8) | Buổi tư vấn | Hồ sơ câu hỏi sẵn sàng tại `docs/legal/oq-6-tu-van-luat-su.md`. Đang chờ buổi tư vấn luật sư để thực hiện Phase 2. Không chặn việc xây sản phẩm, chỉ chặn mở cho học viên thật. |
 | 05 | Kiểm chứng mức sẵn lòng trả | Nền | 🟢 | [#9](https://github.com/vinh19410/vox-flow/issues/9) | – | `billing` đang dựa trên giả định. |
