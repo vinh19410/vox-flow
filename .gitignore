@@ -61,3 +61,5 @@ temp
 scripts/scoring-eval/audio/
 scripts/scoring-eval/results/
 scripts/scoring-eval/transcripts/
+.claude
+.agentkit
