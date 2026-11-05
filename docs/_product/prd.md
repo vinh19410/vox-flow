@@ -81,7 +81,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 - **F-05 Quản lý quyền riêng tư & Đồng ý dữ liệu:** [Feature map S05] [D-10]
   - Cung cấp 2 công tắc tách biệt hoàn toàn, mặc định đều TẮT:
     1. Công tắc 1: *Lưu trữ bài nói và bản gỡ băng để xem lại lịch sử và theo dõi tiến độ*.
-    2. Công tắc 2: *Đóng góp bài nói ẩn danh để hiệu chuẩn mô hình chấm điểm* [D-10].
+    2. Công tắc 2: *Đóng góp bài nói để hiệu chuẩn mô hình chấm điểm* [D-10] (cam kết không sử dụng để huấn luyện mô hình nền; thuật ngữ và cơ chế pháp lý chờ tư vấn luật sư OQ-6 / #8).
   - Học viên có thể thay đổi tùy chọn bất kỳ lúc nào trong màn hình Cài đặt cá nhân.
 
 ### 4.2. Phòng thi thử AI [Feature map F-06..F-08, GAP-01]
@@ -102,7 +102,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
   - Hiển thị khoảng tin cậy (Confidence Interval, ví dụ: "Band 6.5 (độ tin cậy: 6.5 – 7.0)").
 - **F-10 Hạn mức miễn phí:** [Feature map S12] [OQ-1] [GAP-06]
   - Mỗi học viên miễn phí được cấp 3 điểm/ngày (đặt lại lúc 00:00 giờ Việt Nam).
-  - Hệ thống áp dụng trần ngân sách AI toàn hệ sinh thái khoảng 33.000đ/ngày (tương đương ngân sách AI < 1 triệu đồng/tháng). Khi chạm trần, học viên miễn phí được thông báo quay lại vào ngày hôm sau; học viên trả phí không bị giới hạn bởi trần này.
+  - Hệ thống áp dụng trần ngân sách AI toàn hệ sinh thái (tạm tính khoảng 33.000đ/ngày từ ngân sách AI < 1 triệu đồng/tháng; con số chính thức sẽ điều chỉnh sau khi đo đạc chi phí thực tế tại OQ-5 / #7). Khi chạm trần, học viên miễn phí được thông báo quay lại vào ngày hôm sau; học viên trả phí không bị giới hạn bởi trần này.
 - **F-11 Trả kết quả & Phân tách Paywall:** [Feature map S13–S14] [D-04] [D-05]
   - **Miễn phí xem:**
     - Điểm Band tổng thể (Overall Band) và khoảng tin cậy.

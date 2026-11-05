@@ -23,7 +23,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 08 | Thiết lập SePay | Nền | 🟢 | [#12](https://github.com/vinh19410/vox-flow/issues/12) | 04 (mềm) | Nên chờ luật sư trả lời có cần đăng ký hộ kinh doanh trước khi thu tiền không. |
 | 09 | Landing (`landing-page`) | Now | 🟢 | [#13](https://github.com/vinh19410/vox-flow/issues/13) | – | Chưa có tài liệu BA. `pricing-teaser.tsx:22` ghi "Thi thử không giới hạn", trái với hạn mức đã chốt. |
 | 10 | Tài khoản & mục tiêu (`onboarding`) | Now | 🔒 | [#14](https://github.com/vinh19410/vox-flow/issues/14) | 07, 02, 09 (mềm) | SRS đang `stale`, cần cập nhật theo 02. |
-| 11 | Quyền riêng tư (`privacy-controls`) | Now | 🔒 | [#15](https://github.com/vinh19410/vox-flow/issues/15) | 10, 02 | Luồng chủ động xóa dữ liệu đang hold, chờ 04. Không tự xóa bài khi tắt lưu; chính sách và điều khoản sử dụng biên soạn sau. Còn phải chốt cách gọi "huấn luyện AI" hay "hiệu chuẩn". |
+| 11 | Quyền riêng tư (`privacy-controls`) | Now | 🔒 | [#15](https://github.com/vinh19410/vox-flow/issues/15) | 10, 02 | Luồng chủ động xóa dữ liệu đang hold, chờ 04. Không tự xóa bài khi tắt lưu; chính sách và điều khoản sử dụng biên soạn sau. Đã chốt dùng nhãn "Hiệu chuẩn chấm điểm" (D-10). |
 | 12 | Thi thử AI (`mock-exam`) | Now | 🔒 | [#16](https://github.com/vinh19410/vox-flow/issues/16) | 03, 10, 11 | Mới có brainstorm, cần chạy `/srs`. |
 | 13 | Chấm điểm & bằng chứng (`scoring-results`) | Now | 🔒 | [#17](https://github.com/vinh19410/vox-flow/issues/17) | 03, 11, 12 | Chưa có tài liệu. Ngưỡng đạt: ≥ 80% bài lệch trong 0.5 band. |
 | 14 | Hạn mức miễn phí (`free-quota`) | Now | 🔒 | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã chốt 3 điểm/ngày. Trần toàn hệ thống còn chỉnh theo 03. |
