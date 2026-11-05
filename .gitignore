@@ -56,3 +56,8 @@ coverage
 .cache
 tmp
 temp
+
+# Scoring evaluation (OQ-5)
+scripts/scoring-eval/audio/
+scripts/scoring-eval/results/
+scripts/scoring-eval/transcripts/
