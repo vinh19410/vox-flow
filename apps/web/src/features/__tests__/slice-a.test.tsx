@@ -83,12 +83,47 @@ describe("LandingScreen", () => {
     expect(screen.getByText("Giọng nói của bạn là của bạn.")).toBeTruthy();
   });
 
-  it("navigates to auth from the hero CTA", () => {
+  it("states quota accurately and contains no misleading promises in free tier and hero", () => {
+    renderWithApp(<LandingScreen />);
+
+    const freeHeading = screen.getByText("Miễn phí");
+    const freeCard = freeHeading.closest("div.rounded-3xl") ?? freeHeading.parentElement;
+    expect(freeCard).not.toBeNull();
+    expect(freeCard?.textContent).not.toMatch(/không giới hạn|mọi lượt|hết lượt free/i);
+    expect(freeCard?.textContent).toContain("3 điểm miễn phí mỗi ngày (Full Test 3 điểm, mỗi Part 1 điểm)");
+
+    expect(screen.getByText("Không cần thẻ · 3 điểm miễn phí mỗi ngày")).toBeTruthy();
+    expect(screen.getByText("Band tổng miễn phí trong hạn mức")).toBeTruthy();
+    expect(
+      screen.getByText(/Mỗi ngày 3 điểm miễn phí: Full Test 3 điểm, mỗi Part 1 điểm/),
+    ).toBeTruthy();
+
+    expect(screen.queryByText(/mọi lượt/i)).toBeNull();
+    expect(screen.queryByText(/hết lượt free/i)).toBeNull();
+  });
+
+  it("navigates to auth from the hero CTA and header/privacy buttons", () => {
     const { go } = renderWithApp(<LandingScreen />);
     fireEvent.click(
       screen.getByRole("button", { name: "Thi thử ngay — miễn phí" }),
     );
     expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thi thử miễn phí" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu thi thử" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
   });
 });
 

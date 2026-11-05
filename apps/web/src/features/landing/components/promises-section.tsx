@@ -10,7 +10,7 @@ export function PromisesSection() {
         </div>
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           {[
-            { i: Gauge, t: "Band tổng miễn phí, mọi lượt", d: "Hết lượt free vẫn có band + một câu nhận xét. Chỉ phần chi tiết 4 tiêu chí mới cần trả phí." },
+            { i: Gauge, t: "Band tổng miễn phí trong hạn mức", d: "Mỗi ngày 3 điểm miễn phí: Full Test 3 điểm, mỗi Part 1 điểm. Mỗi bài có band tổng + khoảng tin cậy; chi tiết 4 tiêu chí mới cần trả phí." },
             { i: Quote, t: "Chấm minh bạch", d: "Mỗi tiêu chí có band, lý do và đoạn trích câu bạn nói. Không tin? Bấm “Báo lỗi chấm”." },
             { i: ShieldCheck, t: "Chấm ổn định", d: "Chấm 3 lần với đầu ra có cấu trúc, lấy trung vị và hiển thị khoảng tin cậy như 6.0–6.5." },
             { i: MessageCircle, t: "Giám khảo hỏi nối tiếp", d: "AI hỏi tiếp dựa trên chính câu trả lời của bạn — kể cả Part 1. Học vẹt sẽ lộ ngay." },

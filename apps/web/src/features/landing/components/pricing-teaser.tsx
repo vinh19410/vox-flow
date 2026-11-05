@@ -19,7 +19,7 @@ export function PricingTeaser() {
           <div className="text-sm font-semibold">Miễn phí</div>
           <div className="tnum mt-3 text-3xl font-bold">0đ</div>
           <ul className="mt-5 space-y-2 text-sm text-ink-2">
-            {["Thi thử không giới hạn", "Band tổng + khoảng tin cậy", "1 câu nhận xét mỗi bài"].map((p) => (
+            {["3 điểm miễn phí mỗi ngày (Full Test 3 điểm, mỗi Part 1 điểm)", "Band tổng + khoảng tin cậy", "1 câu nhận xét mỗi bài"].map((p) => (
               <li key={p} className="flex gap-2">
                 <Check size={16} className="mt-0.5 shrink-0 text-good" />
                 {p}
