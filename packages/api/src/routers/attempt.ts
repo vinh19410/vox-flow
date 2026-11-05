@@ -91,10 +91,10 @@ export const attemptRouter = router({
       z.object({
         attemptId: z.string(),
         questionKey: z.string().regex(QUESTION_KEY_RE, "Invalid questionKey format"),
-        questionText: z.string(),
-        partNumber: z.number(),
-        orderIndex: z.number(),
-        durationMs: z.number(),
+        questionText: z.string().max(2000),
+        partNumber: z.number().int().min(1).max(3),
+        orderIndex: z.number().int().min(0).max(100),
+        durationMs: z.number().int().min(0).max(3_600_000),
         mimeType: z
           .string()
           .refine((val) => normalizeMimeType(val) !== null, {

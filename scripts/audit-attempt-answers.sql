@@ -47,6 +47,8 @@ WHERE
     OR SUBSTR(aa.audio_key, 1, LENGTH('users/' || a.user_id || '/attempts/' || a.id || '/')) 
         <> ('users/' || a.user_id || '/attempts/' || a.id || '/')
     OR aa.audio_key LIKE '%..%'
+    -- Rejects nested subdirectories inside the attempt prefix
+    OR SUBSTR(aa.audio_key, LENGTH('users/' || a.user_id || '/attempts/' || a.id || '/') + 1) LIKE '%/%'
     OR (
         aa.audio_key NOT LIKE '%.webm' 
         AND aa.audio_key NOT LIKE '%.mp4' 
