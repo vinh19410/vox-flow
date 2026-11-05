@@ -16,10 +16,17 @@ export async function createContext({ context }: CreateContextOptions): Promise<
   ).api.getSession({
     headers: context.req.raw.headers,
   });
+  const adminEmails =
+    ENV && typeof ENV === "object" && "ADMIN_EMAILS" in ENV && typeof ENV.ADMIN_EMAILS === "string"
+      ? ENV.ADMIN_EMAILS
+      : "";
   return {
     db,
     session,
-    env: ENV as unknown as ApiContext["env"],
+    env: {
+      ...(typeof ENV === "object" && ENV !== null ? ENV : {}),
+      ADMIN_EMAILS: adminEmails,
+    } as ApiContext["env"],
   };
 }
 

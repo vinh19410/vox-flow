@@ -1,7 +1,17 @@
 import { eq, inArray } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
-import { account, attempt, attemptAnswer, consentEvent, scoreDispute, session, user } from "@vox-flow/db/schema";
+import {
+  account,
+  attempt,
+  attemptAnswer,
+  consentEvent,
+  forecastReport,
+  scoreDispute,
+  session,
+  user,
+} from "@vox-flow/db/schema";
+
 export type EraseContext = {
   db: Database;
   audioBucket?: {
@@ -65,6 +75,24 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
       await ctx.db.delete(account).where(eq(account.userId, userId));
     },
   },
+  forecast_report: {
+    tableName: "forecast_report",
+    export: async (db, userId) => {
+      const rows = await db
+        .select()
+        .from(forecastReport)
+        .where(eq(forecastReport.userId, userId));
+      return rows.map((r) => ({
+        id: r.id,
+        topicId: r.topicId,
+        notes: r.notes,
+        createdAt: r.createdAt,
+      }));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(forecastReport).where(eq(forecastReport.userId, userId));
+    },
+  },
   attempt: {
     tableName: "attempt",
     export: async (db, userId) => {
@@ -116,6 +144,10 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
 export const NON_PERSONAL_TABLES: Record<string, string> = {
   verification:
     "Bảng verification lưu token OTP/email tạm thời xác thực, không liên kết trực tiếp theo khóa ngoại với userId của học viên",
+  forecast_topic:
+    "Bảng forecast_topic chứa đề thi IELTS forecast theo quý do quản trị viên biên soạn và duyệt, không chứa dữ liệu định danh người dùng",
+  forecast_source:
+    "Bảng forecast_source chứa thông tin nguồn gốc của đề thi (tự soạn, học viên hoặc web) phục vụ kiểm duyệt nội dung",
 };
 
 export async function exportUserData(db: Database, userId: string) {

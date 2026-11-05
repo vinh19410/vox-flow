@@ -4,6 +4,7 @@ import type { Database } from "@vox-flow/db";
 
 export type ApiEnv = {
   AUDIO_BUCKET?: R2Bucket;
+  ADMIN_EMAILS?: string;
   LAUNCH_OPEN?: string;
   LAUNCH_ALLOWED_EMAILS?: string;
   ANTHROPIC_API_KEY?: string;

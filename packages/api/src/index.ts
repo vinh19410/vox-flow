@@ -23,3 +23,26 @@ export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
     },
   });
 });
+
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  const adminEmailsRaw = ctx.env?.ADMIN_EMAILS ?? "";
+  const adminEmails = new Set(
+    adminEmailsRaw
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const userEmail = ctx.session.user.email?.trim().toLowerCase();
+  if (!userEmail || !adminEmails.has(userEmail)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Admin access required",
+    });
+  }
+  return next({
+    ctx: {
+      ...ctx,
+      session: ctx.session,
+    },
+  });
+});
