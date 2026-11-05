@@ -3,6 +3,7 @@ import type { Context as HonoContext } from "hono";
 
 import { getDb } from "./services";
 import { createAuth } from "./services";
+import { ENV } from "./env.server";
 
 export type CreateContextOptions = {
   context: HonoContext;
@@ -18,7 +19,8 @@ export async function createContext({ context }: CreateContextOptions): Promise<
   return {
     db,
     session,
+    env: ENV as unknown as ApiContext["env"],
   };
 }
 
-export type Context = Awaited<ReturnType<typeof createContext>>;
+export type Context = ApiContext;

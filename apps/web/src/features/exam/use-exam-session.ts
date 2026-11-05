@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { ENV } from "@/env.public";
 import { useApp } from "@/features/app-state/types";
 import { useMicLevel } from "@/hooks/use-mic-level";
+import { useRecorder } from "@/hooks/use-recorder";
 import { cancelSpeech, speakText } from "@/lib/speech";
+import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
+import { deleteAudioBlob, saveAudioBlob } from "./storage";
 import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./types";
-
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
 const WPS = 2.6; // simulated words-per-second for the live transcript
@@ -27,6 +30,7 @@ export interface ExamSessionValue {
   exitOpen: boolean; setExitOpen: (v: boolean) => void; returnToReview: boolean;
   begin: () => void; startRec: () => void; stopRec: () => void;
   restart: () => void; next: () => void; retryStep: (k: number) => void;
+  attemptId?: string | null;
 }
 
 const voiceLang = (id: string) => (id.startsWith("uk") ? "en-GB" : id.startsWith("au") ? "en-AU" : "en-US");
@@ -62,7 +66,50 @@ export function useExamSession(): ExamSessionValue {
   const [review, setReview] = useState(false);
   const [returnToReview, setReturnToReview] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  const clientSessionIdRef = useRef<string>(
+    typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "session-local",
+  );
+  const [attemptId, setAttemptId] = useState<string | null>(null);
+  const recorder = useRecorder();
 
+  useEffect(() => {
+    let active = true;
+    const examMode = (s.mode as "full" | "part1" | "part2" | "part3") ?? "full";
+
+    trpcClient.attempt.getActive
+      .query()
+      .then((activeAttempt) => {
+        if (!active) return;
+        if (activeAttempt?.attempt) {
+          setAttemptId(activeAttempt.attempt.id);
+          if (activeAttempt.answers && activeAttempt.answers.length > 0) {
+            const rehydrated: Record<string, ExamAnswer> = {};
+            for (const a of activeAttempt.answers) {
+              rehydrated[a.questionKey] = {
+                secs: Math.round(a.durationMs / 1000),
+                words: 20,
+                durationMs: a.durationMs,
+                audioKey: a.audioKey,
+              };
+            }
+            setAnswers((prev) => ({ ...rehydrated, ...prev }));
+          }
+        } else {
+          return trpcClient.attempt.start
+            .mutate({ mode: examMode })
+            .then((res) => {
+              if (active) setAttemptId(res.attemptId);
+            });
+        }
+      })
+      .catch(() => {
+        // Gracefully continue in offline / mock test mode
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [s.mode]);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const words = step.answer.split(" ");
@@ -115,14 +162,80 @@ export function useExamSession(): ExamSessionValue {
   function startRec() {
     cancelSpeech();
     setRecT(0);
+    void recorder.start();
     setPhase("recording");
   }
 
   function stopRec() {
-    setAnswers((a) => ({ ...a, [step.key]: { secs: recT, words: spoken } }));
+    const currentRecT = recT;
+    const currentSpoken = spoken;
+    setAnswers((a) => ({
+      ...a,
+      [step.key]: {
+        secs: currentRecT,
+        words: currentSpoken,
+        durationMs: Math.round(currentRecT * 1000),
+      },
+    }));
     setPhase("answered");
-  }
 
+    void recorder.stop().then((audio) => {
+      if (!audio) return;
+      const durationMs = audio.durationMs ?? Math.round(currentRecT * 1000);
+      const mimeType = audio.mimeType ?? "audio/webm";
+
+      setAnswers((a) => ({
+        ...a,
+        [step.key]: {
+          secs: currentRecT,
+          words: currentSpoken,
+          durationMs,
+          blob: audio.blob,
+        },
+      }));
+
+      const effectiveId = attemptId ?? clientSessionIdRef.current;
+      if (audio.blob) {
+        void saveAudioBlob({
+          attemptId: effectiveId,
+          questionKey: step.key,
+          blob: audio.blob,
+          durationMs,
+          mimeType,
+          part: step.part,
+          order: idx,
+          questionText: step.text,
+        });
+
+        if (attemptId) {
+          const baseUrl = (ENV.VITE_SERVER_URL ?? "").replace(/\/$/, "");
+          const query = new URLSearchParams({
+            part: step.part.toString(),
+            order: idx.toString(),
+            durationMs: durationMs.toString(),
+            questionText: step.text,
+          });
+          void fetch(
+            `${baseUrl}/api/attempts/${encodeURIComponent(attemptId)}/answers/${encodeURIComponent(step.key)}/audio?${query}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": mimeType,
+              },
+              body: audio.blob,
+              credentials: "include",
+            },
+          )
+            .then((res) => {
+              if (res.ok) {
+                void deleteAudioBlob(effectiveId, step.key);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    });
+  }
   useEffect(() => {
     if (phase === "recording" && recT >= maxRec && !paused) stopRec();
   }, [recT, maxRec, phase, paused]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,6 +286,7 @@ export function useExamSession(): ExamSessionValue {
   };
   const begin = () => setPhase("asking");
   const restart = () => {
+    recorder.cancel();
     setRecT(0);
     setPhase("ready");
   };
@@ -190,5 +304,6 @@ export function useExamSession(): ExamSessionValue {
     voice, muted, toggleMuted, level,
     review, setReview, exitOpen, setExitOpen, returnToReview,
     begin, startRec, stopRec, restart, next, retryStep,
+    attemptId,
   };
 }
