@@ -34,7 +34,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 19 | Cập nhật đề forecast (`forecast-curation`) | Next | 🔒 | [#23](https://github.com/vinh19410/vox-flow/issues/23) | 06, 07, 11, 04 (mềm) | Cần test API, đăng nhập và danh sách dữ liệu cá nhân. Luật sư cần trả lời rủi ro bản quyền của nguồn web. |
 | 20 | Luyện forecast (`forecast-practice`) | Next | 🔒 | [#24](https://github.com/vinh19410/vox-flow/issues/24) | 12, 13, 14, 15, 19 | Chờ nhiều việc nhất trong nhóm Next. |
 | 21 | Luyện mỗi ngày (`daily-practice`) | Next | 🔒 | [#25](https://github.com/vinh19410/vox-flow/issues/25) | 13 | Cần bám lỗi thật của học viên. |
-| 22 | Chọn dịch vụ email + thông báo đẩy | Next | 🟢 | [#26](https://github.com/vinh19410/vox-flow/issues/26) | – | Chưa cần làm sớm, vì chỉ 23 phụ thuộc vào việc này. |
+| 22 | Chọn dịch vụ email + thông báo đẩy | Next | ✅ | [#26](https://github.com/vinh19410/vox-flow/issues/26) (đang mở) | – | Đã chọn Resend (email) và @block65/webcrypto-web-push (push) tại `docs/decisions/email-push-provider.md`. Mở khóa #27. |
 | 23 | Nhắc luyện & hết hạn gói (`practice-reminder`) | Next | 🔒 | [#27](https://github.com/vinh19410/vox-flow/issues/27) | 15, 21, 22 | Tối đa 1 nhắc/ngày. Effort S có thể đã thấp so với phạm vi mới. |
 | 24 | Báo lỗi chấm (`score-dispute`) | Next | 🔒 | [#28](https://github.com/vinh19410/vox-flow/issues/28) | 11, 13 | Không ra mắt riêng trước 25. |
 | 25 | Xử lý báo lỗi bản tối thiểu (GAP-03) | Next | 🔒 | [#29](https://github.com/vinh19410/vox-flow/issues/29) | 24 | Hàng đợi, mẫu trả lời, cảnh báo quá hạn; giữ cam kết 72 giờ. |
