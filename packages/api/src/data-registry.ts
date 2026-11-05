@@ -1,8 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
-import { account, consentEvent, forecastReport, session, user } from "@vox-flow/db/schema";
-
+import { account, attempt, attemptAnswer, consentEvent, forecastReport, session, user } from "@vox-flow/db/schema";
 export type EraseContext = {
   db: Database;
   audioBucket?: {
@@ -82,6 +81,43 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(forecastReport).where(eq(forecastReport.userId, userId));
+    },
+  },
+  attempt: {
+    tableName: "attempt",
+    export: async (db, userId) => {
+      return db.select().from(attempt).where(eq(attempt.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      const userAttempts = await ctx.db.select().from(attempt).where(eq(attempt.userId, userId));
+      for (const att of userAttempts) {
+        const answers = await ctx.db
+          .select()
+          .from(attemptAnswer)
+          .where(eq(attemptAnswer.attemptId, att.id));
+        if (ctx.audioBucket?.delete) {
+          for (const ans of answers) {
+            await ctx.audioBucket.delete(ans.audioKey).catch(() => {});
+          }
+        }
+      }
+      await ctx.db.delete(attempt).where(eq(attempt.userId, userId));
+    },
+  },
+  attempt_answer: {
+    tableName: "attempt_answer",
+    export: async (db, userId) => {
+      const userAttempts = await db.select().from(attempt).where(eq(attempt.userId, userId));
+      const attemptIds = userAttempts.map((a) => a.id);
+      if (attemptIds.length === 0) return [];
+      return db.select().from(attemptAnswer).where(inArray(attemptAnswer.attemptId, attemptIds));
+    },
+    erase: async (ctx, userId) => {
+      const userAttempts = await ctx.db.select().from(attempt).where(eq(attempt.userId, userId));
+      const attemptIds = userAttempts.map((a) => a.id);
+      if (attemptIds.length > 0) {
+        await ctx.db.delete(attemptAnswer).where(inArray(attemptAnswer.attemptId, attemptIds));
+      }
     },
   },
 };
