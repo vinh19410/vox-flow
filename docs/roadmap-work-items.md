@@ -31,7 +31,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 16 | Đối soát thanh toán (`payment-reconciliation`) | Now | 🔒 | [#20](https://github.com/vinh19410/vox-flow/issues/20) | 08, 15 | Phải xong trước khi thu tiền thật. |
 | 17 | **Mốc: mở cho học viên thật đầu tiên** | Now | 🔒 | [#21](https://github.com/vinh19410/vox-flow/issues/21) | 04, 09–16 | Thêm ngoài roadmap theo OQ-6. Đây là cổng kiểm tra, không phải tính năng. |
 | 18 | Tiến độ band (`progress-history`) | Next | 🔒 | [#22](https://github.com/vinh19410/vox-flow/issues/22) | 11, 13 | Có thể làm song song với 21 và 24. |
-| 19 | Cập nhật đề forecast (`forecast-curation`) | Next | 🔒 | [#23](https://github.com/vinh19410/vox-flow/issues/23) | 06, 07, 11, 04 (mềm) | Cần test API, đăng nhập và danh sách dữ liệu cá nhân. Luật sư cần trả lời rủi ro bản quyền của nguồn web. |
+| 19 | Cập nhật đề forecast (`forecast-curation`) | Next | 🔄 | [#23](https://github.com/vinh19410/vox-flow/issues/23) (đang mở) | 06, 07, 11, 04 (mềm) | Đã hoàn thành schema D1, router `forecastAdmin`/`forecast`, dedupe AI, màn quản trị `/admin/forecast` và runbook `forecast-update.md` theo D-04/OQ-2. |
 | 20 | Luyện forecast (`forecast-practice`) | Next | 🔒 | [#24](https://github.com/vinh19410/vox-flow/issues/24) | 12, 13, 14, 15, 19 | Chờ nhiều việc nhất trong nhóm Next. |
 | 21 | Luyện mỗi ngày (`daily-practice`) | Next | 🔒 | [#25](https://github.com/vinh19410/vox-flow/issues/25) | 13 | Cần bám lỗi thật của học viên. |
 | 22 | Chọn dịch vụ email + thông báo đẩy | Next | ✅ | [#26](https://github.com/vinh19410/vox-flow/issues/26) (đang mở) | – | Đã chọn Resend (email) và @block65/webcrypto-web-push (push) tại `docs/decisions/email-push-provider.md`. Mở khóa #27. |

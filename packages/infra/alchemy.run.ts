@@ -22,6 +22,7 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     SEPAY_WEBHOOK_API_KEY: Config.Redacted("SEPAY_WEBHOOK_API_KEY"),
+    ADMIN_EMAILS: Config.String("ADMIN_EMAILS").pipe(Config.withDefault("")),
     LAUNCH_OPEN: Config.String("LAUNCH_OPEN").pipe(Config.withDefault("false")),
     LAUNCH_ALLOWED_EMAILS: Config.String("LAUNCH_ALLOWED_EMAILS").pipe(Config.withDefault("")),
     OPENAI_API_KEY: Config.Redacted("OPENAI_API_KEY").pipe(Config.withDefault("")),
