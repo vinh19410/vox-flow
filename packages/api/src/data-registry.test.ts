@@ -2,6 +2,7 @@ import * as schema from "@vox-flow/db/schema";
 import {
   account,
   attempt,
+  attemptAnswer,
   consentEvent,
   forecastReport,
   forecastTopic,
@@ -11,7 +12,7 @@ import {
 } from "@vox-flow/db/schema";
 import { getTableName, is, Table } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   DATA_REGISTRY,
@@ -141,6 +142,32 @@ describe("Data registry for personal data discovery and erasure", () => {
       { id: "att_reg_1", userId: user1Id, mode: "full", status: "submitted" },
       { id: "att_reg_2", userId: user2Id, mode: "full", status: "submitted" },
     ]);
+
+    // Seed answers including a legitimate answer and an answer attempting to point at another user's audioKey
+    await testCtx.db.insert(attemptAnswer).values([
+      {
+        id: "ans_reg_1_legit",
+        attemptId: "att_reg_1",
+        questionKey: "p1-1",
+        questionText: "Legit question",
+        partNumber: 1,
+        orderIndex: 0,
+        audioKey: `users/${user1Id}/attempts/att_reg_1/p1-1.webm`,
+        durationMs: 10000,
+        mimeType: "audio/webm",
+      },
+      {
+        id: "ans_reg_1_foreign",
+        attemptId: "att_reg_1",
+        questionKey: "p1-2",
+        questionText: "Foreign question",
+        partNumber: 1,
+        orderIndex: 1,
+        audioKey: `users/${user2Id}/attempts/att_reg_2/victim.webm`,
+        durationMs: 12000,
+        mimeType: "audio/webm",
+      },
+    ]);
     await testCtx.db.insert(scoreDispute).values([
       {
         id: "disp_reg_1",
@@ -171,9 +198,19 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(exportUser1.data.attempt).toHaveLength(1);
     expect(exportUser1.data.score_dispute).toHaveLength(1);
 
-    // Test erase
-    await eraseUserData({ db: testCtx.db }, user1Id);
+    // Test erase with mock audioBucket
+    const deletedAudioKeys: string[] = [];
+    const mockAudioBucket = {
+      delete: vi.fn(async (key: string) => {
+        deletedAudioKeys.push(key);
+      }),
+    };
 
+    await eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, user1Id);
+
+    // Defense-in-depth: only legitimate user1 audioKey is deleted; foreign audioKey is untouched
+    expect(deletedAudioKeys).toContain(`users/${user1Id}/attempts/att_reg_1/p1-1.webm`);
+    expect(deletedAudioKeys).not.toContain(`users/${user2Id}/attempts/att_reg_2/victim.webm`);
     // Verify user1 is gone
     const afterEraseUser1 = await exportUserData(testCtx.db, user1Id);
     expect(afterEraseUser1.data.user).toHaveLength(0);

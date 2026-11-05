@@ -5,7 +5,7 @@ import { attempt, attemptAnswer } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
-
+import { buildAudioKey, normalizeMimeType, QUESTION_KEY_RE } from "../audio";
 export const attemptRouter = router({
   start: protectedProcedure
     .input(
@@ -90,13 +90,17 @@ export const attemptRouter = router({
     .input(
       z.object({
         attemptId: z.string(),
-        questionKey: z.string(),
-        questionText: z.string(),
-        partNumber: z.number(),
-        orderIndex: z.number(),
-        audioKey: z.string(),
-        durationMs: z.number(),
-        mimeType: z.string(),
+        questionKey: z.string().regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        questionText: z.string().max(2000),
+        partNumber: z.number().int().min(1).max(3),
+        orderIndex: z.number().int().min(0).max(100),
+        durationMs: z.number().int().min(0).max(3_600_000),
+        mimeType: z
+          .string()
+          .refine((val) => normalizeMimeType(val) !== null, {
+            message: "Invalid or unsupported audio mimeType",
+          })
+          .transform((val) => normalizeMimeType(val)!),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -128,6 +132,12 @@ export const attemptRouter = router({
       }
 
       const answerId = crypto.randomUUID();
+      const audioKey = buildAudioKey(
+        ctx.session.user.id,
+        input.attemptId,
+        input.questionKey,
+        input.mimeType,
+      );
 
       await ctx.db
         .insert(attemptAnswer)
@@ -138,7 +148,7 @@ export const attemptRouter = router({
           questionText: input.questionText,
           partNumber: input.partNumber,
           orderIndex: input.orderIndex,
-          audioKey: input.audioKey,
+          audioKey,
           durationMs: input.durationMs,
           mimeType: input.mimeType,
         })
@@ -148,7 +158,7 @@ export const attemptRouter = router({
             questionText: input.questionText,
             partNumber: input.partNumber,
             orderIndex: input.orderIndex,
-            audioKey: input.audioKey,
+            audioKey,
             durationMs: input.durationMs,
             mimeType: input.mimeType,
           },
