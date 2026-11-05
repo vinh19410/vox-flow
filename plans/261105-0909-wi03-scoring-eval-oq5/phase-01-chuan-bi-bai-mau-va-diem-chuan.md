@@ -14,6 +14,7 @@ Có bộ mẫu hợp lệ và điểm người chấm được khóa trước kh
 
 ## Files to Create / Modify
 - Create: `scripts/scoring-eval/README.md`
+- Create: `scripts/scoring-eval/.env.schema`
 - Create: `scripts/scoring-eval/samples.csv`
 - Modify: `.gitignore`
 
@@ -22,21 +23,22 @@ Có bộ mẫu hợp lệ và điểm người chấm được khóa trước kh
 ### Task 1.0 — Kiểm tra điều kiện bắt đầu
 - Goal: mọi điều kiện cần có đều đã sẵn sàng trước khi đụng tới code hay tài liệu.
 - Target files and symbols: không sửa file.
-- Steps:
-  1. Xác nhận với người sở hữu sản phẩm đã có: 30 bài mẫu có đồng ý bằng văn bản.
-  2. Xác nhận với người sở hữu sản phẩm đã có: Tài khoản dùng thử Azure Speech, dịch vụ nhận dạng riêng, SpeechSuper và Anthropic API.
-- Success criteria: các điều kiện được xác nhận.
+  1. Xác nhận với người sở hữu sản phẩm đã có: 30 bài mẫu có đồng ý bằng văn bản (xác nhận văn bản đồng ý bao gồm cả việc gửi audio sang các bên thứ ba nước ngoài gồm Azure, OpenAI, SpeechSuper, Anthropic).
+  2. Xác nhận với người sở hữu sản phẩm đã có: Tài khoản dùng thử Azure Speech, dịch vụ nhận dạng riêng (đề xuất Whisper API của OpenAI), SpeechSuper và Anthropic API.
+  3. Người sở hữu sản phẩm xác nhận bằng văn bản qua comment trên Issue #7 để lưu vết kiểm chứng.
+- Success criteria: Các điều kiện được xác nhận bằng văn bản trên Issue #7.
 - Verify: `no verification needed` — người sở hữu sản phẩm xác nhận bằng lời điều kiện ở mục Steps.
 
 ### Task 1.1 — Tạo manifest không chứa dữ liệu cá nhân.
 - Goal: Tạo manifest không chứa dữ liệu cá nhân.
-- Target files and symbols: `scripts/scoring-eval/samples.csv`, `.gitignore`
+- Target files and symbols: `scripts/scoring-eval/samples.csv`, `scripts/scoring-eval/.env.schema`, `.gitignore`
 - Steps:
-  1. Thêm `scripts/scoring-eval/audio/` và `scripts/scoring-eval/results/` vào `.gitignore`.
-  2. Tạo CSV với cột `sample_id,mode,consent_ref,human_band`. Dùng mã ẩn danh, không ghi tên học viên.
-  3. Lưu audio ngoài git trong `scripts/scoring-eval/audio/`.
-- Success criteria: Audio không thể bị commit.
-- Verify: `git check-ignore scripts/scoring-eval/audio/x.wav` thoát với mã 0.
+  1. Thêm `scripts/scoring-eval/audio/`, `scripts/scoring-eval/results/` và `scripts/scoring-eval/transcripts/` vào `.gitignore` (đường dẫn neo).
+  2. Tạo schema bảo vệ biến môi trường `scripts/scoring-eval/.env.schema` cho các API key với thuộc tính `@sensitive @required`.
+  3. Tạo CSV với cột `sample_id,mode,consent_ref,human_band`. Dùng mã ẩn danh, không ghi tên học viên.
+  4. Lưu audio ngoài git trong `scripts/scoring-eval/audio/`.
+- Success criteria: Audio, kết quả thô và transcript không thể bị commit.
+- Verify: `git check-ignore scripts/scoring-eval/audio/x.wav scripts/scoring-eval/results/x.jsonl scripts/scoring-eval/transcripts/x.txt` thoát với mã 0.
 
 ### Task 1.2 — Khóa điểm chấm mù.
 - Goal: Khóa điểm chấm mù.

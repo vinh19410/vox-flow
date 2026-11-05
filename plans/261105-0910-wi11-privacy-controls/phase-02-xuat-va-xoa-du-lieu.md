@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Xuất và xóa dữ liệu"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: [1]

@@ -26,7 +26,7 @@ export function Hero() {
           <Button variant="accent" size="lg" onClick={() => go("auth")}>
             Thi thử ngay — miễn phí <ArrowRight size={18} />
           </Button>
-          <span className="text-sm text-subtle">Không cần thẻ · Có band tổng cho mọi lượt</span>
+          <span className="text-sm text-subtle">Không cần thẻ · 3 điểm miễn phí mỗi ngày</span>
         </div>
         <div className="mt-12 grid max-w-lg grid-cols-3 gap-6 border-t border-line pt-6">
           {[

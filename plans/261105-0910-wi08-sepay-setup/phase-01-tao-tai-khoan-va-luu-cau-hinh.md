@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Tạo tài khoản và lưu cấu hình"
-status: pending
+status: in-progress
 priority: P1
 effort: ""
 dependencies: []
@@ -16,6 +16,7 @@ SePay hoạt động và có runbook.
 - Create: `docs/runbooks/sepay-setup.md`
 - Modify: `packages/infra/alchemy.run.ts`
 - Modify: `apps/server/.env.schema`
+- Modify: `packages/infra/.env.schema`
 
 ## Tasks & Steps
 
@@ -40,10 +41,10 @@ SePay hoạt động và có runbook.
 
 ### Task 1.2 — Khai báo khóa webhook.
 - Goal: Khai báo khóa webhook.
-- Target files and symbols: `packages/infra/alchemy.run.ts`, `apps/server/.env.schema`
+- Target files and symbols: `packages/infra/alchemy.run.ts`, `apps/server/.env.schema`, `packages/infra/.env.schema`
 - Steps:
   1. Thêm `SEPAY_WEBHOOK_API_KEY` bằng `Config.Redacted` vào `env` của Worker.
-  2. Khai báo tên biến trong `.env.schema`, không kèm giá trị.
+  2. Khai báo tên biến trong `apps/server/.env.schema`, không kèm giá trị, và thêm vào danh sách `@import` trong `packages/infra/.env.schema`.
 - Success criteria: Biến có trong cấu hình và không lộ giá trị.
 - Verify: `grep -c 'SEPAY_WEBHOOK_API_KEY' packages/infra/alchemy.run.ts` in `1` và `pnpm check-types` thoát với mã 0.
 

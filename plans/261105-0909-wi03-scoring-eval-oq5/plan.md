@@ -5,7 +5,7 @@ status: pending
 priority: P1
 effort: 5d
 issue: 7
-branch: vinh19410/feat/scoring-eval-oq5
+branch: vinh19410/vox-flow-ai-7
 tags: [experimental, advice]
 blockedBy: []
 blocks: [project:261105-0910-wi12-mock-exam, project:261105-0910-wi13-scoring-results]
@@ -30,9 +30,9 @@ Có số liệu đo được để chọn một tổ hợp dịch vụ nhận d�
 
 ## Constraints
 - Theo OQ-6, thử bằng bài mẫu có đồng ý không bị chặn bởi buổi tư vấn luật sư, nhưng chỉ dùng người đã đồng ý bằng văn bản.
-- Không commit audio hay transcript.
-- Không commit secret; lưu qua `ak secrets` hoặc secret của Worker.
-
+- Pháp lý & chuyển dữ liệu ra nước ngoài: cần xác nhận văn bản đồng ý bao gồm cả việc xử lý bởi nhà cung cấp nước ngoài (Azure, OpenAI, SpeechSuper, Anthropic). Lưu ý mốc 60 ngày theo Luật 91/2025/QH15 kể từ lần đầu chuyển dữ liệu âm thanh ra nước ngoài.
+- Không commit audio, transcript hay kết quả thô vào git.
+- Không commit secret; dùng `.env` cục bộ (được gitignore) và kiểm tra qua `scripts/scoring-eval/.env.schema` bằng varlock; không dùng secret của Cloudflare Worker cho script CLI này.
 ## Non-goals
 - Xây pipeline chấm thật; việc đó thuộc #17.
 
@@ -50,7 +50,17 @@ Có số liệu đo được để chọn một tổ hợp dịch vụ nhận d�
 - [ ] OQ-5 trong `docs/roadmap-chamro.md` được đóng với cấu hình đã chọn, hoặc ghi rõ không cấu hình nào đạt.
 
 ## Câu hỏi mở
-- Dịch vụ nhận dạng riêng của Hướng B dùng nhà cung cấp nào?
-- Nếu không cấu hình nào đạt ngưỡng thì dừng sản phẩm, hạ phạm vi chấm hay thử thêm hướng khác?
+1. Dịch vụ nhận dạng riêng của Hướng B dùng nhà cung cấp nào? -> Đề xuất mặc định: OpenAI Whisper API kết hợp SpeechSuper (ước tính ~11.908đ/Full Test), người sở hữu sản phẩm có thể đổi trước khi chạy.
+2. Nếu không cấu hình nào đạt ngưỡng thì dừng sản phẩm, hạ phạm vi chấm hay thử thêm hướng khác? -> Xử lý theo 3 nhánh rõ ràng trong Task 2.2: nếu không cấu hình nào đạt hoặc chi phí vượt 12.000đ, báo cáo ghi `Đạt ngưỡng: không`, giữ OQ-5 mở `[ ]` và chuyển người sở hữu sản phẩm quyết định.
 
+## Red Team Review
+
+### Phiên rà soát — 2026-11-05
+**Kết quả:** 3 phát hiện trọng yếu đã được xử lý (Security Adversary & Assumption Destroyer).
+
+| # | Phát hiện | Mức độ | Xử lý | Áp dụng vào |
+|---|-----------|--------|-------|-------------|
+| 1 | Bế tắc cơ học trong lệnh Verify của Task 2.2 khi kết quả đánh giá là không đạt ngưỡng | Critical | Chấp nhận | Phase 2 (tách 3 nhánh kết quả: đạt, không đạt độ chính xác, vượt trần chi phí) |
+| 2 | Lệch kiến trúc quản lý secret giữa Cloudflare Worker và script CLI cục bộ | Critical | Chấp nhận | Plan & Phase 1, 2 (dùng varlock `scripts/scoring-eval/.env.schema` thay vì Worker secret) |
+| 3 | Nguy cơ prompt injection qua transcript âm thanh và định danh model Anthropic | Critical | Chấp nhận | Phase 2 (thêm ranh giới XML `<candidate_transcript>`, Zod schema cho band 0.0-9.0, cấu hình map model) |
 <!-- slug: wi03-scoring-eval-oq5 -->

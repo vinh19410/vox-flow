@@ -1,11 +1,11 @@
 ---
 title: "Landing (`landing-page`)"
 description: "Landing đưa người mới vào lần thi đầu với lời hứa đúng với hạn mức 3 điểm/ngày, không còn câu nào hứa không giới hạn."
-status: pending
+status: completed
 priority: P1
 effort: 4h
 issue: 13
-branch: vinh19410/feat/landing-page
+branch: vinh19410/vox-flow-ai-13
 tags: [frontend, advice]
 blockedBy: []
 blocks: [project:261105-0910-wi17-first-real-students-gate]
@@ -40,13 +40,13 @@ Landing đưa người mới vào lần thi đầu với lời hứa đúng vớ
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Sửa lời hứa và kiểm tra luồng vào](./phase-01-sua-loi-hua-va-kiem-tra-luong-vao.md) | Pending |
+| 1 | [Phase 1: Sửa lời hứa và kiểm tra luồng vào](./phase-01-sua-loi-hua-va-kiem-tra-luong-vao.md) | Completed |
 
 ## Acceptance Criteria
-- [ ] Không còn lời hứa trái hạn mức trong `apps/web/src/features/landing`.
-- [ ] Nêu đúng 3 điểm/ngày: Full Test 3 điểm, mỗi Part 1 điểm.
-- [ ] Nút chính dẫn tới `/auth`.
-- [ ] Test và kiểm tra kiểu đều qua.
+- [x] Không còn lời hứa trái hạn mức trong `apps/web/src/features/landing`.
+- [x] Nêu đúng 3 điểm/ngày: Full Test 3 điểm, mỗi Part 1 điểm.
+- [x] Nút chính dẫn tới `/auth`.
+- [x] Test và kiểm tra kiểu đều qua.
 
 ## Câu hỏi mở
 - Có nên nói rõ trần miễn phí toàn hệ thống trên landing, hay chỉ thông báo khi chạm trần?

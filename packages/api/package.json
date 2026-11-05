@@ -6,7 +6,8 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@trpc/client": "catalog:",
@@ -16,7 +17,11 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "catalog:",
     "@vox-flow/config": "workspace:*",
-    "typescript": "catalog:"
+    "drizzle-orm": "catalog:",
+    "miniflare": "^4.20260730.0",
+    "typescript": "catalog:",
+    "vitest": "^5.1.0"
   }
 }

@@ -1,6 +1,6 @@
-# Vox Flow (ChấmRõ)
+# Vox Flow
 
-Sản phẩm luyện thi IELTS Speaking với giám khảo và chấm điểm bằng AI. "Vox Flow" là tên repo và package `@vox-flow/*`; "ChấmRõ" là tên hiển thị trên giao diện. Không đổi tên nào cho tới khi tên sản phẩm được chốt trong PRD.
+Sản phẩm luyện thi IELTS Speaking với giám khảo và chấm điểm bằng AI. Tên chính thức của sản phẩm là "Vox Flow" (trên cả giao diện người dùng và package `@vox-flow/*`) theo quyết định D-01 đã chốt trong PRD.
 
 ## Lệnh
 
@@ -21,7 +21,7 @@ Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script kh�
 
 ## Tài liệu sản phẩm
 
-- Không có PRD gốc. `docs/_product/` chưa tồn tại dù roadmap có nhắc tới, nên không trích dẫn SRS hay PRD từ đó khi chưa có file.
+- Tài liệu sản phẩm chính thức: PRD tại `docs/_product/prd.md` và roadmap tại `docs/_product/roadmap.md` (dựng lại từ trích dẫn và Feature Map, các nội dung chưa có nguồn ghi rõ `[chưa có]`). 12 quyết định thống nhất ghi tại `docs/product-decisions.md`.
 - Thứ tự công việc và phụ thuộc: `docs/roadmap-work-items.md`. Plan của từng mục nằm trong `plans/`.
 - Khi thực thi plan, nếu một Verify không đạt thì dừng theo Failure Protocol trong phase, không tự sửa cho qua.
 

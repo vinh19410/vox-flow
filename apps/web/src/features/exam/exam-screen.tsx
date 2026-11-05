@@ -1,7 +1,7 @@
 import { TriangleAlert } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
-
+import { trpcClient } from "@/utils/trpc";
 import { MIN_WORDS } from "./data";
 import { CueCardPanel } from "./components/cue-card-panel";
 import { ExamControls } from "./components/exam-controls";
@@ -25,6 +25,13 @@ export function ExamScreen() {
   const doneCount = Object.keys(answers).length;
 
   const submit = () => {
+    if (session.attemptId) {
+      void trpcClient.attempt.submit
+        .mutate({ attemptId: session.attemptId })
+        .catch((err) => {
+          console.warn("Attempt submit in background failed:", err);
+        });
+    }
     setPendingSubmission(true);
     go("scoring");
   };

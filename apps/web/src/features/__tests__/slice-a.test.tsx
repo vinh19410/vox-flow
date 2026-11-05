@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,6 +11,7 @@ import { LandingScreen } from "@/features/landing/landing-screen";
 import { ConsentRows } from "@/features/onboarding/components/consent-rows";
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen";
 import { PrivacyScreen } from "@/features/privacy/privacy-screen";
+import { trpcClient } from "@/utils/trpc";
 
 /**
  * Test harness mirroring AppStateProvider: real AppState transitions through
@@ -83,12 +84,47 @@ describe("LandingScreen", () => {
     expect(screen.getByText("Giọng nói của bạn là của bạn.")).toBeTruthy();
   });
 
-  it("navigates to auth from the hero CTA", () => {
+  it("states quota accurately and contains no misleading promises in free tier and hero", () => {
+    renderWithApp(<LandingScreen />);
+
+    const freeHeading = screen.getByText("Miễn phí");
+    const freeCard = freeHeading.closest("div.rounded-3xl") ?? freeHeading.parentElement;
+    expect(freeCard).not.toBeNull();
+    expect(freeCard?.textContent).not.toMatch(/không giới hạn|mọi lượt|hết lượt free/i);
+    expect(freeCard?.textContent).toContain("3 điểm miễn phí mỗi ngày (Full Test 3 điểm, mỗi Part 1 điểm)");
+
+    expect(screen.getByText("Không cần thẻ · 3 điểm miễn phí mỗi ngày")).toBeTruthy();
+    expect(screen.getByText("Band tổng miễn phí trong hạn mức")).toBeTruthy();
+    expect(
+      screen.getByText(/Mỗi ngày 3 điểm miễn phí: Full Test 3 điểm, mỗi Part 1 điểm/),
+    ).toBeTruthy();
+
+    expect(screen.queryByText(/mọi lượt/i)).toBeNull();
+    expect(screen.queryByText(/hết lượt free/i)).toBeNull();
+  });
+
+  it("navigates to auth from the hero CTA and header/privacy buttons", () => {
     const { go } = renderWithApp(<LandingScreen />);
     fireEvent.click(
       screen.getByRole("button", { name: "Thi thử ngay — miễn phí" }),
     );
     expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thi thử miễn phí" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
+    go.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu thi thử" }));
+    expect(go).toHaveBeenCalledWith("auth");
+    expect(go).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -123,7 +159,7 @@ describe("OnboardingScreen", () => {
 });
 
 describe("ConsentRows", () => {
-  it("toggles consent.save and consent.train via labelled switches", () => {
+  it("toggles consent.save and consent.calibration via labelled switches", () => {
     const { set } = renderWithApp(<ConsentRows />);
 
     const saveToggle = screen.getByRole("switch", {
@@ -131,18 +167,20 @@ describe("ConsentRows", () => {
     });
     expect(saveToggle.getAttribute("aria-checked")).toBe("true");
     fireEvent.click(saveToggle);
-    expect(set).toHaveBeenCalledWith({ consent: { save: false, train: false } });
+    expect(set).toHaveBeenCalledWith({
+      consent: { save: false, calibration: false, train: false },
+    });
     expect(saveToggle.getAttribute("aria-checked")).toBe("false");
 
-    const trainToggle = screen.getByRole("switch", {
-      name: "Cho phép dùng giọng nói để cải thiện AI",
+    const calibToggle = screen.getByRole("switch", {
+      name: "Hiệu chuẩn chấm điểm",
     });
-    expect(trainToggle.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(trainToggle);
+    expect(calibToggle.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(calibToggle);
     expect(set).toHaveBeenLastCalledWith({
-      consent: { save: false, train: true },
+      consent: { save: false, calibration: true, train: true },
     });
-    expect(trainToggle.getAttribute("aria-checked")).toBe("true");
+    expect(calibToggle.getAttribute("aria-checked")).toBe("true");
   });
 });
 
@@ -169,5 +207,42 @@ describe("PrivacyScreen", () => {
     expect(screen.getByText("Đã xóa dữ liệu bài làm")).toBeTruthy();
     expect(screen.queryByText(/Xóa \d+ bài làm\?/)).toBeNull();
     expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("triggers data export download", async () => {
+    const createObjectURL = vi.fn(() => "blob:test");
+    globalThis.URL.createObjectURL = createObjectURL;
+    globalThis.URL.revokeObjectURL = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const urlStr = String(url);
+      if (urlStr.includes("exportData")) {
+        return new Response(
+          JSON.stringify([
+            {
+              result: {
+                data: {
+                  exportedAt: "2026-11-05T00:00:00Z",
+                  userId: "usr_test",
+                  data: { user: [] },
+                },
+              },
+            },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify([{ result: { data: { success: true } } }]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const { toast } = renderWithApp(<PrivacyScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Xuất toàn bộ dữ liệu" }));
+
+    await waitFor(() => {
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(toast).toHaveBeenCalledWith("Đã tải xuống file dữ liệu JSON");
+    });
   });
 });
