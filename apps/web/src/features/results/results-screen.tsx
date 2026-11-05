@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Flag, Repeat } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
@@ -7,6 +7,7 @@ import { Card } from "@/components/ds/card";
 import { modeLabel } from "@/features/exam/data";
 import { resolveAttemptView } from "@/features/history/data";
 import { cx } from "@/lib/cx";
+import { trpcClient } from "@/utils/trpc";
 
 import { BandHero } from "./components/band-hero";
 import { CriteriaGrid } from "./components/criteria-grid";
@@ -27,7 +28,33 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
   const [tab, setTab] = useState<"criteria" | "review">("criteria");
   const [sel, setSel] = useState<CritKey>("GRA");
   const [report, setReport] = useState(false);
+  const [disputeInfo, setDisputeInfo] = useState<{
+    enabled: boolean;
+    dispute: {
+      id: string;
+      status: string;
+      dueAt: number | Date | string;
+      targetCriterion?: string;
+    } | null;
+  } | null>(null);
 
+  const loadDispute = useCallback(() => {
+    if (isDefaultLatest || !attemptId || attemptId === "latest") return;
+    if (trpcClient?.dispute?.get?.query) {
+      trpcClient.dispute.get
+        .query({ attemptId })
+        .then((res) => {
+          setDisputeInfo(res);
+        })
+        .catch((err) => {
+          console.warn("Failed to load dispute status:", err);
+        });
+    }
+  }, [isDefaultLatest, attemptId]);
+
+  useEffect(() => {
+    loadDispute();
+  }, [loadDispute]);
   const active: Attempt | null = isDefaultLatest ? null : attempt;
   const band = active?.band ?? RESULT.overall;
   const range = active?.range ?? RESULT.range;
@@ -49,10 +76,32 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
           <div className="mb-2 text-xs font-semibold tracking-[0.14em] text-subtle uppercase">{eyebrow}</div>
           <h1 className="text-[28px] leading-tight font-bold tracking-tight sm:text-[34px]">Bạn đạt band {band.toFixed(1)}</h1>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setReport(true)}>
-            <Flag size={14} /> Báo lỗi chấm
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {disputeInfo?.dispute && (disputeInfo.dispute.status === "open" || disputeInfo.dispute.status === "reviewing") ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-800">
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              Báo lỗi đang xử lý · Cam kết phản hồi trước{" "}
+              {new Date(disputeInfo.dispute.dueAt).toLocaleTimeString("vi-VN", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}{" "}
+              {new Date(disputeInfo.dispute.dueAt).toLocaleDateString("vi-VN")}
+            </div>
+          ) : disputeInfo?.dispute?.status === "resolved" ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3.5 py-1.5 text-xs font-semibold text-emerald-800">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              Báo lỗi đã xử lý
+            </div>
+          ) : disputeInfo?.dispute?.status === "rejected" ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-xs font-semibold text-zinc-700">
+              <span className="inline-block h-2 w-2 rounded-full bg-zinc-400" />
+              Báo lỗi không được chấp nhận
+            </div>
+          ) : disputeInfo?.enabled && !isDefaultLatest && attemptId && attemptId !== "latest" ? (
+            <Button variant="outline" size="sm" onClick={() => setReport(true)}>
+              <Flag size={14} /> Báo lỗi chấm
+            </Button>
+          ) : null}
           <Button size="sm" onClick={() => go("select")}>
             <Repeat size={14} /> Thi lại
           </Button>
@@ -105,7 +154,12 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
         </Button>
       </Card>
 
-      <ReportModal open={report} onClose={() => setReport(false)} />
+      <ReportModal
+        open={report}
+        onClose={() => setReport(false)}
+        attemptId={attemptId}
+        onSubmitted={loadDispute}
+      />
     </>
   );
 }

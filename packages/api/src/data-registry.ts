@@ -1,7 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
-import { account, attempt, attemptAnswer, consentEvent, session, user } from "@vox-flow/db/schema";
+import { account, attempt, attemptAnswer, consentEvent, scoreDispute, session, user } from "@vox-flow/db/schema";
 export type EraseContext = {
   db: Database;
   audioBucket?: {
@@ -100,6 +100,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
       if (attemptIds.length > 0) {
         await ctx.db.delete(attemptAnswer).where(inArray(attemptAnswer.attemptId, attemptIds));
       }
+    },
+  },
+  score_dispute: {
+    tableName: "score_dispute",
+    export: async (db, userId) => {
+      return db.select().from(scoreDispute).where(eq(scoreDispute.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(scoreDispute).where(eq(scoreDispute.userId, userId));
     },
   },
 };
