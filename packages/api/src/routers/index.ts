@@ -1,5 +1,7 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { privacyRouter } from "./privacy";
+import { forecastRouter } from "./forecast";
+import { forecastAdminRouter } from "./forecast-admin";
 
 export const appRouter = router({
   healthCheck: publicProcedure.query(() => {
@@ -12,5 +14,7 @@ export const appRouter = router({
     };
   }),
   privacy: privacyRouter,
+  forecast: forecastRouter,
+  forecastAdmin: forecastAdminRouter,
 });
 export type AppRouter = typeof appRouter;

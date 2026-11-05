@@ -19,6 +19,7 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     SEPAY_WEBHOOK_API_KEY: Config.Redacted("SEPAY_WEBHOOK_API_KEY"),
+    ADMIN_EMAILS: Config.withDefault(Config.String("ADMIN_EMAILS"), ""),
   },
   dev: {
     port: 3000,
