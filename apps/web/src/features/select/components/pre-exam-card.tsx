@@ -22,7 +22,7 @@ export function PreExamCard() {
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-good" />
           <span>
             Ghi âm chỉ dùng để chấm bài này.{" "}
-            <b className="text-ink">{s.consent.save ? "Lưu vào lịch sử: bật" : "Không lưu lịch sử"}</b> · Huấn luyện AI: <b className="text-ink">{s.consent.train ? "bật" : "tắt"}</b>.{" "}
+            <b className="text-ink">{s.consent.save ? "Lưu vào lịch sử: bật" : "Không lưu lịch sử"}</b> · Hiệu chuẩn chấm điểm: <b className="text-ink">{(s.consent.calibration ?? s.consent.train) ? "bật" : "tắt"}</b>.{" "}
             <button onClick={() => go("privacy")} className="font-semibold text-ink underline underline-offset-2">
               Đổi
             </button>

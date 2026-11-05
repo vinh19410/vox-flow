@@ -1,7 +1,7 @@
 ---
 title: "Quyền riêng tư (`privacy-controls`)"
 description: "Học viên tự quyết dữ liệu giọng nói bằng 2 công tắc đồng ý, và xem, xuất, xóa được toàn bộ dữ liệu, với cam kết xóa trong 24 giờ."
-status: pending
+status: completed
 priority: P1
 effort: 3d
 issue: 15
@@ -40,15 +40,15 @@ Học viên tự quyết dữ liệu giọng nói bằng 2 công tắc đồng �
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Lưu đồng ý có lịch sử](./phase-01-luu-dong-y-co-lich-su.md) | Pending |
-| 2 | [Phase 2: Xuất và xóa dữ liệu](./phase-02-xuat-va-xoa-du-lieu.md) | Pending |
-| 3 | [Phase 3: Nối giao diện](./phase-03-noi-giao-dien.md) | Pending |
+| 1 | [Phase 1: Lưu đồng ý có lịch sử](./phase-01-luu-dong-y-co-lich-su.md) | Completed |
+| 2 | [Phase 2: Xuất và xóa dữ liệu](./phase-02-xuat-va-xoa-du-lieu.md) | Completed |
+| 3 | [Phase 3: Nối giao diện](./phase-03-noi-giao-dien.md) | Completed |
 
 ## Acceptance Criteria
-- [ ] Hai công tắc lưu riêng, công tắc huấn luyện/hiệu chuẩn mặc định tắt, mỗi lần đổi đều có lịch sử.
-- [ ] Xuất được toàn bộ dữ liệu của học viên thành một file.
-- [ ] Yêu cầu xóa hoàn tất trong 24 giờ, kể cả dữ liệu ở bảng và kho lưu trữ về sau.
-- [ ] Không ghi âm được khi chưa có bản ghi đồng ý.
+- [x] Hai công tắc lưu riêng, công tắc huấn luyện/hiệu chuẩn mặc định tắt, mỗi lần đổi đều có lịch sử.
+- [x] Xuất được toàn bộ dữ liệu của học viên thành một file.
+- [ ] Yêu cầu xóa hoàn tất trong 24 giờ, kể cả dữ liệu ở bảng và kho lưu trữ về sau (tạm hoãn theo OQ-6 Câu 7).
+- [x] Không ghi âm được khi chưa có bản ghi đồng ý.
 
 ## Câu hỏi mở
 - Sau khi xóa có giữ dòng ẩn danh để đối soát thanh toán không? Việc này cần đối chiếu với trả lời của luật sư.

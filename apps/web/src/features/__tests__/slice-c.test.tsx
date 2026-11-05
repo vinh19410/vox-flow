@@ -336,7 +336,7 @@ describe("ScoringScreen", () => {
   it("keeps the attempt transient when consent.save is off", () => {
     const h = renderWithApp(
       <ScoringScreen />,
-      { consent: { save: false, train: false }, practice: PRACTICE },
+      { consent: { save: false, calibration: false, train: false }, practice: PRACTICE },
       { pendingSubmission: true },
     );
     const baseline = createInitialState().attempts.length;
