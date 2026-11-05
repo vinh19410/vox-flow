@@ -44,18 +44,20 @@ Tiền về đúng thì gói tự kích hoạt, chính xác một lần.
 - Steps:
   1. Server là nguồn duy nhất cho giá và thời hạn. Giá trên client không được tin.
   2. Tính hạn gói "Đến ngày thi" theo ngày thi và tối đa 60 ngày. Viết test các trường hợp biên.
+  3. Gói `pack` khai `detailCredits: 3`, không có thời hạn, và không làm học viên thành `paid`.
 - Success criteria: Test tính hạn qua.
 - Verify: `pnpm --filter @vox-flow/api test src/billing/plans.test.ts` thoát với mã 0.
 
 ### Task 1.2 — Tạo đơn và QR.
 - Goal: Tạo đơn và QR.
-- Target files and symbols: `packages/db/src/schema/billing.ts` (`payment_order`, `subscription`, `payment_event`), `packages/api/src/routers/billing.ts` (`createOrder`, `getOrder`); test: `packages/api/src/routers/billing.test.ts`
+- Target files and symbols: `packages/db/src/schema/billing.ts` (`payment_order`, `subscription`, `payment_event`), `packages/api/src/routers/billing.ts` (`createOrder`, `getOrder`), `packages/db/src/schema/billing.ts` (`detail_credit`, `detail_unlock`), `billing.unlockDetail`; test: `packages/api/src/routers/billing.test.ts`
 - Steps:
   1. Đọc skill `ak-payment-integration` và tài liệu SePay hiện hành trước khi làm.
   2. Mỗi đơn có mã riêng khó đoán nằm trong nội dung chuyển khoản, số tiền và hạn đơn cố định.
   3. Chạy `pnpm --filter @vox-flow/db db:generate`. Đăng ký bảng vào `data-registry.ts`.
   4. `billing.createOrder` trả `FORBIDDEN` trừ khi `LAUNCH_OPEN='true'` hoặc email thuộc `LAUNCH_ALLOWED_EMAILS`. Test cả ba trường hợp.
   5. Khai `SEPAY_BANK_ACCOUNT`, `SEPAY_BANK_CODE` trong `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`.
+  6. `billing.unlockDetail(attemptId)`: chỉ chủ bài, chỉ khi bài đã chấm xong. Thêm `detail_unlock` với khóa duy nhất theo `userId` và `attemptId`, trừ `detail_credit` bằng một câu ghi có điều kiện `remaining > 0`. Mở được cả bài cũ; gọi lại cùng bài không trừ thêm. Test: hết lượt bị từ chối, gọi trùng, bài chưa chấm xong, bài người khác.
 - Success criteria: Test tạo đơn qua.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/billing.test.ts` thoát với mã 0.
 
@@ -67,9 +69,10 @@ Tiền về đúng thì gói tự kích hoạt, chính xác một lần.
   2. Chỉ `transferType='in'` mới được xét kích hoạt; `out` chỉ ghi `payment_event`, trả 2xx.
   3. `INSERT payment_event ... ON CONFLICT(sepayId) DO NOTHING RETURNING`. Không chèn được dòng mới thì trả 2xx và dừng. Mọi sự kiện đều được ghi để #20 đối soát, kể cả sự kiện không khớp.
   4. Kích hoạt bằng `UPDATE payment_order SET status='paid' WHERE id=? AND status='pending' AND expiresAt>?`, chỉ tạo `subscription` khi cập nhật được 1 dòng.
-  5. Đổi `getEntitlement` đọc `subscription` còn hạn. Test ở `src/routers/results.test.ts`: gói còn hạn nhận đủ tiêu chí và bằng chứng; gói hết hạn hoặc đã hoàn tiền thì payload như miễn phí.
-  6. Test: sai khóa; gọi trùng; `out` cùng mã và số tiền không kích hoạt; giao dịch thứ hai cùng đơn không kích hoạt lại; sai số tiền; đơn hết hạn không kích hoạt.
-  7. Đối chiếu thân response thành công mà SePay yêu cầu với API Key trong tài liệu hiện hành.
+  5. Khi kích hoạt: gói theo thời gian tạo `subscription`; gói "Theo lượt" chỉ cộng 3 lượt vào `detail_credit` và không tạo `subscription`.
+  6. Đổi `getEntitlement` đọc `subscription` còn hạn và `canViewDetail` đọc thêm `detail_unlock`. Test ở `src/routers/results.test.ts`: gói còn hạn nhận đủ tiêu chí và bằng chứng; gói hết hạn hoặc đã hoàn tiền thì payload như miễn phí; người có gói "Theo lượt" chỉ thấy chi tiết của bài đã mở và `getEntitlement` vẫn trả `free`.
+  7. Test: sai khóa; gọi trùng; `out` cùng mã và số tiền không kích hoạt; giao dịch thứ hai cùng đơn không kích hoạt lại; sai số tiền; đơn hết hạn không kích hoạt.
+  8. Đối chiếu thân response thành công mà SePay yêu cầu với API Key trong tài liệu hiện hành.
 - Success criteria: Các test webhook qua.
 - Verify: `pnpm --filter @vox-flow/api test src/billing/sepay-webhook.test.ts` và `pnpm --filter @vox-flow/api test src/routers/results.test.ts` đều thoát với mã 0.
 

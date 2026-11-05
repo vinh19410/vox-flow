@@ -39,6 +39,7 @@ Học viên đọc được đề và lưu tiến độ.
   2. Thêm bảng `forecast_saved`, chạy `pnpm --filter @vox-flow/db db:generate`, đăng ký vào `data-registry.ts`.
   3. `coverage` đếm từ các lượt có `topicId` thật.
   4. Viết test: không thấy đề nháp, quyền theo gói đúng.
+  5. Người chỉ có gói "Theo lượt" không được tính là `paid` khi kiểm tra quyền forecast.
 - Success criteria: Test qua.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/forecast.test.ts` thoát với mã 0.
 

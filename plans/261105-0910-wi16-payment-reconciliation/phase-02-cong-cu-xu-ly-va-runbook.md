@@ -28,6 +28,7 @@ Người sở hữu xử lý được giao dịch lỗi.
   1. Trong `packages/api/src/index.ts`, dùng `adminProcedure` nếu đã có; nếu chưa thì tạo: yêu cầu session, `emailVerified=true`, email thuộc `ctx.env.ADMIN_EMAILS`; danh sách rỗng thì từ chối tất cả. Nếu `Context` chưa có `env` thì mở rộng như mô tả ở #16. Nếu chưa khai, thêm `ADMIN_EMAILS` vào `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`. Viết test từ chối người dùng thường.
   2. Danh sách giao dịch cần xử lý, hành động `activate` và `markRefunded`, bắt buộc có ghi chú.
   3. Không thực hiện chuyển tiền từ app; hoàn tiền làm tay ngoài ngân hàng.
+  4. `markRefunded` của gói "Theo lượt" thu hồi các lượt chưa dùng; bài đã mở vẫn giữ nguyên.
 - Success criteria: Người thường không truy cập được.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/admin-billing.test.ts` và `pnpm check-types` đều thoát với mã 0.
 

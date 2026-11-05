@@ -30,6 +30,7 @@ Học viên tự quyết dữ liệu giọng nói bằng 2 công tắc đồng �
 ## Constraints
 - Công tắc huấn luyện/hiệu chuẩn luôn tắt mặc định và tách riêng công tắc lưu bài.
 - Sao lưu D1 trước khi áp migration lên môi trường thật.
+- Luồng học viên chủ động xóa dữ liệu (F-21) đang hold theo quyết định ngày 2026-11-05, chờ câu trả lời của luật sư ở #8.
 
 ## Non-goals
 - Viết chính sách quyền riêng tư pháp lý; phụ thuộc #8.
@@ -52,5 +53,6 @@ Học viên tự quyết dữ liệu giọng nói bằng 2 công tắc đồng �
 ## Câu hỏi mở
 - Sau khi xóa có giữ dòng ẩn danh để đối soát thanh toán không? Việc này cần đối chiếu với trả lời của luật sư.
 - Work items ghi có đủ bộ tài liệu nháp, nhưng không có PRD gốc (người sở hữu xác nhận ngày 2026-11-05) và SRS, brainstorm cũng không có trong repo, nên phải viết lại phạm vi trong plan trước khi code. PRD được dựng lại ở #6.
+- Có giữ luồng chủ động xóa dữ liệu (F-21) và mốc 24 giờ không? Đang hold, chờ luật sư trả lời ở #8.
 
 <!-- slug: wi11-privacy-controls -->

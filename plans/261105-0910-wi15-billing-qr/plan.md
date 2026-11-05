@@ -50,9 +50,9 @@ Học viên mua một trong 4 gói qua QR và gói tự kích hoạt khi tiền 
 - [ ] QR thật, mỗi đơn có mã riêng, tiền về tự kích hoạt.
 - [ ] Webhook được xác thực và gọi lại không kích hoạt hai lần.
 - [ ] `billing-screen.tsx:34` không còn "Band tổng không giới hạn".
+- [ ] Gói "Theo lượt" 49k gồm 3 lượt mở chi tiết, không hết hạn, không miễn hạn mức thi và trần hệ thống.
 
 ## Câu hỏi mở
-- Chưa chốt gói "Theo lượt" 49k, cần chốt trước Task 1.2. Đề xuất đang chờ xác nhận: giữ 3 lượt mở chi tiết, không hết hạn, không miễn hạn mức thi; khi đó gói này không được tính là `paid` trong `getEntitlement`.
 - Mua gói mới khi đang có gói thì cộng dồn hay thay thế?
 
 <!-- slug: wi15-billing-qr -->

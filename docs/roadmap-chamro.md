@@ -161,6 +161,7 @@ Xanh: Now · Vàng: Next · Xám nhạt: Later · Xám xanh: dịch vụ ngoài.
   - Hồ sơ nộp sau khi bắt đầu chuyển dữ liệu hay phải được duyệt trước?
   - Điều 24 có áp dụng cho học viên dưới 16 tuổi không, và ghi trong điều khoản sử dụng có đủ không?
   - Thu thập đề từ web có rủi ro bản quyền gì không?
+  - Học viên có quyền yêu cầu xóa dữ liệu không, trong thời hạn nào, và sản phẩm có bắt buộc phải có nút xóa chủ động không?
 
 ### Điểm lệch cần chốt khi cập nhật PRD
 

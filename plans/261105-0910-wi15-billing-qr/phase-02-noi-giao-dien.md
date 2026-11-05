@@ -17,6 +17,8 @@ Màn gói và thanh toán dùng dữ liệu thật.
 - Modify: `apps/web/src/features/billing/components/payment-panel.tsx`
 - Delete: `apps/web/src/features/billing/components/fake-qr.tsx`
 - Modify: `apps/web/src/features/billing/components/paywall-modal.tsx`
+- Modify: `apps/web/src/features/results/components/soft-paywall.tsx`
+- Modify: `apps/web/src/features/billing/plan-utils.ts`
 
 ## Tasks & Steps
 
@@ -35,6 +37,7 @@ Màn gói và thanh toán dùng dữ liệu thật.
 - Steps:
   1. Đổi "Band tổng không giới hạn" ở `billing-screen.tsx:34` theo hạn mức 3 điểm/ngày, và rà câu band tổng ở `paywall-modal.tsx:49`.
   2. Hiện gói đang dùng và ngày hết hạn. Gọi chứng từ theo quyết định D-11 của #6: biên nhận hay hóa đơn.
+  3. Trong `results/components/soft-paywall.tsx`, nếu còn lượt thì hiện nút dùng 1 lượt để mở bài này kèm số lượt còn lại. Màn gói hiện số lượt còn lại thay vì ngày hết hạn.
 - Success criteria: Không còn lời hứa sai.
 - Verify: `grep -c 'không giới hạn' apps/web/src/features/billing/billing-screen.tsx` in `0` và `pnpm check-types` thoát với mã 0.
 

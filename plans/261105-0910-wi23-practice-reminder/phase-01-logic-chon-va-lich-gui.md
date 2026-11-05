@@ -40,6 +40,7 @@ Quyết định gửi đúng theo OQ-3 và không gửi trùng.
 - Steps:
   1. Viết test cho: đã nhắc hôm nay, đẩy đã bật, đẩy chưa bật nên dùng email, 7 ngày không mở nên giảm xuống tuần, giờ chọn theo giờ Việt Nam, đã tắt nhắc.
   2. Thông báo hết hạn nằm ở hàm riêng và không tính vào giới hạn.
+  3. Gói "Theo lượt" không hết hạn nên không có thông báo hết hạn.
 - Success criteria: Test qua.
 - Verify: `pnpm --filter @vox-flow/api test src/reminders/select.test.ts` thoát với mã 0.
 

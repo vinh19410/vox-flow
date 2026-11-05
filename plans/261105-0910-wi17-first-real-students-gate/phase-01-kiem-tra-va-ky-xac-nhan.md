@@ -42,6 +42,7 @@ Có bằng chứng cho từng điều kiện và một quyết định.
   1. Mỗi điều kiện một dòng `- [x] <điều kiện> — Bằng chứng: <đường dẫn>`: tư vấn pháp lý, landing, onboarding, quyền riêng tư và xóa trong 24 giờ, ghi âm, độ chính xác chấm, hạn mức, thanh toán, đối soát.
   2. Chạy thử toàn bộ luồng với một giao dịch thật do người sở hữu thực hiện, ghi kết quả.
   3. Kiểm tra dashboard chi phí AI so với ngân sách dưới 1 triệu/tháng.
+  4. Với điều kiện xóa dữ liệu, ghi theo câu trả lời ở #8 và quyết định của người sở hữu về F-21.
 - Success criteria: Không còn điều kiện chưa đạt.
 - Verify: `grep -c '^- \[ \]' docs/launch/go-live-checklist.md` in `0` và `grep -c '^- \[x\]' docs/launch/go-live-checklist.md` in số lớn hơn hoặc bằng `9`.
 

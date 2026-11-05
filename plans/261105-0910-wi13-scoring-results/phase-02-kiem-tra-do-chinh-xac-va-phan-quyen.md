@@ -27,7 +27,7 @@ Pipeline thật đạt ngưỡng và paywall kiểm tra ở server.
   1. Người dùng miễn phí chỉ nhận band tổng và khoảng tin cậy. Payload không được chứa tiêu chí và bằng chứng.
   2. Phạm vi bằng chứng miễn phí làm theo quyết định D-04 của #6.
   3. Viết test khẳng định trên chính payload trả về.
-  4. Tạo `packages/api/src/entitlements.ts`, export `getEntitlement(db, userId): Promise<'free'|'paid'>`. Chưa có `subscription` thì luôn trả `free`. `getResult` chỉ quyết định qua hàm này.
+  4. Tạo `packages/api/src/entitlements.ts`, export `getEntitlement(db, userId): Promise<'free'|'paid'>` và `canViewDetail(db, userId, attemptId): Promise<boolean>`. `paid` chỉ gồm gói theo thời gian và chỉ dùng để miễn hạn mức. Chưa có `subscription` thì `getEntitlement` trả `free`; chưa có `detail_unlock` thì `canViewDetail` trả theo `getEntitlement`. `getResult` chỉ quyết định qua `canViewDetail`.
   5. `results.retry` chỉ cho chủ bài, chỉ khi `failed`.
 - Success criteria: Payload miễn phí không có dữ liệu trả phí.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/results.test.ts` thoát với mã 0.

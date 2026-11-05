@@ -30,11 +30,11 @@ Câu trả lời của luật sư được lưu lại và chuyển thành việc
 - Goal: Chuẩn bị hồ sơ câu hỏi.
 - Target files and symbols: `docs/legal/oq-6-tu-van-luat-su.md`
 - Steps:
-  1. Tạo 6 mục `## Câu 1` đến `## Câu 6`, chép nguyên văn 6 câu hỏi của OQ-6.
+  1. Tạo 7 mục `## Câu 1` đến `## Câu 7`, chép nguyên văn 7 câu hỏi của OQ-6.
   2. Thêm mô tả luồng dữ liệu: audio ghi trên trình duyệt, lưu Cloudflare, gửi tới các dịch vụ đang xét theo OQ-5 (Azure Speech, dịch vụ nhận dạng riêng + SpeechSuper, Anthropic). Nếu #7 đã chốt thì ghi đúng cấu hình đã chọn.
   3. Ghi căn cứ: Luật 91/2025/QH15 và Nghị định 356/2025, hiệu lực từ 01/01/2026.
-- Success criteria: File có đủ 6 mục câu hỏi.
-- Verify: `grep -c '^## Câu ' docs/legal/oq-6-tu-van-luat-su.md` in `6`.
+- Success criteria: File có đủ 7 mục câu hỏi.
+- Verify: `grep -c '^## Câu ' docs/legal/oq-6-tu-van-luat-su.md` in `7`.
 
 ### Task 1.2 — Ghi câu trả lời và đóng OQ-6.
 - Goal: Ghi câu trả lời và đóng OQ-6.
@@ -43,8 +43,8 @@ Câu trả lời của luật sư được lưu lại và chuyển thành việc
   1. Sau buổi tư vấn, thêm dòng `Trả lời: ...` dưới từng câu theo lời luật sư. Không tự diễn giải luật thay luật sư.
   2. Thêm mục `## Việc phải làm` với người làm và hạn.
   3. Đánh dấu OQ-6 đã xong trong roadmap.
-- Success criteria: Đủ 6 câu trả lời và OQ-6 đã đóng.
-- Verify: `grep -c '^Trả lời:' docs/legal/oq-6-tu-van-luat-su.md` in `6` và `grep -c '^- \[x\] OQ-6' docs/roadmap-chamro.md` in `1`.
+- Success criteria: Đủ 7 câu trả lời và OQ-6 đã đóng.
+- Verify: `grep -c '^Trả lời:' docs/legal/oq-6-tu-van-luat-su.md` in `7` và `grep -c '^- \[x\] OQ-6' docs/roadmap-chamro.md` in `1`.
 
 ## Verification
 Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.

@@ -36,10 +36,11 @@ Học viên xuất được và xóa được toàn bộ dữ liệu trong 24 gi
 - Goal: Tạo luồng xuất và xóa.
 - Target files and symbols: `packages/api/src/routers/privacy.ts` (`exportData`, `requestDeletion`), `packages/db/src/schema/consent.ts` (`deletion_request`), `apps/server/src/scheduled.ts`, `apps/server/src/index.ts`; test: `packages/api/src/routers/privacy.test.ts`
 - Steps:
-  1. `exportData` trả JSON từ danh sách trên.
-  2. `requestDeletion` ghi `deletion_request` (`userId` không có khóa ngoại, `requestedAt`, `dueAt`, `completedAt`). Chạy `pnpm --filter @vox-flow/db db:generate`. Cron mỗi giờ xử lý mọi yêu cầu chưa hoàn tất, không đợi `dueAt`. Khi xong, đặt `userId = NULL` và ghi `completedAt`. Nếu xóa R2 lỗi thì không ghi `completedAt`.
-  3. `index.ts` export `{ fetch: app.fetch, scheduled }`, lịch khai bằng `crons: ['0 * * * *']` trong Worker tại `packages/infra/alchemy.run.ts`.
-  4. Viết test: sau khi xử lý, không còn dữ liệu của học viên đó nhưng dữ liệu người khác còn nguyên.
+  1. Đọc Câu 7 trong `docs/legal/oq-6-tu-van-luat-su.md`. Nếu chưa có `Trả lời:`, chỉ làm `exportData`, không làm `requestDeletion` và cron xóa; báo người sở hữu sản phẩm. Khi đó Verify chỉ xét phần xuất.
+  2. `exportData` trả JSON từ danh sách trên.
+  3. `requestDeletion` ghi `deletion_request` (`userId` không có khóa ngoại, `requestedAt`, `dueAt`, `completedAt`). Chạy `pnpm --filter @vox-flow/db db:generate`. Cron mỗi giờ xử lý mọi yêu cầu chưa hoàn tất, không đợi `dueAt`. Khi xong, đặt `userId = NULL` và ghi `completedAt`. Nếu xóa R2 lỗi thì không ghi `completedAt`.
+  4. `index.ts` export `{ fetch: app.fetch, scheduled }`, lịch khai bằng `crons: ['0 * * * *']` trong Worker tại `packages/infra/alchemy.run.ts`.
+  5. Viết test: sau khi xử lý, không còn dữ liệu của học viên đó nhưng dữ liệu người khác còn nguyên.
 - Success criteria: Test xóa qua.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/privacy.test.ts` và `pnpm check-types` đều thoát với mã 0.
 

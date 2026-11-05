@@ -39,7 +39,7 @@ Việc trừ điểm chính xác, kể cả khi có yêu cầu đồng thời.
 - Steps:
   1. `vnDay` tính theo múi giờ `Asia/Ho_Chi_Minh`. Viết test tại ranh giới 23:59 và 00:00 giờ Việt Nam.
   2. `reserve` dùng một câu lệnh ghi có điều kiện của D1 để hai yêu cầu đồng thời không vượt 3 điểm.
-  3. `reserve` gọi `getEntitlement` của #17 trước. Nếu `paid` thì bỏ qua cả giới hạn 3 điểm lẫn trần toàn hệ thống, ghi test cho nhánh này. Trần tính bằng tổng chi phí ước tính của các lượt miễn phí trong `vnDay`, gồm cả lượt đã giữ chỗ, so với `FREE_DAILY_BUDGET_VND` (tạm 33000, chỉnh theo #7).
+  3. `reserve` gọi `getEntitlement` của #17 trước. Nếu `paid` thì bỏ qua cả giới hạn 3 điểm lẫn trần toàn hệ thống, ghi test cho nhánh này. Người chỉ có gói "Theo lượt" không phải `paid`, nên vẫn chịu cả hai giới hạn; ghi test riêng. Trần tính bằng tổng chi phí ước tính của các lượt miễn phí trong `vnDay`, gồm cả lượt đã giữ chỗ, so với `FREE_DAILY_BUDGET_VND` (tạm 33000, chỉnh theo #7).
   4. `release` hoàn điểm khi lượt chấm kết thúc ở trạng thái `failed`.
 - Success criteria: Test ranh giới ngày, đồng thời và trần đều qua.
 - Verify: `pnpm --filter @vox-flow/api test src/quota/quota.test.ts` thoát với mã 0.

@@ -1,6 +1,6 @@
 ---
 title: "Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6)"
-description: "Có câu trả lời bằng văn bản cho 6 câu hỏi pháp lý, để biết việc gì phải xong trước khi mở cho học viên thật và trước khi thu tiền."
+description: "Có câu trả lời bằng văn bản cho 7 câu hỏi pháp lý, để biết việc gì phải xong trước khi mở cho học viên thật và trước khi thu tiền."
 status: pending
 priority: P1
 effort: 1 buổi
@@ -21,7 +21,7 @@ Mục 04 trong `docs/roadmap-work-items.md` · Giai đoạn: Nền
 > **Handover Contract (`--advice`):** Plan này sẵn sàng bàn giao cho model thực thi khác. Mỗi phase chia thành task có Goal, Target files and symbols, Steps, Success criteria và Verify so sánh được. Mỗi phase có Failure Protocol riêng; dừng khi Verify không đạt là hành vi đúng, không phải bị kẹt.
 
 ## Outcome
-Có câu trả lời bằng văn bản cho 6 câu hỏi pháp lý, để biết việc gì phải xong trước khi mở cho học viên thật và trước khi thu tiền.
+Có câu trả lời bằng văn bản cho 7 câu hỏi pháp lý, để biết việc gì phải xong trước khi mở cho học viên thật và trước khi thu tiền.
 
 ## Phụ thuộc
 - Phải chờ: Không có
@@ -43,7 +43,7 @@ Có câu trả lời bằng văn bản cho 6 câu hỏi pháp lý, để biết 
 | 1 | [Phase 1: Chuẩn bị và ghi kết quả tư vấn](./phase-01-chuan-bi-va-ghi-ket-qua-tu-van.md) | Pending |
 
 ## Acceptance Criteria
-- [ ] Có biên bản trả lời đủ 6 câu hỏi trong OQ-6.
+- [ ] Có biên bản trả lời đủ 7 câu hỏi trong OQ-6.
 - [ ] Có danh sách việc phải làm kèm hạn, gồm hồ sơ chuyển dữ liệu ra nước ngoài nếu cần.
 - [ ] OQ-6 trong `docs/roadmap-chamro.md` được đóng.
 
