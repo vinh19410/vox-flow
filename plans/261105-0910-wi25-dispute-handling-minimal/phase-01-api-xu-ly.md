@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "API xử lý"
-status: pending
+status: completed
 priority: P2
 effort: ""
 dependencies: []
@@ -16,11 +16,10 @@ Có đủ thao tác xử lý và cảnh báo.
 - Create: `packages/api/src/routers/dispute-admin.ts`
 - Modify: `packages/api/src/routers/index.ts`
 - Create: `packages/api/src/disputes/overdue.ts`
-- Modify: `apps/server/src/index.ts`
-- Modify: `packages/infra/alchemy.run.ts`
+- Modify: `apps/server/src/index.ts` (export scheduled handler, allow admin audio streaming when shareConsent=true)
+- Modify: `packages/infra/alchemy.run.ts` (declare crons trigger and ADMIN_EMAILS binding)
 - Modify: `packages/db/src/schema/dispute.ts`
-- Modify: `apps/server/src/scheduled.ts`
-
+- Create/Modify: `apps/server/src/scheduled.ts`
 ## Tasks & Steps
 
 ### Task 1.0 — Kiểm tra điều kiện bắt đầu
@@ -35,11 +34,11 @@ Có đủ thao tác xử lý và cảnh báo.
 ### Task 1.1 — Tạo API hàng đợi.
 - Goal: Tạo API hàng đợi.
 - Target files and symbols: `packages/api/src/routers/dispute-admin.ts` (`queue`, `getCase`, `resolve`, `metrics`); test: `packages/api/src/routers/dispute-admin.test.ts`
-- Steps:
-  1. Trong `packages/api/src/index.ts`, dùng `adminProcedure` nếu đã có; nếu chưa thì tạo: yêu cầu session, `emailVerified=true`, email thuộc `ctx.env.ADMIN_EMAILS`; danh sách rỗng thì từ chối tất cả. Nếu `Context` chưa có `env` thì mở rộng như mô tả ở #16. Nếu chưa khai, thêm `ADMIN_EMAILS` vào `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`. Trả audio chỉ khi `shareConsent` là đúng.
-  2. Thêm vào `score_dispute`: `previousBand`, `resolvedBand`, `replyText`, `resolvedAt`, `warnedAt`. Chạy `pnpm --filter @vox-flow/db db:generate`. Trả lời hiện qua `dispute.get`; email chỉ thêm khi #26 đã đóng.
-  3. `resolve` cập nhật band và giữ band cũ để đối chiếu, gửi trả lời từ mẫu.
-  4. Viết test: không đồng ý thì không có audio, người thường bị từ chối, band cũ được giữ.
+  1. Trong `packages/api/src/index.ts`, dùng `adminProcedure` nếu đã có; nếu chưa thì tạo: yêu cầu session, email thuộc `ctx.env.ADMIN_EMAILS`; danh sách rỗng thì từ chối tất cả. Nếu `Context` chưa có `env` thì mở rộng như mô tả ở #16. Nếu chưa khai, thêm `ADMIN_EMAILS` vào `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`.
+  2. Trong `apps/server/src/index.ts`, cho phép tải/phát audio ở `GET /api/attempts/:attemptId/answers/:answerId/audio` khi người dùng là chủ attempt HOẶC người dùng là admin (`ADMIN_EMAILS`) VÀ dispute của attempt đó có `shareConsent = true`.
+  3. Thêm vào `score_dispute`: `previousBand`, `resolvedBand`, `replyText`, `resolvedAt`, `warnedAt`. Chạy `pnpm --filter @vox-flow/db db:generate`. Trả lời hiện qua `dispute.get`; email chỉ thêm khi #26 đã đóng.
+  4. `resolve` cập nhật band và giữ band cũ để đối chiếu, gửi trả lời từ mẫu.
+  5. Viết test: không đồng ý thì không có audio, người thường bị từ chối, band cũ được giữ.
 - Success criteria: Test qua.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/dispute-admin.test.ts` thoát với mã 0.
 
@@ -47,7 +46,7 @@ Có đủ thao tác xử lý và cảnh báo.
 - Goal: Thêm cảnh báo sắp quá hạn.
 - Target files and symbols: `packages/api/src/disputes/overdue.ts`, `apps/server/src/scheduled.ts`; test: `packages/api/src/disputes/overdue.test.ts`
 - Steps:
-  1. Thêm việc vào `apps/server/src/scheduled.ts` do #15 tạo, không đổi kiểu export.
+  1. Tạo hoặc cập nhật `apps/server/src/scheduled.ts`, export hàm `handleScheduled`. Trong `apps/server/src/index.ts`, export `{ fetch: app.fetch, scheduled: handleScheduled }`. Trong `packages/infra/alchemy.run.ts`, thêm `crons: ["0 * * * *"]` nếu chưa có.
   2. Cron theo giờ đánh dấu báo lỗi còn dưới 12 giờ và hiện cảnh báo trên đầu hàng đợi. Nếu #26 đã xong thì gửi thêm email. Mỗi báo lỗi chỉ cảnh báo một lần ở mỗi mức.
   3. Viết test ở ranh giới thời gian và chạy trùng.
 - Success criteria: Test qua.

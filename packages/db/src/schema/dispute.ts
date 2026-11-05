@@ -30,11 +30,17 @@ export const scoreDispute = sqliteTable(
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+    previousBand: text("previous_band"),
+    resolvedBand: text("resolved_band"),
+    replyText: text("reply_text"),
+    resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+    warnedAt: integer("warned_at", { mode: "timestamp_ms" }),
   },
   (table) => [
     index("score_dispute_userId_idx").on(table.userId),
     index("score_dispute_attemptId_idx").on(table.attemptId),
     index("score_dispute_status_idx").on(table.status),
+    index("score_dispute_dueAt_idx").on(table.dueAt),
     uniqueIndex("score_dispute_active_attempt_unique")
       .on(table.attemptId)
       .where(sql`status IN ('open', 'reviewing')`),

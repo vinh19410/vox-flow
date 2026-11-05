@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Giao diện xử lý"
-status: pending
+status: completed
 priority: P2
 effort: ""
 dependencies: [1]

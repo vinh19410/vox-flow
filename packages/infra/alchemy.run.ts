@@ -28,6 +28,7 @@ export const server = Cloudflare.Worker("server", {
     OPENAI_API_KEY: Config.Redacted("OPENAI_API_KEY").pipe(Config.withDefault("")),
     SCORE_DISPUTE_ENABLED: Config.String("SCORE_DISPUTE_ENABLED").pipe(Config.withDefault("false")),
   },
+  crons: ["0 * * * *"],
   dev: {
     port: 3000,
   },

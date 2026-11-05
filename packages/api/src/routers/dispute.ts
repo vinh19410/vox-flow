@@ -11,6 +11,7 @@ export const submitDisputeInputSchema = z.object({
     .enum(["ALL", "FC", "LR", "GRA", "PRON"])
     .or(z.literal("P").transform(() => "PRON" as const)),
   expectedBand: z.enum(["5.0", "5.5", "6.0", "6.5", "7.0", "7.5", "8.0"]),
+  previousBand: z.string().optional(),
   reason: z.string().trim().max(1000).optional(),
   shareConsent: z.boolean().default(false),
 });
@@ -91,6 +92,7 @@ export const disputeRouter = router({
             expectedBand: input.expectedBand,
             reason: input.reason && input.reason.length > 0 ? input.reason : null,
             shareConsent: input.shareConsent,
+            previousBand: input.previousBand ?? null,
             status: "open",
             dueAt,
             createdAt: now,
