@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Câu hỏi nối tiếp"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: [1]
@@ -13,25 +13,31 @@ dependencies: [1]
 Giám khảo AI hỏi câu nối tiếp theo câu trả lời thật.
 
 ## Files to Create / Modify
-- Create: `packages/api/src/exam/follow-up.ts`
+- Create: `packages/api/src/exam/fallback-data.ts`
 - Create: `packages/api/src/exam/transcribe.ts`
+- Create: `packages/api/src/exam/follow-up.ts`
+- Modify: `packages/api/src/routers/attempt.ts`
 - Modify: `packages/infra/alchemy.run.ts`
 - Modify: `apps/server/.env.schema`
 
 ## Tasks & Steps
 
 ### Task 2.1 — Nối nhận dạng giọng nói và tạo câu hỏi.
-- Goal: Nối nhận dạng giọng nói và tạo câu hỏi.
-- Target files and symbols: `packages/api/src/exam/transcribe.ts`, `packages/api/src/exam/follow-up.ts`; test: `packages/api/src/exam/follow-up.test.ts`
+- Goal: Nhận dạng giọng nói thí sinh từ file WebM/MP4 và sinh câu hỏi nối tiếp bằng LLM, có phương án dự phòng tin cậy khi AI quá hạn (>4s) hoặc gặp lỗi.
+- Target files and symbols: `packages/api/src/exam/fallback-data.ts`, `packages/api/src/exam/transcribe.ts`, `packages/api/src/exam/follow-up.ts`, `packages/api/src/routers/attempt.ts`; test: `packages/api/src/exam/follow-up.test.ts`
 - Steps:
-  1. Dùng đúng dịch vụ và mô hình đã chốt trong `docs/oq-5-scoring-eval.md`. Giữ một hàm cụ thể cho mỗi dịch vụ, không dựng hệ thống plugin.
-  2. Giới hạn thời gian gọi. Khi lỗi hoặc quá hạn, dùng câu hỏi dự phòng từ `apps/web/src/features/exam/data.ts`, chuyển sang server.
-  3. Ghi chi phí từng lần gọi để đối chiếu ngân sách.
-  4. Viết test với client giả lập: trả đúng câu hỏi, và dùng dự phòng khi quá hạn.
-  5. Khai khóa dịch vụ đã chọn trong `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`, không ghi giá trị.
-- Success criteria: Lỗi AI không làm dừng bài thi.
+  1. Tạo `packages/api/src/exam/fallback-data.ts` chứa danh sách câu hỏi dự phòng chuẩn hóa và cụm từ kích hoạt theo từng Part, đặt tại package dùng chung thay vì import ngược từ `apps/web`.
+  2. Tạo `packages/api/src/exam/transcribe.ts` hỗ trợ nhận dạng âm thanh trực tiếp từ buffer/stream WebM hoặc MP4 (sử dụng API như Whisper hoặc Azure Speech endpoint hỗ trợ container nén), không yêu cầu binary transcoding ngoài Worker.
+  3. Tạo `packages/api/src/exam/follow-up.ts`:
+     - Đóng gói transcript của thí sinh trong thẻ cấu trúc `<candidate_transcript>` để chống prompt injection.
+     - Gọi LLM sinh câu hỏi follow-up ngắn gọn (dưới 25 từ) bám sát ý tưởng thí sinh vừa nói.
+     - Kiểm tra kết quả trả về bằng Zod schema `{ questionText: string, triggerPhrase: string }`.
+     - Đặt timeout tối đa 4000ms. Nếu quá hạn, lỗi API hoặc transcript rỗng, tự động lấy câu hỏi dự phòng từ `fallback-data.ts`.
+  4. Mở rộng router `attempt.ts` với procedure `getFollowUp` nhận `attemptId` và `questionKey`, trả về câu hỏi nối tiếp cho client.
+  5. Khai báo các biến cấu hình cần thiết trong `packages/infra/alchemy.run.ts` và `apps/server/.env.schema`.
+  6. Viết test `packages/api/src/exam/follow-up.test.ts` với mock client: kiểm tra tạo câu hỏi thành công, bảo vệ chống prompt injection, và kích hoạt fallback tức thì khi có lỗi hoặc timeout.
+- Success criteria: Lỗi AI hoặc quá hạn 4s tự động chuyển sang câu hỏi dự phòng mà không làm gián đoạn bài thi.
 - Verify: `pnpm --filter @vox-flow/api test src/exam/follow-up.test.ts` thoát với mã 0.
-
 ## Verification
 Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.
 

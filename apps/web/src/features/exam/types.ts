@@ -43,11 +43,14 @@ export interface PartInfo {
   time: string;
 }
 
-export type ExamPhase = "intro" | "asking" | "ready" | "prep" | "recording" | "answered";
+export type ExamPhase = "intro" | "asking" | "ready" | "prep" | "recording" | "answered" | "examiner-thinking";
 
 export interface ExamAnswer {
   secs: number;
   words: number;
+  durationMs?: number;
+  audioKey?: string;
+  blob?: Blob;
 }
 
 /** One question card in the exam room; `-f` suffixed keys are AI follow-ups. */
