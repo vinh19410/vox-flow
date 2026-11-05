@@ -33,6 +33,7 @@ export interface ActivePlan {
 
 export interface ConsentSettings {
   save: boolean;
+  calibration: boolean;
   train: boolean;
 }
 

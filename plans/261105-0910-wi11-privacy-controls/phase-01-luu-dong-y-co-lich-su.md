@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Lưu đồng ý có lịch sử"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: []
@@ -23,11 +23,10 @@ dependencies: []
 ### Task 1.0 — Kiểm tra điều kiện bắt đầu
 - Goal: mọi điều kiện cần có đều đã sẵn sàng trước khi đụng tới code hay tài liệu.
 - Target files and symbols: không sửa file.
-- Steps:
-  1. Chạy lệnh trong Verify.
-  2. Nếu có dòng khác `CLOSED`, dừng lại và báo người giao việc. Đây là chờ phụ thuộc, không phải lỗi cần sửa.
-- Success criteria: các điều kiện được xác nhận.
-- Verify: `for n in 6 14; do gh issue view $n --json state -q .state; done` in `CLOSED` trên mọi dòng.
+  1. Chạy lệnh trong Verify để xác nhận PR #32 (kết quả của Issue #6 / WI-02) đã được merge vào dev.
+  2. Xác nhận WI-11 gắn trực tiếp vào bảng `user` trong `auth.ts`, độc lập mã nguồn với WI-10 (#14).
+- Success criteria: PR #32 đã MERGED và mã nguồn dev sẵn sàng.
+- Verify: `gh pr view 32 --json state -q .state` in `MERGED`.
 
 ### Task 1.1 — Tạo bảng `consent_event`.
 - Goal: Tạo bảng `consent_event`.

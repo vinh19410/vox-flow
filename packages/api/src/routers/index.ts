@@ -1,5 +1,6 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { attemptRouter } from "./attempt";
+import { privacyRouter } from "./privacy";
 export const appRouter = router({
   healthCheck: publicProcedure.query(() => {
     return "OK";
@@ -11,5 +12,6 @@ export const appRouter = router({
     };
   }),
   attempt: attemptRouter,
+  privacy: privacyRouter,
 });
 export type AppRouter = typeof appRouter;
