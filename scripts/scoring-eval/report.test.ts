@@ -12,6 +12,7 @@ import {
   type EvaluationAttempt,
   type Sample,
 } from "./report.ts";
+import { loadExistingKeys } from "./run-eval.ts";
 
 test("calculateMedian calculates correct median values", () => {
   assert.equal(calculateMedian([6.5]), 6.5);
@@ -398,46 +399,35 @@ test("generateMarkdownReport produces compliant markdown with exact required hea
   );
 });
 
-test("resumption tracking preserves schema_error and ok attempts without duplicates", () => {
-  const existingAttempts: EvaluationAttempt[] = [
-    {
+test("loadExistingKeys parses real JSONL text and tracks all attempt statuses without duplicates", () => {
+  const sampleJsonl = [
+    JSON.stringify({
       sample_id: "S01",
       config: "azure-sonnet",
       run: 1,
       status: "schema_error",
-      mode: "full",
-      audio_seconds: 780,
-      input_tokens: 5000,
-      output_tokens: 2000,
-      cost_vnd: 8100,
-      prompt_sha: "sha",
-      model_id: "sonnet",
-      run_at: "2026-11-05",
-    },
-    {
+    }),
+    JSON.stringify({
       sample_id: "S01",
       config: "azure-sonnet",
       run: 2,
       status: "ok",
       overall_band: 6.5,
-      mode: "full",
-      audio_seconds: 780,
-      input_tokens: 5000,
-      output_tokens: 2000,
-      cost_vnd: 8100,
-      prompt_sha: "sha",
-      model_id: "sonnet",
-      run_at: "2026-11-05",
-    },
-  ];
+    }),
+    JSON.stringify({
+      sample_id: "S02",
+      config: "azure-sonnet",
+      run: 1,
+      status: "api_error",
+    }),
+    "this is a malformed non-json line that should be ignored",
+  ].join("\n");
 
-  // Resumption tracking set: MUST track all sample_id::run keys regardless of status
-  const trackedKeys = new Set<string>();
-  for (const a of existingAttempts) {
-    trackedKeys.add(`${a.sample_id}::${a.run}`);
-  }
+  const trackedKeys = loadExistingKeys(sampleJsonl);
 
   assert.equal(trackedKeys.has("S01::1"), true); // schema_error key is tracked
   assert.equal(trackedKeys.has("S01::2"), true); // ok key is tracked
+  assert.equal(trackedKeys.has("S02::1"), true); // api_error key is tracked
   assert.equal(trackedKeys.has("S01::3"), false); // run 3 still needed
+  assert.equal(trackedKeys.has("S02::2"), false); // run 2 still needed
 });
