@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Nối giao diện"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: [1, 2]

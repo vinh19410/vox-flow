@@ -8,7 +8,7 @@ export function createInitialState(): AppState {
     email: "minhanh@gmail.com",
     target: 7.0,
     examDate: inThreeWeeks,
-    consent: { save: true, train: false },
+    consent: { save: true, calibration: false, train: false },
     plan: null,
     mode: "full",
     voice: "uk-f",

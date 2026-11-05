@@ -1,10 +1,28 @@
 import { ArrowRight, ShieldCheck, Volume2 } from "lucide-react";
 
 import { Button } from "@/components/ds/button";
+import { useApp } from "@/features/app-state/types";
+import { trpcClient } from "@/utils/trpc";
 
 import { ConsentRows } from "./consent-rows";
 
 export function ConsentStep({ onDone }: { onDone: () => void }) {
+  const { s } = useApp();
+
+  const handleDone = async () => {
+    try {
+      if (trpcClient?.privacy?.setConsent?.mutate) {
+        await trpcClient.privacy.setConsent.mutate({
+          save: s.consent.save,
+          calibration: s.consent.calibration,
+        });
+      }
+    } catch {
+      // Non-blocking in offline / test environments
+    }
+    onDone();
+  };
+
   return (
     <>
       <div className="grid h-12 w-12 place-items-center rounded-2xl bg-ink text-paper">
@@ -19,7 +37,7 @@ export function ConsentStep({ onDone }: { onDone: () => void }) {
         <Volume2 size={14} /> Ghi âm chỉ bắt đầu khi bạn bấm nút micro trong phòng thi.
       </div>
       <div className="mt-10 flex justify-end">
-        <Button variant="accent" onClick={onDone}>
+        <Button variant="accent" onClick={handleDone}>
           Vào trang chủ <ArrowRight size={16} />
         </Button>
       </div>

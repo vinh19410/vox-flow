@@ -47,7 +47,8 @@ const PersistedAppStateSchema = z
     examDate: z.string().nullable(),
     consent: z.object({
       save: z.boolean(),
-      train: z.boolean(),
+      calibration: z.boolean().optional(),
+      train: z.boolean().optional(),
     }),
     plan: z
       .object({
@@ -85,7 +86,13 @@ function hydrateState(): AppState {
       email: d.email ?? base.email,
       target: d.target ?? base.target,
       examDate: d.examDate !== undefined ? d.examDate : base.examDate,
-      consent: d.consent ?? base.consent,
+      consent: d.consent
+        ? {
+            save: d.consent.save,
+            calibration: d.consent.calibration ?? d.consent.train ?? base.consent.calibration,
+            train: d.consent.train ?? d.consent.calibration ?? base.consent.train,
+          }
+        : base.consent,
       plan: d.plan !== undefined ? d.plan : base.plan,
       mode: d.mode ?? base.mode,
       voice: d.voice ?? base.voice,

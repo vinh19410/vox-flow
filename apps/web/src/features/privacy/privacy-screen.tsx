@@ -6,12 +6,45 @@ import { Card } from "@/components/ds/card";
 import { Modal } from "@/components/ds/modal";
 import { useApp } from "@/features/app-state/types";
 import { PageHead } from "@/layouts/page-head";
+import { trpcClient } from "@/utils/trpc";
 
 import { ConsentRows } from "../onboarding/components/consent-rows";
 
 export function PrivacyScreen() {
   const { s, set, toast } = useApp();
   const [confirm, setConfirm] = useState(false);
+
+  const handleExport = async () => {
+    try {
+      let payload: unknown;
+      if (trpcClient?.privacy?.exportData?.query) {
+        payload = await trpcClient.privacy.exportData.query();
+      } else {
+        payload = {
+          exportedAt: new Date().toISOString(),
+          email: s.email,
+          name: s.name,
+          target: s.target,
+          consent: s.consent,
+          attempts: s.attempts,
+        };
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `voxflow-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast("Đã tải xuống file dữ liệu JSON");
+    } catch {
+      toast("Lỗi khi xuất dữ liệu");
+    }
+  };
   return (
     <>
       <PageHead eyebrow="S25" title="Quyền riêng tư" sub="Mỗi quyền là một công tắc riêng. Thay đổi có hiệu lực ngay lập tức." />
@@ -35,7 +68,7 @@ export function PrivacyScreen() {
               ))}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => toast("Đang chuẩn bị file — sẽ gửi qua email")}>
+              <Button variant="outline" size="sm" onClick={handleExport}>
                 <Download size={14} /> Xuất toàn bộ dữ liệu
               </Button>
               <Button variant="ghost" size="sm">
@@ -50,13 +83,13 @@ export function PrivacyScreen() {
             <h2 className="mt-4 font-bold">Cam kết của chúng tôi</h2>
             <ul className="mt-3 space-y-2 text-sm text-ink-2">
               <li>· Không bán hoặc chia sẻ giọng nói cho bên thứ ba.</li>
-              <li>· Chỉ dùng để huấn luyện khi bạn bật công tắc.</li>
+              <li>· Chỉ dùng để hiệu chuẩn chấm điểm khi bạn bật công tắc.</li>
               <li>· Âm thanh được mã hóa khi lưu trữ.</li>
             </ul>
           </Card>
           <Card className="border-bad/25 p-6">
-            <h2 className="font-bold text-bad">Xóa toàn bộ dữ liệu</h2>
-            <p className="mt-2 text-sm text-ink-2">Xóa vĩnh viễn ghi âm, transcript và điểm. Tài khoản và gói đang dùng vẫn giữ nguyên.</p>
+            <h2 className="font-bold text-bad">Xóa dữ liệu bài làm</h2>
+            <p className="mt-2 text-sm text-ink-2">Xóa ghi âm, transcript và điểm khỏi trình duyệt hiện tại. Tính năng yêu cầu xóa toàn bộ dữ liệu trên máy chủ đang chờ hướng dẫn pháp lý.</p>
             <Button className="mt-5 w-full bg-bad hover:bg-bad/90" onClick={() => setConfirm(true)}>
               <Trash size={16} /> Xóa dữ liệu
             </Button>
@@ -67,7 +100,7 @@ export function PrivacyScreen() {
       <Modal open={confirm} onClose={() => setConfirm(false)} width="max-w-sm">
         <div className="p-7">
           <h2 className="text-xl font-bold">Xóa {s.attempts.length} bài làm?</h2>
-          <p className="mt-2 text-sm text-ink-2">Hành động này không thể hoàn tác. Dữ liệu sẽ bị xóa khỏi máy chủ trong vòng 24 giờ.</p>
+          <p className="mt-2 text-sm text-ink-2">Hành động này sẽ xóa dữ liệu bài làm khỏi trình duyệt. Yêu cầu xóa dữ liệu hoàn tất trên máy chủ đang chờ hướng dẫn pháp lý.</p>
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setConfirm(false)}>
               Hủy

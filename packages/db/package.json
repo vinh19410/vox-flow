@@ -3,6 +3,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./schema/*": "./src/schema/*.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {

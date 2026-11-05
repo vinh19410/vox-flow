@@ -151,7 +151,7 @@ describe("SelectScreen", () => {
   });
 
   it("shows the no-history consent copy when consent.save is off", () => {
-    renderWithApp(<SelectScreen />, { consent: { save: false, train: false } });
+    renderWithApp(<SelectScreen />, { consent: { save: false, calibration: false, train: false } });
     expect(screen.getByText("Không lưu lịch sử")).toBeTruthy();
   });
 
