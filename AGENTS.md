@@ -25,6 +25,14 @@ Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script kh�
 - Thứ tự công việc và phụ thuộc: `docs/roadmap-work-items.md`. Plan của từng mục nằm trong `plans/`.
 - Khi thực thi plan, nếu một Verify không đạt thì dừng theo Failure Protocol trong phase, không tự sửa cho qua.
 
+## GitHub Issues
+
+Luôn gắn label `ai-handle` khi tạo GitHub issue, ví dụ `gh issue create --label ai-handle ...`.
+
+## Khi cần hỏi
+
+Nếu bạn cần hỏi tôi điều gì đó, vui lòng sử dụng công cụ AskUserQuestion cùng với các thông tin thực tế ngắn gọn và sự đánh đổi để hỗ trợ quá trình ra quyết định.
+
 ## Trước khi báo xong
 
 1. Chạy file test của phần vừa sửa theo cách ở trên.
