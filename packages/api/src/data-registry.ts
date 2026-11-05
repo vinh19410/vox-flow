@@ -1,7 +1,17 @@
 import { eq, inArray } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
-import { account, attempt, attemptAnswer, consentEvent, forecastReport, session, user } from "@vox-flow/db/schema";
+import {
+  account,
+  attempt,
+  attemptAnswer,
+  consentEvent,
+  forecastReport,
+  scoreDispute,
+  session,
+  user,
+} from "@vox-flow/db/schema";
+
 export type EraseContext = {
   db: Database;
   audioBucket?: {
@@ -120,6 +130,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
       }
     },
   },
+  score_dispute: {
+    tableName: "score_dispute",
+    export: async (db, userId) => {
+      return db.select().from(scoreDispute).where(eq(scoreDispute.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(scoreDispute).where(eq(scoreDispute.userId, userId));
+    },
+  },
 };
 
 export const NON_PERSONAL_TABLES: Record<string, string> = {
@@ -130,6 +149,7 @@ export const NON_PERSONAL_TABLES: Record<string, string> = {
   forecast_source:
     "Bảng forecast_source chứa thông tin nguồn gốc của đề thi (tự soạn, học viên hoặc web) phục vụ kiểm duyệt nội dung",
 };
+
 export async function exportUserData(db: Database, userId: string) {
   const result: Record<string, unknown[]> = {};
   for (const [tableName, handler] of Object.entries(DATA_REGISTRY)) {

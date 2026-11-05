@@ -1,5 +1,14 @@
 import * as schema from "@vox-flow/db/schema";
-import { account, consentEvent, forecastReport, forecastTopic, session, user } from "@vox-flow/db/schema";
+import {
+  account,
+  attempt,
+  consentEvent,
+  forecastReport,
+  forecastTopic,
+  scoreDispute,
+  session,
+  user,
+} from "@vox-flow/db/schema";
 import { getTableName, is, Table } from "drizzle-orm";
 import { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -127,6 +136,30 @@ describe("Data registry for personal data discovery and erasure", () => {
       },
     ]);
 
+    // Seed attempts & score disputes
+    await testCtx.db.insert(attempt).values([
+      { id: "att_reg_1", userId: user1Id, mode: "full", status: "submitted" },
+      { id: "att_reg_2", userId: user2Id, mode: "full", status: "submitted" },
+    ]);
+    await testCtx.db.insert(scoreDispute).values([
+      {
+        id: "disp_reg_1",
+        attemptId: "att_reg_1",
+        userId: user1Id,
+        targetCriterion: "GRA",
+        expectedBand: "6.5",
+        dueAt: new Date(Date.now() + 72 * 3600 * 1000),
+      },
+      {
+        id: "disp_reg_2",
+        attemptId: "att_reg_2",
+        userId: user2Id,
+        targetCriterion: "PRON",
+        expectedBand: "7.0",
+        dueAt: new Date(Date.now() + 72 * 3600 * 1000),
+      },
+    ]);
+
     // Test export
     const exportUser1 = await exportUserData(testCtx.db, user1Id);
     expect(exportUser1.userId).toBe(user1Id);
@@ -135,6 +168,9 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(exportUser1.data.session).toHaveLength(1);
     expect(exportUser1.data.account).toHaveLength(1);
     expect(exportUser1.data.forecast_report).toHaveLength(1);
+    expect(exportUser1.data.attempt).toHaveLength(1);
+    expect(exportUser1.data.score_dispute).toHaveLength(1);
+
     // Test erase
     await eraseUserData({ db: testCtx.db }, user1Id);
 
@@ -145,6 +181,9 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser1.data.session).toHaveLength(0);
     expect(afterEraseUser1.data.account).toHaveLength(0);
     expect(afterEraseUser1.data.forecast_report).toHaveLength(0);
+    expect(afterEraseUser1.data.attempt).toHaveLength(0);
+    expect(afterEraseUser1.data.score_dispute).toHaveLength(0);
+
     // Verify user2 remains completely intact
     const afterEraseUser2 = await exportUserData(testCtx.db, user2Id);
     expect(afterEraseUser2.data.user).toHaveLength(1);
@@ -152,5 +191,7 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser2.data.session).toHaveLength(1);
     expect(afterEraseUser2.data.account).toHaveLength(1);
     expect(afterEraseUser2.data.forecast_report).toHaveLength(1);
+    expect(afterEraseUser2.data.attempt).toHaveLength(1);
+    expect(afterEraseUser2.data.score_dispute).toHaveLength(1);
   });
 });

@@ -11,6 +11,7 @@ export type ApiEnv = {
   OPENAI_API_KEY?: string;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
+  SCORE_DISPUTE_ENABLED?: string;
   [key: string]: unknown;
 };
 

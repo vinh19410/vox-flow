@@ -1,8 +1,10 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { attemptRouter } from "./attempt";
-import { privacyRouter } from "./privacy";
+import { disputeRouter } from "./dispute";
 import { forecastRouter } from "./forecast";
 import { forecastAdminRouter } from "./forecast-admin";
+import { privacyRouter } from "./privacy";
+
 export const appRouter = router({
   healthCheck: publicProcedure.query(() => {
     return "OK";
@@ -15,6 +17,7 @@ export const appRouter = router({
   }),
   attempt: attemptRouter,
   privacy: privacyRouter,
+  dispute: disputeRouter,
   forecast: forecastRouter,
   forecastAdmin: forecastAdminRouter,
 });
