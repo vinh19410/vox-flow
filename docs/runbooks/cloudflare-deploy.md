@@ -24,40 +24,11 @@ Theo định nghĩa trong `apps/server/.env.schema` và `packages/infra/alchemy.
 
 ---
 
-## 2. Quy trình triển khai với Alchemy
+## 2. Sao lưu cơ sở dữ liệu D1 trước khi áp Migration
 
-Vox Flow sử dụng `@alchemy.run/cloudflare` trong package `@vox-flow/infra` để quản lý hạ tầng dưới dạng mã nguồn (IaC).
+> **BẮT BUỘC THEO `AGENTS.md`**: Do Alchemy tự động áp các migration mới ngay trong quá trình chạy lệnh `deploy`, mọi lần triển khai lên môi trường thật có database D1 hiện hữu đều phải thực hiện sao lưu trước khi deploy.
 
-### 2.1. Lệnh triển khai chuẩn
-Chạy lệnh triển khai từ thư mục gốc của repo:
-
-```bash
-# Cách 1: Nạp bí mật an toàn qua ak secrets (khuyên dùng):
-# ak secrets load hoặc xuất biến môi trường vào phiên làm việc hiện tại
-eval "$(ak secrets env 2>/dev/null || true)"
-
-# Cách 2: Lưu vào file .env ở thư mục gốc (đã được .gitignore bảo vệ, nạp tự động qua varlock)
-
-# Thực thi lệnh triển khai sạch (không in bí mật ra shell history):
-pnpm --filter @vox-flow/infra run deploy
-```
-> **LƯU Ý QUAN TRỌNG**:
-> - **KHÔNG ĐƯỢC DÙNG `pnpm deploy`**: Đây là lệnh nội tại được xây dựng sẵn của trình quản lý gói `pnpm` (dùng để trích xuất monorepo package), không phải lệnh triển khai Alchemy của dự án.
-> - Luôn tuân thủ quy tắc trong `AGENTS.md`: Chỉ thực hiện lệnh triển khai lên môi trường thật khi đã có sự xác nhận trực tiếp từ người sở hữu sản phẩm.
-
-### 2.2. Xử lý CORS cho lần triển khai đầu tiên (Vòng lặp 2 bước)
-Lần đầu tiên triển khai, URL của frontend web chưa tồn tại:
-1. **Bước 1**: Chạy `pnpm --filter @vox-flow/infra run deploy` lần đầu (tạm đặt `CORS_ORIGIN="http://localhost:3001"`). Alchemy sẽ xuất ra URL của Worker `server` và Website `web`.
-2. **Bước 2**: Lấy URL thật của `web` vừa tạo, cập nhật vào biến môi trường `CORS_ORIGIN`.
-3. **Bước 3**: Chạy lại `pnpm --filter @vox-flow/infra run deploy` để Worker nhận nguồn gốc CORS chính xác.
-
----
-
-## 3. Sao lưu cơ sở dữ liệu D1 trước khi áp Migration
-
-Theo quy định bắt buộc trong `AGENTS.md`, mọi thao tác áp migration lên D1 môi trường thật đều phải được sao lưu trước.
-
-### 3.1. Thực hiện sao lưu D1
+### 2.1. Thực hiện sao lưu D1
 Tìm tên chính xác của database D1 do Alchemy tạo ra:
 
 ```bash
@@ -66,20 +37,54 @@ pnpm dlx wrangler d1 list
 
 > **Lưu ý triển khai lần đầu**: Nếu đây là lần đầu tiên triển khai hệ thống (database chưa từng được tạo trên Cloudflare), bỏ qua bước sao lưu này.
 
-Đối với các lần triển khai sau (khi đã có dữ liệu và thêm migration mới):
+Đối với các lần triển khai sau (khi đã có dữ liệu và chuẩn bị áp migration mới):
 
 ```bash
 # Tạo thư mục sao lưu bên ngoài repository để tránh nguy cơ commit nhầm dữ liệu người dùng:
 mkdir -p "$HOME/.vox-flow/backups"
 
-# Xuất dữ liệu hiện tại của D1 ra file SQL an toàn:
+# Xuất dữ liệu hiện tại của D1 ra file SQL an toàn nằm ngoài repo:
 pnpm dlx wrangler d1 export <ten-database-d1> --remote --output="$HOME/.vox-flow/backups/backup-d1-$(date +%Y%m%d%H%M%S).sql"
 ```
-### 3.2. Cơ chế áp Migration của Alchemy
-Alchemy tự động phát hiện các thư mục migration dạng `<dir>/migration.sql` trong `packages/db/src/migrations` (chuẩn Drizzle v1) và áp tuần tự vào D1 Database trong quá trình `alchemy deploy`.
+
+### 2.2. Cơ chế áp Migration của Alchemy
+Alchemy tự động phát hiện các thư mục migration dạng `<dir>/migration.sql` trong `packages/db/src/migrations` (chuẩn Drizzle v1 theo regex `^\d{14}_.+`, xác nhận qua `@alchemy.run/sql` `Migrations/Detect.ts`) và áp tuần tự vào D1 Database trong lúc `deploy` (`D1/Database.ts`), đồng thời ghi nhận lịch sử vào bảng `__alchemy_migrations`.
 
 ---
 
+## 3. Quy trình triển khai với Alchemy
+
+Vox Flow sử dụng `@alchemy.run/cloudflare` trong package `@vox-flow/infra` để quản lý hạ tầng dưới dạng mã nguồn (IaC).
+
+### 3.1. Cố định Stage triển khai (`prod`)
+Mặc định Alchemy sẽ tạo stage theo tên `live_${USER}` nếu không chỉ định, dẫn tới phân mảnh tài nguyên. Đối với MVP của Vox Flow, toàn bộ lệnh triển khai đều phải cố định cờ `--stage prod` (hoặc đặt biến môi trường `ALCHEMY_STAGE=prod`).
+
+### 3.2. Quản lý bí mật và lệnh triển khai chuẩn
+
+Cấu hình biến môi trường và bí mật:
+- **Cách 1 (Khuyên dùng)**: Lưu biến vào file `.env` ở thư mục gốc repo (đã được `.gitignore` bảo vệ). `packages/infra/alchemy.run.ts` tự động nạp cấu hình thông qua `varlock/auto-load`.
+- **Cách 2**: Sử dụng công cụ `ak secrets run` nếu có quyền cấp phát thực thi:
+  ```bash
+  ak secrets run -- pnpm --filter @vox-flow/infra run deploy -- --stage prod
+  ```
+
+Lệnh triển khai tiêu chuẩn từ thư mục gốc của repo:
+
+```bash
+pnpm --filter @vox-flow/infra run deploy -- --stage prod
+```
+
+> **LƯU Ý QUAN TRỌNG**:
+> - **KHÔNG ĐƯỢC DÙNG `pnpm deploy`**: Đây là lệnh nội tại được xây dựng sẵn của trình quản lý gói `pnpm` (dùng để trích xuất monorepo package), không phải lệnh triển khai Alchemy của dự án.
+> - Luôn tuân thủ quy tắc trong `AGENTS.md`: Chỉ thực hiện lệnh triển khai lên môi trường thật khi đã có sự xác nhận trực tiếp từ người sở hữu sản phẩm.
+
+### 3.3. Xử lý CORS cho lần triển khai đầu tiên (Vòng lặp 2 bước)
+Lần đầu tiên triển khai, URL của frontend web chưa tồn tại:
+1. **Bước 1**: Chạy `pnpm --filter @vox-flow/infra run deploy -- --stage prod` lần đầu (tạm đặt `CORS_ORIGIN="http://localhost:3001"`). Alchemy sẽ xuất ra URL của Worker `server` và Website `web`.
+2. **Bước 2**: Lấy URL thật của `web` vừa tạo, cập nhật vào biến môi trường `CORS_ORIGIN`.
+3. **Bước 3**: Chạy lại `pnpm --filter @vox-flow/infra run deploy -- --stage prod` để Worker nhận nguồn gốc CORS chính xác.
+
+---
 ## 4. Kiểm tra xác nhận sau triển khai (Verification)
 
 Sau khi lệnh deploy hoàn tất thành công, thực hiện 2 bước kiểm tra sau:
