@@ -17,7 +17,7 @@ Pipeline thật đạt ngưỡng và paywall kiểm tra ở server.
 - Modify: `packages/api/src/routers/index.ts`
 - Create: `docs/scoring-accuracy.md`
 - Create: `packages/api/src/entitlements.ts`
-
+- Create: `scripts/scoring-eval/run-prod-eval.ts`
 ## Tasks & Steps
 
 ### Task 2.1 — Tạo API kết quả có phân quyền và bảo vệ quyền sở hữu (chống IDOR).
