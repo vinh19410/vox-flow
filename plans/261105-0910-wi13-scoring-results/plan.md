@@ -54,6 +54,47 @@ Mọi lượt thi được chấm thật 3 lần độc lập, lấy trung vị 
 
 ## Câu hỏi mở
 - Chưa có tài liệu BA cho tính năng này; cần chạy `/srs scoring-results` trước khi code không?
-- Nếu pipeline thật không đạt ngưỡng dù #7 đạt thì xử lý thế nào?
+- Nếu pipeline thật không đạt ngưỡng dù #7 đạt thì xử lý thế nào? -> Quyết định: Người sở hữu sản phẩm quyết định; theo quy định `AGENTS.md:35`, nếu Verify không đạt thì dừng, tuyệt đối không tự hạ ngưỡng.
+
+## Red Team Review
+
+### Session — 2026-11-05 (Advisory Supervision with Kongming)
+**Findings:** 5 (3 accepted, 1 partially accepted, 1 rejected)  
+**Severity breakdown:** 4 Critical, 1 High
+
+| # | Finding | Severity | Disposition | Applied To |
+|---|---------|----------|-------------|------------|
+| 1 | BOLA/IDOR in `results.getResult` exposes all student scores & evidence without ownership guard | Critical | Accept | Phase 2 (Task 2.1) |
+| 2 | Denial-of-wallet / budget drain via unvalidated `attempt.submit` with 0 answers | High | Accept | Phase 1 (Task 1.2) |
+| 3 | Non-atomic queue dispatch and retry locking in `attempt.submit` leaves attempts stuck in `queued` | Critical | Accept | Phase 1 (Task 1.2) |
+| 4 | Task 1.0 dependency check deadlocks on issue state (`CLOSED`) despite merged PRs | Critical | Accept (#15, #16); Reject (#7) | Phase 1 (Task 1.0) |
+| 5 | Replacing Task 2.2 30-sample benchmark with fixtures/mocks violates OQ-5 non-negotiable threshold | Critical | Reject | Phase 2 (Task 2.2) |
+
+### Adjudication Rationale
+- **Finding 1 (SecurityAdversary F1):** Bắt buộc kiểm tra `targetAttempt.userId === ctx.session.user.id` trước khi đánh giá `canViewDetail`. Trả `FORBIDDEN` / `NOT_FOUND` không kèm bất kỳ trường điểm nào.
+- **Finding 2 (SecurityAdversary F2):** `attempt.submit` bắt buộc đếm số câu trả lời trong `attemptAnswer`, nếu = 0 trả `BAD_REQUEST` trước khi cập nhật trạng thái hay gửi queue.
+- **Finding 3 (FailureModeAnalyst F1):** Sử dụng trạng thái `pending_dispatch` và ràng buộc duy nhất trên `attempt_score.attemptId`. Nếu `queue.send` lỗi, giữ `pending_dispatch` cho phép gọi lại thử lại an toàn.
+- **Finding 4 (AssumptionDestroyer F1):** PR #39 và PR #40 đã merge vào `dev`, schema đã có trong repo nên việc kiểm tra code/PR là chính xác cho #15 và #16. Tuy nhiên đối với #7, PR #33/#34 chỉ mới là khung đánh giá (scaffolding), chưa có lượt chấm thật và OQ-5 vẫn chưa đạt. Do đó #7 là phụ thuộc thực tế, bắt buộc phải chờ OQ-5 đạt (`[x] OQ-5`) và issue #7 đóng.
+- **Finding 5 (AssumptionDestroyer F2):** Giữ nguyên đo đạc thực tế trên 30 bài mẫu của #7 với ngưỡng `Đạt ngưỡng: có`, tuân thủ quy tắc D-01/OQ-5 và `AGENTS.md:35`. Bổ sung driver độc lập `run-prod-eval.ts` và ràng buộc giữ lại file âm thanh.
+
+## Validation Log
+
+### Verification Results
+- **Tier:** Standard (Fact Checker + Contract Verifier)
+- **Claims checked:** 10
+- **Verified:** 8 | **Failed:** 0 | **Unverified:** 2 (phụ thuộc vào kết quả benchmark OQ-5 của #7 và âm thanh bài mẫu)
+- **Key Verified Symbols:**
+  - `packages/db/src/schema/attempt.ts`: `attempt`, `attemptAnswer` (tồn tại và đã merge vào `dev`)
+  - `packages/db/src/schema/consent.ts`: `consentEvent` (tồn tại và đã merge vào `dev`)
+  - `packages/api/src/routers/attempt.ts`: `attemptRouter`, `submit` (tồn tại)
+  - `apps/server/src/index.ts`: entrypoint Worker server (tồn tại)
+  - `packages/infra/alchemy.run.ts`: cấu hình hạ tầng Cloudflare (tồn tại)
+
+### Whole-Plan Consistency Sweep
+- **Files reread:** `plan.md`, `phase-01-pipeline-cham.md`, `phase-02-kiem-tra-do-chinh-xac-va-phan-quyen.md`, `phase-03-noi-giao-dien.md`
+- **Decision deltas checked:** 5
+- **Reconciled stale references:** Reconciled Task 1.0 gates, `attempt.submit` validation & idempotency, `results.getResult` ownership assertion, Queue infra declarations.
+- **Unresolved contradictions:** 0
+- **Advisory Council Verdict (Kongming):** GO for plan revision; NO-GO for implementation until Issue #7 and OQ-5 dependency conditions are satisfied.
 
 <!-- slug: wi13-scoring-results -->
