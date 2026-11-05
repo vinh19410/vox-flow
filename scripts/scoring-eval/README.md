@@ -25,9 +25,9 @@ Thư mục này chứa bộ công cụ thực nghiệm cho **Work Item 03** (Iss
      SPEECHSUPER_APP_KEY=your_speechsuper_app_key
      SPEECHSUPER_SECRET_KEY=your_speechsuper_secret_key
      ANTHROPIC_API_KEY=your_anthropic_api_key
-     ANTHROPIC_OPUS_MODEL=claude-opus-5-5
-     ANTHROPIC_SONNET_MODEL=claude-sonnet-5-5
-     ANTHROPIC_HAIKU_MODEL=claude-haiku-5-5
+     ANTHROPIC_OPUS_MODEL=claude-opus-5-5       # Xác nhận ID thực tế qua Anthropic Console / API
+     ANTHROPIC_SONNET_MODEL=claude-sonnet-5-5   # Xác nhận ID thực tế qua Anthropic Console / API
+     ANTHROPIC_HAIKU_MODEL=claude-haiku-5-5     # Xác nhận ID thực tế qua Anthropic Console / API
      ```
    - Schema bảo vệ được định nghĩa tại `scripts/scoring-eval/.env.schema` và kiểm tra bởi Varlock.
 4. **Xác nhận pháp lý (OQ-6 / Luật 91/2025/QH15):**
@@ -54,16 +54,20 @@ Thư mục này chứa bộ công cụ thực nghiệm cho **Work Item 03** (Iss
 ## 3. Lệnh chạy thực nghiệm
 
 ### Chạy thử nghiệm khói (Smoke Test - 1 mẫu)
-Trước khi chạy toàn bộ 540 lượt chấm, luôn chạy thử 1 mẫu để kiểm tra kết nối API:
+Trước khi chạy toàn bộ 540 lượt chấm, luôn chạy thử 1 mẫu để kiểm tra kết nối API cả hai hướng (chỉ cần 1 file audio mẫu trong `audio/`):
 ```bash
-varlock run --path scripts/scoring-eval/ -- node --experimental-strip-types scripts/scoring-eval/run-eval.ts --limit 1 --config azure-sonnet
+# Thử Hướng A (Azure Speech + Sonnet):
+pnpm exec varlock run --path scripts/scoring-eval/ -- node --experimental-strip-types scripts/scoring-eval/run-eval.ts --limit 1 --config azure-sonnet
+
+# Thử Hướng B (Whisper + SpeechSuper + Sonnet):
+pnpm exec varlock run --path scripts/scoring-eval/ -- node --experimental-strip-types scripts/scoring-eval/run-eval.ts --limit 1 --config speechsuper-sonnet
 ```
 Kết quả chạy thử được lưu tại `scripts/scoring-eval/results/smoke/`.
 
 ### Chạy đánh giá toàn bộ (540 lượt chấm)
 Khi đã sẵn sàng:
 ```bash
-varlock run --path scripts/scoring-eval/ -- node --experimental-strip-types scripts/scoring-eval/run-eval.ts
+pnpm exec varlock run --path scripts/scoring-eval/ -- node --experimental-strip-types scripts/scoring-eval/run-eval.ts
 ```
 
 ### Kiểm tra tính toàn vẹn của kết quả
@@ -76,7 +80,7 @@ node --experimental-strip-types scripts/scoring-eval/report.ts --check
 node --experimental-strip-types scripts/scoring-eval/report.ts
 ```
 Lệnh này sẽ tự động phân tích 3 nhánh:
-- **Nhánh (a) Đạt ngưỡng:** Ghi `Đạt ngưỡng: có`, `Quyết định: <cấu hình>`, cập nhật `- [x] OQ-5` trong roadmap và điều chỉnh trần miễn phí ngày.
+- **Nhánh (a) Đạt ngưỡng:** Ghi `Đạt ngưỡng: có`, `Quyết định: <cấu hình>`, cập nhật `- [x] OQ-5` trong roadmap (người sở hữu sản phẩm tự sửa trần miễn phí ngày OQ-1 theo chi phí thật đo được).
 - **Nhánh (b) Không đạt độ chính xác/ổn định:** Ghi `Đạt ngưỡng: không`, `Quyết định: không chọn — chuyển người sở hữu sản phẩm`, giữ OQ-5 mở.
 - **Nhánh (c) Chi phí vượt trần 12.000đ:** Ghi `Đạt ngưỡng: không`, `Quyết định: không chọn — chuyển người sở hữu sản phẩm`, giữ OQ-5 mở.
 

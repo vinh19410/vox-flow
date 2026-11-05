@@ -627,6 +627,27 @@ ${sanitizedTranscript}
 }
 
 /**
+ * Extract existing (sample_id::run) keys from JSONL content to support resuming.
+ * Tracks all attempt lines regardless of status to prevent duplication and silent retries.
+ */
+export function loadExistingKeys(jsonlContent: string): Set<string> {
+  const existingKeys = new Set<string>();
+  const lines = jsonlContent.split("\n").filter((l) => l.trim().length > 0);
+  for (const line of lines) {
+    try {
+      const parsedRaw: unknown = JSON.parse(line);
+      const record = parsedRaw as { sample_id?: string; run?: number };
+      if (record.sample_id && typeof record.run === "number") {
+        existingKeys.add(`${record.sample_id}::${record.run}`);
+      }
+    } catch {
+      // ignore malformed line
+    }
+  }
+  return existingKeys;
+}
+
+/**
  * Main evaluation orchestrator.
  */
 export async function run() {
@@ -675,9 +696,11 @@ export async function run() {
     process.exit(0);
   }
 
-  // Check audio files
+  const targetSamples = limit ? allSamples.slice(0, limit) : allSamples;
+
+  // Check audio files for target samples (permits 1-sample smoke test before all 30 exist)
   const missingAudios: string[] = [];
-  for (const s of allSamples) {
+  for (const s of targetSamples) {
     if (!fs.existsSync(getAudioPath(s.sample_id))) {
       missingAudios.push(s.sample_id);
     }
@@ -717,7 +740,7 @@ export async function run() {
     ? [specificConfig]
     : [...CONFIGS];
 
-  const targetSamples = limit ? allSamples.slice(0, limit) : allSamples;
+  // targetSamples already computed above
   const outDir = path.resolve(
     isSmoke ? "scripts/scoring-eval/results/smoke" : "scripts/scoring-eval/results"
   );
@@ -732,21 +755,9 @@ export async function run() {
     const outFile = path.join(outDir, `${config}.jsonl`);
 
     // Load existing completed keys to support resuming without double-spending
-    const existingKeys = new Set<string>();
-    if (fs.existsSync(outFile)) {
-      const existingLines = fs.readFileSync(outFile, "utf-8").split("\n").filter((l) => l.trim().length > 0);
-      for (const line of existingLines) {
-        try {
-          const parsedRaw: unknown = JSON.parse(line);
-          const record = parsedRaw as { sample_id?: string; run?: number };
-          if (record.sample_id && typeof record.run === "number") {
-            existingKeys.add(`${record.sample_id}::${record.run}`);
-          }
-        } catch {
-          // ignore malformed line
-        }
-      }
-    }
+    const existingKeys = fs.existsSync(outFile)
+      ? loadExistingKeys(fs.readFileSync(outFile, "utf-8"))
+      : new Set<string>();
 
     const appendStream = fs.createWriteStream(outFile, { flags: "a" });
 
