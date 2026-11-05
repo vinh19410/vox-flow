@@ -13,11 +13,20 @@ Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script kh�
 - Sinh migration: `pnpm --filter @vox-flow/db db:generate`. Lệnh gốc `pnpm db:generate` lỗi khi không có terminal tương tác.
 - Triển khai: `pnpm --filter @vox-flow/infra run deploy`. Không dùng `pnpm deploy`, vì đó là lệnh dựng sẵn của pnpm.
 
+## **Luồng ak-plan → ak-git cp**
+
+- Khi skill `ak-plan` hoàn tất (plan đã được duyệt/chốt), **luôn gọi tiếp skill** `ak-git cp` để commit và push các file đã tạo ra trong session (plan, journal, các file liên quan).
+- Không tự viết lệnh git thủ công thay cho `ak-git cp` trừ khi skill đó lỗi.
+
 ## Không được làm
 
 - Không triển khai, không chạy `destroy` và không áp migration lên môi trường thật khi chưa được xác nhận. Sao lưu D1 trước khi áp migration.
 - Không sửa tay các migration đã sinh trong `packages/db/src/migrations` hoặc `apps/web/src/routeTree.gen.ts`.
 - Không đảo các quyết định đã chốt trong `docs/roadmap-chamro.md`, Mục 7. Nếu thấy cần đổi, nêu lý do và hỏi người sở hữu sản phẩm.
+
+## GitHub issue
+
+- Mọi GitHub issue tạo mới phải được thêm vào project https://github.com/users/vinh19410/projects/15 ngay khi tạo. Dùng `gh issue create --project "<tên project>"` hoặc `gh project item-add 15 --owner vinh19410 --url <url-issue>`. Lệnh sau cần quyền `project` (`gh auth refresh -s project`) nếu chưa có.
 
 ## Tài liệu sản phẩm
 
