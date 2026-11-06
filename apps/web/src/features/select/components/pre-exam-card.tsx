@@ -21,11 +21,7 @@ export function PreExamCard() {
         <li className="flex gap-3">
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-good" />
           <span>
-            Ghi âm chỉ dùng để chấm bài này.{" "}
-            <b className="text-ink">{s.consent.save ? "Lưu vào lịch sử: bật" : "Không lưu lịch sử"}</b> · Hiệu chuẩn chấm điểm: <b className="text-ink">{(s.consent.calibration ?? s.consent.train) ? "bật" : "tắt"}</b>.{" "}
-            <button onClick={() => go("privacy")} className="font-semibold text-ink underline underline-offset-2">
-              Đổi
-            </button>
+            Ghi âm được xử lý bảo mật để chấm bài và tự động lưu vào lịch sử làm bài của bạn.
           </span>
         </li>
       </ul>

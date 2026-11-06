@@ -142,7 +142,7 @@ describe("SelectScreen", () => {
       expect(screen.getByRole("button", { name: new RegExp(mode.title) })).toBeTruthy();
     }
     expect(screen.getByText("Khuyên dùng")).toBeTruthy();
-    expect(screen.getByText("Lưu vào lịch sử: bật")).toBeTruthy();
+    expect(screen.getByText(/Ghi âm được xử lý bảo mật để chấm bài và tự động lưu/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Đồng ý ghi âm & bắt đầu" }));
     expect(set).toHaveBeenCalledWith({ practice: null });
@@ -150,10 +150,6 @@ describe("SelectScreen", () => {
     expect(go).toHaveBeenCalledWith("exam");
   });
 
-  it("shows the no-history consent copy when consent.save is off", () => {
-    renderWithApp(<SelectScreen />, { consent: { save: false, calibration: false, train: false } });
-    expect(screen.getByText("Không lưu lịch sử")).toBeTruthy();
-  });
 
   it("previews voices through speech synthesis and cancels on unmount", () => {
     const speakSpy = vi.spyOn(globalThis.speechSynthesis, "speak");

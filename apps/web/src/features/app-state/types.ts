@@ -16,7 +16,7 @@ export type ProtoScreen =
   | "results"
   | "history"
   | "billing"
-  | "privacy";
+  | "terms";
 
 export interface PracticeSession {
   topicId: string;

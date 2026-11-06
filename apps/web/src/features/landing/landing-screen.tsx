@@ -4,7 +4,6 @@ import { useApp } from "@/features/app-state/types";
 
 import { Hero } from "./components/hero";
 import { PricingTeaser } from "./components/pricing-teaser";
-import { PrivacyCta } from "./components/privacy-cta";
 import { PromisesSection } from "./components/promises-section";
 
 export function LandingScreen() {
@@ -16,7 +15,6 @@ export function LandingScreen() {
         <nav className="hidden items-center gap-8 text-sm text-ink-2 md:flex">
           <a href="#how" className="hover:text-ink">Cách chấm</a>
           <a href="#pricing" className="hover:text-ink">Bảng giá</a>
-          <a href="#privacy" className="hover:text-ink">Dữ liệu của bạn</a>
         </nav>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => go("auth")}>Đăng nhập</Button>
@@ -27,7 +25,24 @@ export function LandingScreen() {
       <Hero />
       <PromisesSection />
       <PricingTeaser />
-      <PrivacyCta />
+      <footer className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 border-t border-line px-5 pb-12 pt-8 text-xs text-subtle sm:px-8">
+        <span>© 2026 Vox Flow</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <a
+            href="/terms"
+            onClick={(e) => {
+              if (!e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                go("terms");
+              }
+            }}
+            className="hover:text-ink hover:underline"
+          >
+            Điều khoản dịch vụ & Chính sách sử dụng
+          </a>
+          <span>Điểm chỉ mang tính tham khảo, không thay thế kỳ thi IELTS chính thức.</span>
+        </div>
+      </footer>
     </div>
   );
 }

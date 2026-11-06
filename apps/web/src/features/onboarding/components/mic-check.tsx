@@ -9,9 +9,10 @@ import { cx } from "@/lib/cx";
 export interface MicCheckProps {
   onNext: () => void;
   compact?: boolean;
+  isSubmitting?: boolean;
 }
 
-export function MicCheck({ onNext, compact }: MicCheckProps) {
+export function MicCheck({ onNext, compact, isSubmitting }: MicCheckProps) {
   const [phase, setPhase] = useState<"idle" | "rec" | "done">("idle");
   const [t, setT] = useState(0);
   const [blocked, setBlocked] = useState<null | "denied" | "unavailable">(null);
@@ -158,8 +159,8 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
 
       <div className="mt-8 flex items-center justify-end">
         {phase === "done" ? (
-          <Button onClick={onNext}>
-            Micro ổn, tiếp tục <ArrowRight size={16} />
+          <Button onClick={onNext} disabled={isSubmitting}>
+            {isSubmitting ? "Đang hoàn tất…" : "Micro ổn, tiếp tục"} <ArrowRight size={16} />
           </Button>
         ) : isBlocked ? (
           <Button variant="accent" onClick={handleRetry}>
