@@ -42,7 +42,7 @@ Có số liệu cho thấy cần mở rộng.
 > - Task 1.1: Đã tạo `docs/decisions/dispute-scale-up.md` với `Báo lỗi/tuần: chưa có dữ liệu thật (cờ mặc định false tại alchemy.run.ts:29, chưa kiểm tra giá trị đã triển khai)`, `Tỷ lệ đúng hạn: chưa có dữ liệu thật`, `Quyết định mở rộng: không`.
 > - Theo Step 3: Dừng plan tại đây, không tiếp tục sang Phase 2.
 ## Verification
-Các Verify điều kiện kích hoạt đã hoàn tất; dừng theo Failure Protocol (quyết định không mở rộng).
+Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.
 
 ## Failure Protocol
 If any Verify step does not meet its stated pass condition, STOP this phase.
