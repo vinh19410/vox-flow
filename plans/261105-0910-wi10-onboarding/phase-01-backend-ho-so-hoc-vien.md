@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Backend hồ sơ học viên"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: []
@@ -15,9 +15,9 @@ Có bảng và API lưu mục tiêu của từng học viên.
 ## Files to Create / Modify
 - Create: `packages/db/src/schema/profile.ts`
 - Modify: `packages/db/src/schema/index.ts`
-- Modify: `packages/db/src/relations.ts`
 - Create: `packages/api/src/routers/profile.ts`
 - Modify: `packages/api/src/routers/index.ts`
+- Create: `packages/api/src/routers/profile.test.ts`
 
 ## Tasks & Steps
 
@@ -25,32 +25,40 @@ Có bảng và API lưu mục tiêu của từng học viên.
 - Goal: mọi điều kiện cần có đều đã sẵn sàng trước khi đụng tới code hay tài liệu.
 - Target files and symbols: không sửa file.
 - Steps:
-  1. Chạy lệnh trong Verify.
-  2. Nếu có dòng khác `CLOSED`, dừng lại và báo người giao việc. Đây là chờ phụ thuộc, không phải lỗi cần sửa.
-  3. Đọc trạng thái #13. Đây là phụ thuộc mềm: nếu chưa xong thì ghi nhận rủi ro và tiếp tục.
+  1. Kiểm tra PR #32 (issue #6) đã được merge vào dev: `git log --grep="Merge pull request #32" --oneline dev`.
+  2. Ghi nhận #11 đã được người dùng phê duyệt tách thành phụ thuộc mềm (xác nhận ngày 2026-11-05): triển khai hồ sơ người dùng độc lập dựa trên Better Auth `user.id`.
+  3. Ghi nhận #13 đã hoàn tất và merge vào dev trong PR #38.
 - Success criteria: các điều kiện được xác nhận.
-- Verify: `for n in 6 11; do gh issue view $n --json state -q .state; done` in `CLOSED` trên mọi dòng.
+- Verify: `git log --grep="Merge pull request #32" --oneline dev | wc -l` in số lớn hơn hoặc bằng `1`.
 
 ### Task 1.1 — Tạo bảng `user_profile`.
-- Goal: Tạo bảng `user_profile`.
-- Target files and symbols: `packages/db/src/schema/profile.ts`
+- Goal: Tạo bảng `user_profile` trong D1.
+- Target files and symbols: `packages/db/src/schema/profile.ts`, `packages/db/src/schema/index.ts`
 - Steps:
-  1. Tạo bảng với `userId` (khóa chính, tham chiếu `user.id`, xóa theo), `targetBand`, `examDate`, `onboardedAt`.
-  2. Export từ `schema/index.ts` và thêm vào `relations.ts`.
+  1. Định nghĩa bảng `user_profile` với các cột:
+     - `userId`: `text("user_id").primaryKey().references(() => user.id, { onDelete: "cascade" })`
+     - `targetBand`: `real("target_band").notNull()`
+     - `examDate`: `text("exam_date")` (nullable, định dạng `YYYY-MM-DD`)
+     - `onboardedAt`: `integer("onboarded_at", { mode: "timestamp_ms" })` (nullable)
+     - `createdAt`: `integer("created_at", { mode: "timestamp_ms" }).default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`).notNull()`
+     - `updatedAt`: `integer("updated_at", { mode: "timestamp_ms" }).$onUpdate(() => new Date())`
+  2. Re-export `userProfile` từ `packages/db/src/schema/index.ts`.
   3. Chạy `pnpm --filter @vox-flow/db db:generate`.
-- Success criteria: Migration có bảng mới.
+- Success criteria: Migration mới chứa câu lệnh `CREATE TABLE user_profile`.
 - Verify: `grep -rl --include=migration.sql 'user_profile' packages/db/src/migrations | wc -l` in số lớn hơn hoặc bằng `1`.
 
 ### Task 1.2 — Tạo router `profile`.
-- Goal: Tạo router `profile`.
-- Target files and symbols: `packages/api/src/routers/profile.ts` (`get`, `upsert`, `completeOnboarding`); test: `packages/api/src/routers/profile.test.ts`
+- Goal: Tạo router `profile` (`get`, `upsert`, `completeOnboarding`).
+- Target files and symbols: `packages/api/src/routers/profile.ts`, `packages/api/src/routers/index.ts`, `packages/api/src/routers/profile.test.ts`
 - Steps:
-  1. Dùng `protectedProcedure`, chỉ đọc và ghi theo `ctx.session.user.id`.
-  2. Kiểm tra `targetBand` từ 4.0 đến 9.0 theo bước 0.5 và ngày thi không ở quá khứ.
-  3. Viết test: chưa đăng nhập bị từ chối, dữ liệu sai bị từ chối, ghi rồi đọc lại đúng.
-- Success criteria: Test router qua.
+  1. Dùng `protectedProcedure`, tất cả thao tác đọc/ghi đều theo `ctx.session.user.id`.
+  2. `profile.get`: trả về thông tin profile của user hiện tại hoặc null nếu chưa có.
+  3. `profile.upsert`: nhận `{ targetBand, examDate }` (chỉ cho phép các band [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0] theo đúng PRD §4.1 F-03, `examDate` là chuỗi `YYYY-MM-DD` hoặc null/omitted, so sánh ngày không ở quá khứ). Không cho phép truyền hay ghi đè `onboardedAt`. Thực hiện insert hoặc onConflictUpdate giữ nguyên `onboardedAt`.
+  4. `profile.completeOnboarding`: kiểm tra profile của user đã tồn tại và có `targetBand`, sau đó ghi `onboardedAt = new Date()` (idempotent: nếu đã có `onboardedAt` thì giữ nguyên). Nếu chưa có profile hoặc chưa có targetBand thì ném `PRECONDITION_FAILED`.
+  5. Đăng ký `profileRouter` vào `appRouter` trong `packages/api/src/routers/index.ts`.
+  6. Viết test `profile.test.ts`: chưa đăng nhập bị từ chối, band không hợp lệ bị từ chối, ngày quá khứ bị từ chối, upsert rồi get lại đúng, completeOnboarding cập nhật `onboardedAt`.
+- Success criteria: Test router qua 100%.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/profile.test.ts` thoát với mã 0.
-
 ## Verification
 Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.
 

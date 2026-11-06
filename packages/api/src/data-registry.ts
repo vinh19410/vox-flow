@@ -11,6 +11,7 @@ import {
   scoreDispute,
   session,
   user,
+  userProfile,
 } from "@vox-flow/db/schema";
 
 export type EraseContext = {
@@ -34,6 +35,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(user).where(eq(user.id, userId));
+    },
+  },
+  user_profile: {
+    tableName: "user_profile",
+    export: async (db, userId) => {
+      return db.select().from(userProfile).where(eq(userProfile.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(userProfile).where(eq(userProfile.userId, userId));
     },
   },
   consent_event: {
