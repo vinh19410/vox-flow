@@ -15,7 +15,7 @@ export interface ScreenMapEntry {
 export const SCREEN_MAP: ScreenMapEntry[] = [
   { id: "landing", code: "S01", label: "Landing" },
   { id: "auth", code: "S02", label: "Đăng ký / Đăng nhập" },
-  { id: "onboarding", code: "S03–05", label: "Onboarding · Mic · Đồng ý dữ liệu" },
+  { id: "onboarding", code: "S03–05", label: "Onboarding (Mục tiêu · Mic check)" },
   { id: "dashboard", code: "S06", label: "Trang chủ" },
   { id: "select", code: "S07", label: "Chọn bài thi" },
   { id: "forecast", code: "S07b", label: "Luyện đề forecast" },
@@ -24,7 +24,7 @@ export const SCREEN_MAP: ScreenMapEntry[] = [
   { id: "results", code: "S12–15", label: "Kết quả · Bằng chứng · Paywall" },
   { id: "history", code: "S19", label: "Lịch sử bài làm" },
   { id: "billing", code: "S22–24", label: "Bảng giá · Thanh toán · Tài khoản" },
-  { id: "privacy", code: "S25", label: "Quyền riêng tư" },
+  { id: "terms", code: "S25", label: "Điều khoản sử dụng" },
 ];
 
 export function ScreenMap() {
@@ -94,5 +94,5 @@ const ROUTES_BY_SCREEN: Record<ProtoScreen, string> = {
   results: "/app/history/latest",
   history: "/app/history",
   billing: "/app/billing",
-  privacy: "/app/privacy",
+  terms: "/terms",
 };

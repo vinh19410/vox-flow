@@ -15,7 +15,7 @@ import { SCORING_STEPS } from "./data";
  * animation and fall through to the default result.
  */
 export function ScoringScreen() {
-  const { s, set, goResult, pendingSubmission, setPendingSubmission, setLastUnpersistedAttempt } = useApp();
+  const { s, set, goResult, pendingSubmission, setPendingSubmission } = useApp();
   const [i, setI] = useState(0);
   const added = useRef(false);
   const newId = useRef<string | null>(null);
@@ -37,13 +37,11 @@ export function ScoringScreen() {
             topic: pr ? `Forecast · ${pr.title}` : "Accommodation · Helping others",
           };
           newId.current = attempt.id;
-          // Respect consent: keep the attempt transient when saving is off.
           set((prev) => ({
             ...(pr ? { practiced: { ...prev.practiced, [pr.topicId]: RESULT.overall } } : {}),
             practice: null,
-            ...(s.consent.save ? { attempts: [...prev.attempts, attempt] } : {}),
+            attempts: [...prev.attempts, attempt],
           }));
-          if (!s.consent.save) setLastUnpersistedAttempt(attempt);
           setPendingSubmission(false);
         }
       }

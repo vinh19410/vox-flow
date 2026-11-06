@@ -313,7 +313,7 @@ describe("ScoringScreen", () => {
     }
   }
 
-  it("appends the attempt when consent.save is on and replaces /scoring in history", () => {
+  it("appends the attempt and replaces /scoring in history", () => {
     const h = renderWithApp(<ScoringScreen />, { practice: PRACTICE }, { pendingSubmission: true });
     const baseline = createInitialState().attempts.length;
 
@@ -333,27 +333,6 @@ describe("ScoringScreen", () => {
     expect(added.id).toBe(id);
   });
 
-  it("keeps the attempt transient when consent.save is off", () => {
-    const h = renderWithApp(
-      <ScoringScreen />,
-      { consent: { save: false, calibration: false, train: false }, practice: PRACTICE },
-      { pendingSubmission: true },
-    );
-    const baseline = createInitialState().attempts.length;
-
-    runScoringAnimation();
-
-    const final = h.state();
-    expect(final.attempts).toHaveLength(baseline);
-    expect(h.setLastUnpersistedAttempt).toHaveBeenCalledTimes(1);
-    const transient = h.setLastUnpersistedAttempt.mock.calls[0][0] as Attempt;
-    expect(transient.band).toBe(6.5);
-    expect(final.practice).toBeNull();
-    expect(h.setPendingSubmission).toHaveBeenCalledWith(false);
-    const [id, navOpts] = h.goResult.mock.calls[0] as [string, { replace?: boolean }];
-    expect(navOpts).toEqual({ replace: true });
-    expect(id).toBe(transient.id);
-  });
 
   it("tolerates a direct /scoring visit without committing an attempt", () => {
     const h = renderWithApp(<ScoringScreen />);

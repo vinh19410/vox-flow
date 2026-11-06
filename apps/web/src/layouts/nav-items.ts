@@ -5,7 +5,6 @@ import {
   Flame,
   LayoutDashboard,
   Mic,
-  Shield,
 } from "lucide-react";
 
 export type NavId =
@@ -13,8 +12,7 @@ export type NavId =
   | "select"
   | "forecast"
   | "history"
-  | "billing"
-  | "privacy";
+  | "billing";
 
 export interface NavItem {
   id: NavId;
@@ -59,13 +57,6 @@ export const NAV_ITEMS: NavItem[] = [
     short: "Gói",
     icon: CreditCard,
     to: "/app/billing",
-  },
-  {
-    id: "privacy",
-    label: "Quyền riêng tư",
-    short: "Riêng tư",
-    icon: Shield,
-    to: "/app/privacy",
   },
 ];
 

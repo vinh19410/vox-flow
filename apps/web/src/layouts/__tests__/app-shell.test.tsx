@@ -11,7 +11,6 @@ describe("resolveActiveNav", () => {
     expect(resolveActiveNav("/app/forecast")).toBe("forecast");
     expect(resolveActiveNav("/app/history")).toBe("history");
     expect(resolveActiveNav("/app/billing")).toBe("billing");
-    expect(resolveActiveNav("/app/privacy")).toBe("privacy");
   });
 
   it("highlights history for dynamic attemptId routes", () => {
@@ -79,7 +78,6 @@ describe("NAV_ITEMS", () => {
       "Đề forecast",
       "Lịch sử",
       "Gói & thanh toán",
-      "Quyền riêng tư",
     ]);
   });
 });

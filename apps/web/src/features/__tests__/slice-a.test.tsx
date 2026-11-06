@@ -8,9 +8,7 @@ import { AppCtx, type AppCtxValue, type AppState } from "@/features/app-state/ty
 import { AuthScreen } from "@/features/auth/auth-screen";
 import { PLANS } from "@/features/billing/data";
 import { LandingScreen } from "@/features/landing/landing-screen";
-import { ConsentRows } from "@/features/onboarding/components/consent-rows";
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen";
-import { PrivacyScreen } from "@/features/privacy/privacy-screen";
 import { authClient } from "@/lib/auth-client";
 import { trpcClient } from "@/utils/trpc";
 
@@ -30,7 +28,6 @@ vi.mock("@/lib/auth-client", () => ({
 
 const profileUpsertSpy = vi.fn().mockResolvedValue({ targetBand: 6.5, examDate: null });
 const profileCompleteSpy = vi.fn().mockResolvedValue({ onboardedAt: new Date() });
-const privacySetConsentSpy = vi.fn().mockResolvedValue({ success: true });
 
 vi.mock("@/utils/trpc", () => ({
   trpcClient: {
@@ -43,11 +40,6 @@ vi.mock("@/utils/trpc", () => ({
       },
       get: {
         query: vi.fn().mockResolvedValue(null),
-      },
-    },
-    privacy: {
-      setConsent: {
-        mutate: (...args: unknown[]) => privacySetConsentSpy(...args),
       },
     },
   },
@@ -125,7 +117,7 @@ function renderWithApp(ui: ReactNode, seed?: Partial<AppState>) {
 }
 
 describe("LandingScreen", () => {
-  it("renders hero headline, 3 paid teaser plans, and privacy CTA", () => {
+  it("renders hero headline, 3 paid teaser plans, and footer terms link", () => {
     renderWithApp(<LandingScreen />);
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1.textContent).toContain("Biết rõ");
@@ -138,7 +130,7 @@ describe("LandingScreen", () => {
     }
     expect(screen.getByText("Miễn phí")).toBeTruthy();
 
-    expect(screen.getByText("Giọng nói của bạn là của bạn.")).toBeTruthy();
+    expect(screen.getByText("Điều khoản dịch vụ & Chính sách sử dụng")).toBeTruthy();
   });
 
   it("states quota accurately and contains no misleading promises in free tier and hero", () => {
@@ -160,7 +152,7 @@ describe("LandingScreen", () => {
     expect(screen.queryByText(/hết lượt free/i)).toBeNull();
   });
 
-  it("navigates to auth from the hero CTA and header/privacy buttons", () => {
+  it("navigates to auth from hero CTA and header buttons, and to terms from footer", () => {
     const { go } = renderWithApp(<LandingScreen />);
     fireEvent.click(
       screen.getByRole("button", { name: "Thi thử ngay — miễn phí" }),
@@ -179,8 +171,8 @@ describe("LandingScreen", () => {
     expect(go).toHaveBeenCalledTimes(1);
     go.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "Bắt đầu thi thử" }));
-    expect(go).toHaveBeenCalledWith("auth");
+    fireEvent.click(screen.getByRole("link", { name: "Điều khoản dịch vụ & Chính sách sử dụng" }));
+    expect(go).toHaveBeenCalledWith("terms");
     expect(go).toHaveBeenCalledTimes(1);
   });
 });
@@ -288,7 +280,7 @@ describe("OnboardingScreen", () => {
     });
   });
 
-  it("completes 5-second mic check and advances to consent step, then completes onboarding", async () => {
+  it("completes 5-second mic check and completes onboarding directly (2-step flow)", async () => {
     micLevelMock.mockImplementation((active: boolean): MockMicReturn => ({
       level: active ? 0.7 : 0,
       real: active ? true : null,
@@ -322,14 +314,6 @@ describe("OnboardingScreen", () => {
       ).toBeTruthy();
     });
     fireEvent.click(screen.getByRole("button", { name: "Micro ổn, tiếp tục" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Bạn quyết định dữ liệu của mình"),
-      ).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Vào trang chủ" }));
 
     await waitFor(() => {
       expect(profileCompleteSpy).toHaveBeenCalledTimes(1);
@@ -452,45 +436,12 @@ describe("OnboardingScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Micro ổn, tiếp tục" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Bạn quyết định dữ liệu của mình"),
-      ).toBeTruthy();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Vào trang chủ" }));
-
-    await waitFor(() => {
       expect(screen.getByText("Không thể hoàn tất onboarding. Vui lòng thử lại.")).toBeTruthy();
       expect(go).not.toHaveBeenCalled();
     });
   });
 });
 
-describe("ConsentRows", () => {
-  it("toggles consent.save and consent.calibration via labelled switches", () => {
-    const { set } = renderWithApp(<ConsentRows />);
-
-    const saveToggle = screen.getByRole("switch", {
-      name: "Lưu bài chấm vào lịch sử",
-    });
-    expect(saveToggle.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(saveToggle);
-    expect(set).toHaveBeenCalledWith({
-      consent: { save: false, calibration: false, train: false },
-    });
-    expect(saveToggle.getAttribute("aria-checked")).toBe("false");
-
-    const calibToggle = screen.getByRole("switch", {
-      name: "Hiệu chuẩn chấm điểm",
-    });
-    expect(calibToggle.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(calibToggle);
-    expect(set).toHaveBeenLastCalledWith({
-      consent: { save: false, calibration: true, train: true },
-    });
-    expect(calibToggle.getAttribute("aria-checked")).toBe("true");
-  });
-});
 
 describe("AuthScreen", () => {
   it("renders Google login, an 'hoặc' divider, and the email sign-in form (no magic link)", () => {
@@ -768,56 +719,12 @@ describe("AuthScreen", () => {
     });
     expect(googleBtn.getAttribute("disabled")).toBeNull();
   });
-});
-
-describe("PrivacyScreen", () => {
-  it("opens confirm modal, wipes attempts, and shows toast", () => {
-    const { toast } = renderWithApp(<PrivacyScreen />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Xóa dữ liệu" }));
-    expect(screen.getByText("Xóa 6 bài làm?")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Xóa vĩnh viễn" }));
-    expect(toast).toHaveBeenCalledWith("Đã xóa dữ liệu bài làm");
-    expect(screen.getByText("Đã xóa dữ liệu bài làm")).toBeTruthy();
-    expect(screen.queryByText(/Xóa \d+ bài làm\?/)).toBeNull();
-    expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("triggers data export download", async () => {
-    const createObjectURL = vi.fn(() => "blob:test");
-    globalThis.URL.createObjectURL = createObjectURL;
-    globalThis.URL.revokeObjectURL = vi.fn();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
-      const urlStr = String(url);
-      if (urlStr.includes("exportData")) {
-        return new Response(
-          JSON.stringify([
-            {
-              result: {
-                data: {
-                  exportedAt: "2026-11-05T00:00:00Z",
-                  userId: "usr_test",
-                  data: { user: [] },
-                },
-              },
-            },
-          ]),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response(
-        JSON.stringify([{ result: { data: { success: true } } }]),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
-
-    const { toast } = renderWithApp(<PrivacyScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Xuất toàn bộ dữ liệu" }));
-
-    await waitFor(() => {
-      expect(createObjectURL).toHaveBeenCalled();
-      expect(toast).toHaveBeenCalledWith("Đã tải xuống file dữ liệu JSON");
+    it("renders terms link and navigates to terms on click", () => {
+      const { go } = renderWithApp(<AuthScreen />);
+      const termsLink = screen.getByRole("link", { name: /Điều khoản dịch vụ/i });
+      expect(termsLink).toBeTruthy();
+      fireEvent.click(termsLink);
+      expect(go).toHaveBeenCalledWith("terms");
     });
   });
-});
+

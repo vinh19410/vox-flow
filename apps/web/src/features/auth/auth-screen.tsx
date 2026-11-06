@@ -175,7 +175,6 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
           )}
           {isPending ? "Đang kết nối..." : "Tiếp tục với Google"}
         </button>
-
         <div className="mt-6 flex items-center gap-3 text-xs text-ink-2">
           <span className="h-px flex-1 bg-line" />
           <span>hoặc</span>
@@ -252,6 +251,22 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
         >
           {emailMode === "signIn" ? "Chưa có tài khoản? Đăng ký" : "Đã có tài khoản? Đăng nhập"}
         </button>
+
+        <p className="mt-6 text-center text-xs text-subtle">
+          Bằng việc tiếp tục, bạn đồng ý với{" "}
+          <a
+            href="/terms"
+            onClick={(e) => {
+              if (!e.metaKey && !e.ctrlKey) {
+                e.preventDefault();
+                go("terms");
+              }
+            }}
+            className="font-medium text-ink underline underline-offset-2 hover:text-ink/80"
+          >
+            Điều khoản dịch vụ & Chính sách sử dụng
+          </a>
+        </p>
       </div>
     </OnboardingFrame>
   );
