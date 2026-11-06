@@ -1,7 +1,7 @@
 ---
 title: "Đăng nhập Google"
 description: "Học viên đăng nhập thật bằng Google qua Better Auth, và màn `/auth` không còn đường email + mật khẩu theo quyết định chỉ dùng Google ở MVP."
-status: pending
+status: in-progress
 priority: P1
 effort: 1d
 issue: 11
@@ -40,15 +40,15 @@ Học viên đăng nhập thật bằng Google qua Better Auth, và màn `/auth`
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Bật Google ở backend](./phase-01-bat-google-o-backend.md) | Pending |
-| 2 | [Phase 2: Nối màn đăng nhập](./phase-02-noi-man-dang-nhap.md) | Pending |
+| 1 | [Phase 1: Bật Google ở backend](./phase-01-bat-google-o-backend.md) | Completed |
+| 2 | [Phase 2: Nối màn đăng nhập](./phase-02-noi-man-dang-nhap.md) | Completed |
 
 ## Acceptance Criteria
 - [ ] Nhấn "Tiếp tục với Google" tạo session thật và vào được route cần đăng nhập (deploy-gated: nghiệm thu trên môi trường triển khai sau khi cấu hình OAuth client thật).
-- [ ] Nhấn "Tiếp tục với Google" trên `/auth` gọi `signIn.social` với Google provider và callback đầy đủ.
-- [ ] `emailAndPassword` không còn bật trong `createAuth` (`packages/auth/src/index.ts`).
-- [ ] Route cần đăng nhập (`_proto/app/*`, `_proto/exam`, `_proto/scoring`, `_proto/onboarding`) chuyển người chưa đăng nhập về `/auth`.
-- [ ] Test và kiểm tra kiểu đều qua (`pnpm --filter web test`, `pnpm --filter @vox-flow/api test`, `pnpm check-types`).
+- [x] Nhấn "Tiếp tục với Google" trên `/auth` gọi `signIn.social` với Google provider và callback đầy đủ.
+- [x] `emailAndPassword` không còn bật trong `createAuth` (`packages/auth/src/index.ts`).
+- [x] Route cần đăng nhập (`_proto/app/*`, `_proto/exam`, `_proto/scoring`, `_proto/onboarding`) chuyển người chưa đăng nhập về `/auth`.
+- [x] Test và kiểm tra kiểu đều qua (`pnpm --filter web test`, `pnpm --filter @vox-flow/api test`, `pnpm check-types`).
 
 ## Quyết định câu hỏi mở
 - Giữ nguyên `_app-legacy` và các component form legacy liên quan theo đúng non-goal để tránh mở rộng phạm vi và không làm gãy các route legacy.

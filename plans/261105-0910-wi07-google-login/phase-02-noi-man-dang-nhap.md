@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Nối màn đăng nhập"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: [1]

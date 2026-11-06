@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Bật Google ở backend"
-status: pending
+status: completed
 priority: P1
 effort: ""
 dependencies: []
