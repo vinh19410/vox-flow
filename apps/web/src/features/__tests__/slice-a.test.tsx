@@ -567,6 +567,31 @@ describe("AuthScreen", () => {
       });
       expect(authClient.signIn.email).not.toHaveBeenCalled();
     });
+    it("toggles to sign-up, creates the account, and redirects to /onboarding when no redirect is provided", async () => {
+      vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+        data: { user: { id: "u3" } },
+        error: null,
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+      expect(screen.getByRole("button", { name: "Tạo tài khoản" })).toBeTruthy();
+
+      fillAndSubmit({ name: "Minh", email: "minh@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledWith(
+          `${window.location.origin}/onboarding`,
+        );
+      });
+      expect(authClient.signUp.email).toHaveBeenCalledWith({
+        name: "Minh",
+        email: "minh@example.com",
+        password: "Password123!",
+      });
+      expect(authClient.signIn.email).not.toHaveBeenCalled();
+    });
+
 
     it("shows 'Email đã được sử dụng' when sign-up hits a duplicate email", async () => {
       vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
@@ -599,6 +624,24 @@ describe("AuthScreen", () => {
       expect(assignSpy).toHaveBeenCalledWith(`${window.location.origin}/app/dashboard`);
       expect(String(assignSpy.mock.calls[0]?.[0])).not.toContain("evil.com");
     });
+    it("ignores a malicious redirect and redirects to /onboarding after sign-up", async () => {
+      vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+        data: { user: { id: "u4" } },
+        error: null,
+      } as never);
+
+      renderWithApp(<AuthScreen search={{ redirect: "//evil.com/hack" }} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+
+      fillAndSubmit({ name: "Hacker", email: "hacker@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(assignSpy).toHaveBeenCalledWith(`${window.location.origin}/onboarding`);
+      expect(String(assignSpy.mock.calls[0]?.[0])).not.toContain("evil.com");
+    });
+
 
     it("shows a connection error when the auth request throws", async () => {
       vi.mocked(authClient.signIn.email).mockRejectedValueOnce(new Error("network"));

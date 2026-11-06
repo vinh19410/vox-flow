@@ -1,10 +1,10 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
 
 import { AppShell } from "@/layouts/app-shell";
-import { requireSession } from "@/lib/auth-guard";
+import { requireOnboarded } from "@/lib/auth-guard";
 
 export const Route = createFileRoute("/_proto/app")({
-  beforeLoad: ({ location }) => requireSession(location.href),
+  beforeLoad: ({ location }) => requireOnboarded(location.href),
   component: ProtoAppLayout,
 });
 

@@ -18,6 +18,7 @@ export type AuthScreenProps = {
 type EmailMode = "signIn" | "signUp";
 
 const DEFAULT_REDIRECT = "/app/dashboard";
+const DEFAULT_SIGNUP_REDIRECT = "/onboarding";
 
 /**
  * Returns the redirect path only when it is a same-origin app path that does
@@ -70,7 +71,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
   const isBusy = isPending || isEmailPending;
   const safeRedirect = getSafeRedirect(activeSearch?.redirect);
   const callbackPath = safeRedirect ?? DEFAULT_REDIRECT;
-
+  const signUpCallbackPath = safeRedirect ?? DEFAULT_SIGNUP_REDIRECT;
   const rawError = activeSearch?.error;
   const errorParam =
     typeof rawError === "string"
@@ -133,7 +134,8 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
       }
 
       // Full page load, like the end of the Google flow, so the app boots with the new session.
-      window.location.assign(`${window.location.origin}${callbackPath}`);
+      const redirectTarget = emailMode === "signUp" ? signUpCallbackPath : callbackPath;
+      window.location.assign(`${window.location.origin}${redirectTarget}`);
     } catch {
       setIsEmailPending(false);
       setLocalError("Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau.");
