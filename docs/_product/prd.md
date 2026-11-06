@@ -26,7 +26,7 @@ Nguồn quyết định: docs/product-decisions.md
 ### 2.1. Học viên (Student) [PRD-trích]
 - Người chuẩn bị thi IELTS (Academic/General). Phân khúc band mục tiêu cụ thể: [chưa có].
 - Cần môi trường thi thử phản xạ tự nhiên, không áp lực tâm lý như gặp người thật, nhận kết quả ngay và hiểu rõ điểm yếu để sửa.
-- **Xác thực:** [D-03] [Feature map F-02] Đăng nhập duy nhất bằng tài khoản Google OAuth. Không hỗ trợ email magic link hay tài khoản mật khẩu trong MVP.
+- **Xác thực:** [D-03] [Feature map F-02] Đăng nhập bằng tài khoản Google OAuth hoặc email/mật khẩu. Email/mật khẩu không xác minh email và chưa có quên mật khẩu trong MVP; email đã thuộc tài khoản Google bị từ chối. Không hỗ trợ email magic link.
 
 ### 2.2. Quản trị viên / Người sở hữu sản phẩm (Admin / PO) [OQ-2] [OQ-4] [D-07] [D-09]
 - Người vận hành hệ thống, có chuyên môn chấm thi IELTS.
@@ -43,7 +43,7 @@ Nguồn quyết định: docs/product-decisions.md
 Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (GAP), phân kỳ theo 2 giai đoạn:
 1. **Giai đoạn Now — Vòng lõi chạy thật từ đầu đến cuối:**
    - Landing page giới thiệu giá trị [F-01]
-   - Onboarding: Đăng nhập Google, thiết lập mục tiêu band & ngày thi, test mic [F-02, F-03, F-04] [D-03]
+   - Onboarding: Đăng nhập Google hoặc email/mật khẩu, thiết lập mục tiêu band & ngày thi, test mic [F-02, F-03, F-04] [D-03]
    - Quản trị quyền riêng tư dữ liệu & 2 công tắc đồng ý [F-05, F-21] [D-10]
    - Thi thử Full Test & từng Part với giám khảo AI, ghi âm thật [F-06, F-07, F-08, GAP-01]
    - Chấm điểm 3 lần độc lập, lấy trung vị và khoảng tin cậy [F-09, GAP-01]
@@ -66,7 +66,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 - Gói dành cho giáo viên / trung tâm (`teacher-plan`) [D-12] [PRD-trích].
 - Quy trình xử lý báo lỗi mở rộng phân công nhiều giám khảo cộng tác viên [GAP-03 mở rộng].
 - Ứng dụng di động native trên App Store / Google Play (v1 ưu tiên phiên bản web; hỗ trợ PWA: [chưa có]).
-- Hỗ trợ các phương thức đăng nhập khác ngoài Google [D-03].
+- Hỗ trợ các phương thức đăng nhập khác ngoài Google và email/mật khẩu (magic link, đăng nhập mạng xã hội khác), xác minh email, quên/đổi mật khẩu, liên kết tài khoản [D-03].
 - Xuất hóa đơn đỏ VAT (v1 chỉ cung cấp biên nhận điện tử) [D-11].
 
 ---
@@ -75,7 +75,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 
 ### 4.1. Thu hút & Onboarding [Feature map F-01..F-05]
 - **F-01 Landing page:** [Feature map S01] Thể hiện rõ giá trị cốt lõi: thi thử IELTS Speaking với AI, chấm 3 lần khách quan, thấy bằng chứng câu nói. Lời hứa hạn mức: "Miễn phí band tổng và phân tích câu yếu mỗi ngày; mở rộng chi tiết với gói trả phí". Không dùng thông điệp "không giới hạn" gây hiểu lầm.
-- **F-02 Đăng nhập Google:** [Feature map S02] [D-03] Nút "Tiếp tục với Google". Tự động tạo hồ sơ học viên lần đầu đăng nhập.
+- **F-02 Đăng nhập:** [Feature map S02] [D-03] Nút "Tiếp tục với Google" và form email/mật khẩu (đăng nhập, đăng ký với tên hiển thị, mật khẩu tối thiểu 8 ký tự). Tự động tạo hồ sơ học viên lần đầu đăng nhập.
 - **F-03 Thiết lập mục tiêu:** [Feature map S03] Học viên chọn band mục tiêu (5.0 – 9.0) và ngày thi dự kiến. Dữ liệu này dùng để tính nhịp luyện tập hằng ngày và nhắc báo điểm thật sau ngày thi [D-06].
 - **F-04 Kiểm tra micro 5 giây:** [Feature map S04] Thu âm 5 giây và phát lại để học viên tự kiểm tra chất lượng mic trước khi bước vào phòng thi.
 - **F-05 Quản lý quyền riêng tư & Đồng ý dữ liệu:** [Feature map S05] [D-10]
@@ -172,7 +172,7 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 Mọi quyết định điều chỉnh trong tài liệu này đều bắt nguồn từ `docs/product-decisions.md` do Người sở hữu sản phẩm phê duyệt:
 - [D-01]: Tên sản phẩm chính thức là "Vox Flow" trên cả UI và kỹ thuật (Chốt: vinh19410 xác nhận, 2026-11-05)
 - [D-02]: Phạm vi MVP v1 bám sát Feature Map 2026-11-04 và Roadmap Now/Next (Chốt: vinh19410 xác nhận, 2026-11-04)
-- [D-03]: Đăng nhập duy nhất Google OAuth trong MVP (Chốt: vinh19410 xác nhận, 2026-11-04)
+- [D-03]: Đăng nhập bằng Google OAuth hoặc email/mật khẩu trong MVP (Chốt: vinh19410 xác nhận, 2026-11-04; mở rộng email/mật khẩu 2026-11-06)
 - [D-04]: Miễn phí bằng chứng câu yếu nhất và band tổng; khóa toàn bộ 4 tiêu chí sau paywall (Chốt: vinh19410 xác nhận, 2026-11-05)
 - [D-05]: Giữ hành động North Star "Luyện lại câu yếu" thuộc màn hình kết quả `scoring-results` (Chốt: vinh19410 xác nhận, 2026-11-05)
 - [D-06]: Giữ tính năng nhập band thật sau ngày thi ở giai đoạn Next (Chốt: vinh19410 xác nhận, 2026-11-05)
