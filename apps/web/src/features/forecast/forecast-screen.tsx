@@ -142,7 +142,7 @@ export function ForecastScreen() {
               <Mic size={16} /> Luyện ngay
             </Button>
           </Card>
-        ) : (
+        ) : !isLoading && !isError && topics.length > 0 ? (
           <Card className="grid place-items-center p-7 text-center">
             <div>
               <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-good-soft text-good">
@@ -151,7 +151,7 @@ export function ForecastScreen() {
               <div className="mt-3 font-bold">Bạn đã phủ hết đề quý này!</div>
             </div>
           </Card>
-        )}
+        ) : null}
       </div>
 
       <ForecastToolbar
@@ -183,8 +183,8 @@ export function ForecastScreen() {
 
       {/* Error state */}
       {isError && (
-        <Card className="mt-5 border-error/30 p-8 text-center text-sm">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-error-soft text-error">
+        <Card className="mt-5 border-bad/30 p-8 text-center text-sm">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-bad-soft text-bad">
             <AlertCircle size={24} />
           </div>
           <div className="mt-3 font-bold text-ink">Không thể tải danh sách đề forecast</div>

@@ -191,7 +191,8 @@ describe("Forecast practice flow", () => {
       const stop = screen.getByLabelText("Dừng ghi");
       fireEvent.click(stop);
 
-      // Verify no runtime throw occurred and recorded successfully
+      // Verify no runtime throw occurred and recorded successfully with valid transcript
+      expect(screen.queryByText("(Không nhận được giọng nói)")).toBeNull();
       expect(screen.getByText("Câu tiếp theo")).toBeTruthy();
     } finally {
       vi.useRealTimers();

@@ -122,4 +122,38 @@ describe("forecast router and 2026-Q3 seed data", () => {
     const updatedTarget = updatedList.find((t) => t.id === target.id);
     expect(updatedTarget?.realReportCount).toBe(1);
   });
+
+  it("preserves isNew flag when admin updates questions of a Part 2 topic", async () => {
+    const adminUser = {
+      id: "usr_admin_forecast_test",
+      name: "Admin User",
+      email: "admin@voxflow.ai",
+      emailVerified: false,
+      image: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await testCtx.db.insert(user).values([adminUser]);
+
+    const adminCaller = appRouter.createCaller({
+      db: testCtx.db,
+      env: { ADMIN_EMAILS: "admin@voxflow.ai" },
+      session: { user: adminUser, session: { id: "sess_admin", userId: adminUser.id } as never },
+    });
+
+    const list = await adminCaller.forecast.listPublished({ quarter: "2026-Q3", part: 2 });
+    const target = list.find((t) => t.isNew)!;
+    expect(target).toBeDefined();
+
+    // Admin updates topic questions using prefix notation
+    await adminCaller.forecastAdmin.updateDraft({
+      id: target.id,
+      questions: ["[Cue] Updated point 1", "[Cue] Updated point 2", "[Part 3] Updated question 1"],
+    });
+
+    // Check published query preserves isNew
+    const updatedList = await adminCaller.forecast.listPublished({ quarter: "2026-Q3", part: 2 });
+    const updatedTarget = updatedList.find((t) => t.id === target.id);
+    expect(updatedTarget?.isNew).toBe(true);
+  });
 });
