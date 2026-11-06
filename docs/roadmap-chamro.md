@@ -170,7 +170,7 @@ Xanh: Now · Vàng: Next · Xám nhạt: Later · Xám xanh: dịch vụ ngoài.
 |---|---|---|---|---|
 | D-01 | Tên sản phẩm | ChấmRõ | Vox Flow | Chốt: Vox Flow (`docs/product-decisions.md`) |
 | D-02 | Phạm vi v1 | 26 mục MVP, gồm cả forecast và nhắc luyện | 6 tính năng Must | Chốt: 26 mục MVP bám Feature Map (`docs/product-decisions.md`) |
-| D-03 | Đăng nhập | Chỉ Google | Google hoặc link qua email | Chốt: Chỉ Google OAuth (`docs/product-decisions.md`) |
+| D-03 | Đăng nhập | Chỉ Google | Google hoặc link qua email | Chốt: Google OAuth, mở rộng thêm email/mật khẩu ngày 2026-11-06 (`docs/product-decisions.md`) |
 | D-04 | Bằng chứng miễn phí | Bằng chứng khóa sau paywall | Miễn phí bằng chứng câu yếu nhất | Chốt: Miễn phí câu yếu nhất + band tổng; paywall 4 tiêu chí (`docs/product-decisions.md`) |
 | D-05 | Luyện lại câu yếu | Không có mục riêng | Thuộc `scoring-results` và là North Star | Chốt: Giữ là North Star trong `scoring-results` (`docs/product-decisions.md`) |
 | D-06 | Báo band thật sau ngày thi | Không có mục riêng | Thuộc `onboarding`, dùng để đối chiếu độ sát điểm | Chốt: Giữ ở Next, nhắc sau ngày thi (`docs/product-decisions.md`) |
