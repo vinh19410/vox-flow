@@ -11,8 +11,18 @@ import { LandingScreen } from "@/features/landing/landing-screen";
 import { ConsentRows } from "@/features/onboarding/components/consent-rows";
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen";
 import { PrivacyScreen } from "@/features/privacy/privacy-screen";
+import { authClient } from "@/lib/auth-client";
 import { trpcClient } from "@/utils/trpc";
 
+vi.mock("@/lib/auth-client", () => ({
+  authClient: {
+    signIn: {
+      social: vi.fn(),
+    },
+    signOut: vi.fn(),
+    getSession: vi.fn(),
+  },
+}));
 /**
  * Test harness mirroring AppStateProvider: real AppState transitions through
  * `set`, spyable `go`/`goResult`/`toast`, and the real ProtoToast renderer.
@@ -185,13 +195,113 @@ describe("ConsentRows", () => {
 });
 
 describe("AuthScreen", () => {
-  it("switches between signup and login modes", () => {
+  it("renders Google login only and no email input", () => {
     renderWithApp(<AuthScreen />);
-    expect(screen.getByRole("heading", { name: "Tạo tài khoản" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Đăng nhập" }));
+    expect(screen.getByRole("heading", { name: "Đăng nhập Vox Flow" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Tiếp tục với Google/i })).toBeTruthy();
+    expect(screen.queryByPlaceholderText("ban@email.com")).toBeNull();
+    expect(screen.queryByText("Gửi link đăng nhập")).toBeNull();
+    expect(screen.queryByText("hoặc")).toBeNull();
+  });
+
+  it("invokes authClient.signIn.social with Google provider on button click", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: { url: "https://accounts.google.com", redirect: true },
+      error: null,
+    } as never);
+
+    renderWithApp(<AuthScreen />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    expect(authClient.signIn.social).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        callbackURL: expect.stringContaining("/app/dashboard"),
+        errorCallbackURL: expect.stringMatching(/\/auth$/),
+      }),
+    );
+  });
+
+  it("preserves valid redirect deep link in callbackURL and errorCallbackURL", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: { url: "https://accounts.google.com", redirect: true },
+      error: null,
+    } as never);
+
+    renderWithApp(<AuthScreen search={{ redirect: "/app/history/att-123" }} />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    expect(authClient.signIn.social).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        callbackURL: expect.stringContaining("/app/history/att-123"),
+        errorCallbackURL: expect.stringContaining(
+          encodeURIComponent("/app/history/att-123"),
+        ),
+      }),
+    );
+  });
+  it("rejects malicious or invalid redirect paths and defaults to dashboard", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: { url: "https://accounts.google.com", redirect: true },
+      error: null,
+    } as never);
+
+    renderWithApp(<AuthScreen search={{ redirect: "//evil.com/hack" }} />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    expect(authClient.signIn.social).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        callbackURL: expect.stringMatching(/\/app\/dashboard$/),
+        errorCallbackURL: expect.stringMatching(/\/auth$/),
+      }),
+    );
+  });
+
+  it("displays error message for oauth_error search param", () => {
+    renderWithApp(<AuthScreen search={{ error: "oauth_error" }} />);
     expect(
-      screen.getByRole("heading", { name: "Chào mừng trở lại" }),
+      screen.getByText(/Đăng nhập Google không thành công hoặc đã bị hủy/i),
     ).toBeTruthy();
+  });
+
+  it("displays error message when search param is an array (duplicate error query keys)", () => {
+    renderWithApp(
+      <AuthScreen
+        search={{
+          error: ["oauth_error", "access_denied"] as unknown as string,
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(/Đăng nhập Google không thành công hoặc đã bị hủy/i),
+    ).toBeTruthy();
+  });
+
+  it("handles sign-in error response without freezing the button", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: null,
+      error: {
+        status: 400,
+        statusText: "Bad Request",
+        message: "OAuth server error",
+      },
+    } as never);
+
+    renderWithApp(<AuthScreen />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Đăng nhập Google không thành công. Vui lòng thử lại."),
+      ).toBeTruthy();
+    });
+    expect(googleBtn.getAttribute("disabled")).toBeNull();
   });
 });
 

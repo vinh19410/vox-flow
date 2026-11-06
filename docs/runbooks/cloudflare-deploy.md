@@ -19,8 +19,21 @@ Alchemy sử dụng Cloudflare API Token để tương tác và tạo tài nguy�
 ### 1.2. Biến môi trường của ứng dụng
 Theo định nghĩa trong `apps/server/.env.schema` và `packages/infra/alchemy.run.ts`:
 - **`BETTER_AUTH_SECRET`**: Chuỗi bí mật ngẫu nhiên (tối thiểu 32 ký tự) dùng để ký session token cho Better Auth. Tạo nhanh bằng lệnh: `openssl rand -hex 32`.
-- **`CORS_ORIGIN`**: Tên miền hoặc URL của frontend Web được phép gửi request đến Worker (ví dụ: `https://web-xyz.workers.dev` hoặc domain production).
+- **`CORS_ORIGIN`**: Tên miền hoặc URL của frontend Web được phép gửi request đến Worker (ví dụ: `http://localhost:3001` hoặc domain production). **Lưu ý**: Tuyệt đối không để dấu gạch chéo ở cuối (`/`).
 - **`BETTER_AUTH_URL`**: Tự động được gán từ `Cloudflare.Worker.URL` trong runtime của Worker.
+- **`GOOGLE_CLIENT_ID`**: Client ID của ứng dụng Google OAuth 2.0 tạo trên Google Cloud Console (loại Web Application).
+- **`GOOGLE_CLIENT_SECRET`**: Client Secret tương ứng của ứng dụng Google OAuth 2.0.
+
+### 1.3. Cấu hình Google Cloud Console OAuth Client
+Trên Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client IDs):
+- **Authorized JavaScript origins**:
+  - Cục bộ: `http://localhost:3001`
+  - Triển khai: `<web-url>` (hoặc tên miền chính thức của web)
+- **Authorized redirect URIs**:
+  - Cục bộ: `http://localhost:3000/api/auth/callback/google`
+  - Triển khai: `<server-url>/api/auth/callback/google`
+
+> **Lưu ý về Cookie và Domain (WI-07)**: Do `workers.dev` nằm trong danh sách Public Suffix List (PSL), hai worker `web-xyz.workers.dev` và `server-xyz.workers.dev` được trình duyệt coi là hai site khác nhau. Khi đưa vào vận hành thực tế cho học viên, bắt buộc cấu hình tên miền tùy chỉnh cùng eTLD+1 (ví dụ `app.chamro.vn` và `api.chamro.vn`) hoặc định tuyến proxy `/api/*` qua web worker để tránh các trình duyệt (Safari ITP, Brave, Chrome) chặn cookie session bên thứ ba.
 
 ---
 

@@ -1,10 +1,15 @@
 import { LogOut } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
+import { authClient } from "@/lib/auth-client";
 
 export function UserCard() {
   const { s, go } = useApp();
 
+  const handleSignOut = async () => {
+    await authClient.signOut().catch(() => {});
+    go("landing");
+  };
   return (
     <div className="mt-auto rounded-2xl border border-line bg-white p-4">
       <div className="flex items-center gap-3">
@@ -18,7 +23,7 @@ export function UserCard() {
           </div>
         </div>
         <button
-          onClick={() => go("landing")}
+          onClick={handleSignOut}
           className="text-subtle hover:text-ink"
           aria-label="Đăng xuất"
         >

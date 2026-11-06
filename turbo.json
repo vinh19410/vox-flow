@@ -44,6 +44,8 @@
     "BETTER_AUTH_URL",
     "CI",
     "CORS_ORIGIN",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
     "NODE_ENV",
     "VERCEL",
     "VERCEL_ENV",

@@ -27,6 +27,8 @@ export const server = Cloudflare.Worker("server", {
     LAUNCH_ALLOWED_EMAILS: Config.String("LAUNCH_ALLOWED_EMAILS").pipe(Config.withDefault("")),
     OPENAI_API_KEY: Config.Redacted("OPENAI_API_KEY").pipe(Config.withDefault("")),
     SCORE_DISPUTE_ENABLED: Config.String("SCORE_DISPUTE_ENABLED").pipe(Config.withDefault("false")),
+    GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
+    GOOGLE_CLIENT_SECRET: Config.Redacted("GOOGLE_CLIENT_SECRET"),
   },
   crons: ["0 * * * *"],
   dev: {
