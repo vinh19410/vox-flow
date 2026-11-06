@@ -1,23 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 
+export type MicStatus = "idle" | "listening" | "denied" | "unavailable";
+
 export interface MicLevelState {
   level: number;
   real: boolean | null;
+  status: MicStatus;
+  denied: boolean;
 }
 
-/** Live mic level. Uses the real microphone when allowed, otherwise falls back to a simulated signal. */
+/** Live mic level. Uses real MediaStream without simulation when denied or unavailable. */
 export function useMicLevel(active: boolean): MicLevelState {
   const [level, setLevel] = useState(0);
   const [real, setReal] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<MicStatus>("idle");
+  const [denied, setDenied] = useState(false);
   const raf = useRef(0);
+
   useEffect(() => {
     if (!active) {
       setLevel(0);
       setReal(null);
+      setStatus("idle");
+      setDenied(false);
       return;
     }
+
     const media: { stream: MediaStream | null; ctx: AudioContext | null } = { stream: null, ctx: null };
     let cancelled = false;
+
     const releaseMedia = () => {
       const { stream, ctx } = media;
       media.stream = null;
@@ -25,52 +36,69 @@ export function useMicLevel(active: boolean): MicLevelState {
       stream?.getTracks().forEach((t) => t.stop());
       void ctx?.close()?.catch(() => {});
     };
-    const simulate = () => {
-      if (cancelled) return;
-      setReal(false);
-      const t0 = performance.now();
-      const loop = () => {
-        if (cancelled) return;
-        const t = (performance.now() - t0) / 1000;
-        const wave = Math.abs(Math.sin(t * 3.1)) * Math.abs(Math.sin(t * 1.3));
-        setLevel(0.35 + 0.3 * wave + Math.random() * 0.2);
-        raf.current = requestAnimationFrame(loop);
-      };
-      loop();
-    };
+
     const mediaPromise = navigator.mediaDevices?.getUserMedia?.({ audio: true });
     if (!mediaPromise) {
-      simulate();
+      setReal(false);
+      setStatus("unavailable");
+      setDenied(true);
+      setLevel(0);
     } else {
       mediaPromise
-        .then((s) => {
+        .then(async (s) => {
           if (cancelled) {
             s.getTracks().forEach((t) => t.stop());
             return;
           }
           media.stream = s;
-          const audioCtx = new AudioContext();
-          media.ctx = audioCtx;
-          const an = audioCtx.createAnalyser();
-          an.fftSize = 512;
-          audioCtx.createMediaStreamSource(s).connect(an);
-          const buf = new Uint8Array(an.fftSize);
-          setReal(true);
-          const loop = () => {
-            if (cancelled) return;
-            an.getByteTimeDomainData(buf);
-            let sum = 0;
-            for (const v of buf) sum += ((v - 128) / 128) ** 2;
-            setLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4));
-            raf.current = requestAnimationFrame(loop);
-          };
-          loop();
+          try {
+            const audioCtx = new AudioContext();
+            media.ctx = audioCtx;
+            if (audioCtx.state === "suspended") {
+              await audioCtx.resume().catch(() => {});
+            }
+            if (cancelled) {
+              releaseMedia();
+              return;
+            }
+            const an = audioCtx.createAnalyser();
+            an.fftSize = 512;
+            audioCtx.createMediaStreamSource(s).connect(an);
+            const buf = new Uint8Array(an.fftSize);
+            setReal(true);
+            setStatus("listening");
+            setDenied(false);
+
+            const loop = () => {
+              if (cancelled) return;
+              an.getByteTimeDomainData(buf);
+              let sum = 0;
+              for (const v of buf) sum += ((v - 128) / 128) ** 2;
+              setLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4));
+              raf.current = requestAnimationFrame(loop);
+            };
+            loop();
+          } catch {
+            releaseMedia();
+            if (!cancelled) {
+              setReal(false);
+              setStatus("unavailable");
+              setDenied(true);
+              setLevel(0);
+            }
+          }
         })
         .catch(() => {
           releaseMedia();
-          if (!cancelled) simulate();
+          if (!cancelled) {
+            setReal(false);
+            setStatus("denied");
+            setDenied(true);
+            setLevel(0);
+          }
         });
     }
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf.current);
@@ -78,5 +106,5 @@ export function useMicLevel(active: boolean): MicLevelState {
     };
   }, [active]);
 
-  return { level, real };
+  return { level, real, status, denied };
 }

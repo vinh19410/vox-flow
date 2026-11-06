@@ -35,15 +35,17 @@ describe("useMicLevel", () => {
     }
   });
 
-  it("falls back to simulated signal (real === false) when getUserMedia rejects", async () => {
+  it("reports denied status and zero level when getUserMedia rejects", async () => {
     setGetUserMedia(() => Promise.reject(new Error("Permission denied")));
 
     const { result, unmount } = renderHook(() => useMicLevel(true));
 
     await waitFor(() => {
       expect(result.current.real).toBe(false);
+      expect(result.current.denied).toBe(true);
+      expect(result.current.status).toBe("denied");
     });
-    expect(result.current.level).toBeGreaterThan(0);
+    expect(result.current.level).toBe(0);
 
     unmount();
   });

@@ -5,6 +5,7 @@ import { disputeAdminRouter } from "./dispute-admin";
 import { forecastRouter } from "./forecast";
 import { forecastAdminRouter } from "./forecast-admin";
 import { privacyRouter } from "./privacy";
+import { profileRouter } from "./profile";
 
 export const appRouter = router({
   healthCheck: publicProcedure.query(() => {
@@ -18,6 +19,7 @@ export const appRouter = router({
   }),
   attempt: attemptRouter,
   privacy: privacyRouter,
+  profile: profileRouter,
   dispute: disputeRouter,
   disputeAdmin: disputeAdminRouter,
   forecast: forecastRouter,

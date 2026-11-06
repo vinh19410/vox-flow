@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -11,8 +11,48 @@ import { LandingScreen } from "@/features/landing/landing-screen";
 import { ConsentRows } from "@/features/onboarding/components/consent-rows";
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen";
 import { PrivacyScreen } from "@/features/privacy/privacy-screen";
-import { trpcClient } from "@/utils/trpc";
+const profileUpsertSpy = vi.fn().mockResolvedValue({ targetBand: 6.5, examDate: null });
+const profileCompleteSpy = vi.fn().mockResolvedValue({ onboardedAt: new Date() });
+const privacySetConsentSpy = vi.fn().mockResolvedValue({ success: true });
 
+vi.mock("@/utils/trpc", () => ({
+  trpcClient: {
+    profile: {
+      upsert: {
+        mutate: (...args: unknown[]) => profileUpsertSpy(...args),
+      },
+      completeOnboarding: {
+        mutate: (...args: unknown[]) => profileCompleteSpy(...args),
+      },
+      get: {
+        query: vi.fn().mockResolvedValue(null),
+      },
+    },
+    privacy: {
+      setConsent: {
+        mutate: (...args: unknown[]) => privacySetConsentSpy(...args),
+      },
+    },
+  },
+}));
+
+type MockMicReturn = {
+  level: number;
+  real: boolean | null;
+  status: "idle" | "listening" | "denied" | "unavailable";
+  denied: boolean;
+};
+
+const micLevelMock = vi.fn((active: boolean): MockMicReturn => ({
+  level: active ? 0.6 : 0,
+  real: active ? true : null,
+  status: active ? "listening" : "idle",
+  denied: false,
+}));
+
+vi.mock("@/hooks/use-mic-level", () => ({
+  useMicLevel: (active: boolean) => micLevelMock(active),
+}));
 /**
  * Test harness mirroring AppStateProvider: real AppState transitions through
  * `set`, spyable `go`/`goResult`/`toast`, and the real ProtoToast renderer.
@@ -129,10 +169,10 @@ describe("LandingScreen", () => {
 });
 
 describe("OnboardingScreen", () => {
-  it("renders 8 band buttons, updates s.target, and advances to mic check", () => {
+  it("renders 9 band buttons (5.0-9.0), updates s.target, and advances to mic check with null exam date", async () => {
     const { set } = renderWithApp(<OnboardingScreen />);
 
-    for (const band of [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5]) {
+    for (const band of [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0]) {
       expect(
         screen.getByRole("button", { name: band.toFixed(1) }),
       ).toBeTruthy();
@@ -145,16 +185,165 @@ describe("OnboardingScreen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
-    expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    await waitFor(() => {
+      expect(profileUpsertSpy).toHaveBeenCalledWith({
+        targetBand: 6.5,
+        examDate: null,
+      });
+      expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    });
   });
 
-  it("advances from mic check to consent step", () => {
+  it("saves explicitly chosen exam date", async () => {
+    renderWithApp(<OnboardingScreen />);
+    const dateInput = document.querySelector('input[type="date"]');
+    expect(dateInput).toBeTruthy();
+    fireEvent.change(dateInput!, { target: { value: "2029-12-31" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+    await waitFor(() => {
+      expect(profileUpsertSpy).toHaveBeenCalledWith({
+        targetBand: 7.0,
+        examDate: "2029-12-31",
+      });
+      expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    });
+  });
+
+  it("shows persistent blocked warning and retry button when mic permission is denied", async () => {
+    micLevelMock.mockImplementation((active: boolean): MockMicReturn => ({
+      level: 0,
+      real: active ? false : null,
+      status: active ? "denied" : "idle",
+      denied: active,
+    }));
+
     renderWithApp(<OnboardingScreen />);
     fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
-    fireEvent.click(screen.getByRole("button", { name: "Bỏ qua" }));
-    expect(
-      screen.getByText("Bạn quyết định dữ liệu của mình"),
-    ).toBeTruthy();
+
+    await waitFor(() => {
+      expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Ghi thử 5 giây" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Trình duyệt đang chặn micro.")).toBeTruthy();
+      expect(screen.getByText("Micro bị chặn")).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Thử lại quyền micro" }),
+      ).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Bỏ qua" })).toBeNull();
+      expect(
+        screen.queryByText("Bạn quyết định dữ liệu của mình"),
+      ).toBeNull();
+    });
+  });
+
+  it("completes 5-second mic check and advances to consent step, then completes onboarding", async () => {
+    micLevelMock.mockImplementation((active: boolean): MockMicReturn => ({
+      level: active ? 0.7 : 0,
+      real: active ? true : null,
+      status: active ? "listening" : "idle",
+      denied: false,
+    }));
+
+    const { go } = renderWithApp(<OnboardingScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ qua ngày thi" }));
+
+    await waitFor(() => {
+      expect(profileUpsertSpy).toHaveBeenCalledWith({
+        targetBand: 7.0,
+        examDate: null,
+      });
+      expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    });
+
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    fireEvent.click(screen.getByRole("button", { name: "Ghi thử 5 giây" }));
+
+    act(() => {
+      vi.advanceTimersByTime(5200);
+    });
+
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Micro ổn, tiếp tục" }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Micro ổn, tiếp tục" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Bạn quyết định dữ liệu của mình"),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Vào trang chủ" }));
+
+    await waitFor(() => {
+      expect(profileCompleteSpy).toHaveBeenCalledTimes(1);
+      expect(go).toHaveBeenCalledWith("dashboard");
+    });
+  });
+  it("displays error banner and stays on goal step when profile upsert fails", async () => {
+    profileUpsertSpy.mockRejectedValueOnce(new Error("Lỗi kết nối máy chủ"));
+
+    renderWithApp(<OnboardingScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Tiếp tục" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Không thể lưu mục tiêu. Vui lòng kiểm tra kết nối và thử lại.")).toBeTruthy();
+      expect(screen.queryByText("Kiểm tra micro & môi trường")).toBeNull();
+    });
+  });
+
+  it("displays error banner and does not navigate when completeOnboarding fails", async () => {
+    micLevelMock.mockImplementation((active: boolean): MockMicReturn => ({
+      level: active ? 0.7 : 0,
+      real: active ? true : null,
+      status: active ? "listening" : "idle",
+      denied: false,
+    }));
+    profileCompleteSpy.mockRejectedValueOnce(new Error("Không thể hoàn tất"));
+
+    const { go } = renderWithApp(<OnboardingScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Bỏ qua ngày thi" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+    });
+
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    fireEvent.click(screen.getByRole("button", { name: "Ghi thử 5 giây" }));
+
+    act(() => {
+      vi.advanceTimersByTime(5200);
+    });
+
+    vi.useRealTimers();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Micro ổn, tiếp tục" }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Micro ổn, tiếp tục" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Bạn quyết định dữ liệu của mình"),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Vào trang chủ" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Không thể hoàn tất onboarding. Vui lòng thử lại.")).toBeTruthy();
+      expect(go).not.toHaveBeenCalled();
+    });
   });
 });
 
