@@ -2,6 +2,12 @@
 
 Sản phẩm luyện thi IELTS Speaking với giám khảo và chấm điểm bằng AI. Tên chính thức của sản phẩm là "Vox Flow" (trên cả giao diện người dùng và package `@vox-flow/*`) theo quyết định D-01 đã chốt trong PRD.
 
+## Ngôn ngữ giao tiếp
+
+- **Response, summary, completion report, giải thích: TIẾNG VIỆT** (mặc định cho mọi session/agent trong repo này).
+- Giữ nguyên tiếng Anh cho: commit message (conventional commits), PR title, code identifier, tên test, thuật ngữ kỹ thuật đã tiếng Anh hoá trong codebase.
+- PR body / issue comment / changelog theo precedent tiếng Việt của repo (xem PR #281, #284).
+
 ## Lệnh
 
 Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script khác trong `README.md`.
