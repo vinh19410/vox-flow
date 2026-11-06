@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, countDistinct, desc, eq, inArray } from "drizzle-orm";
+import { and, countDistinct, desc, eq } from "drizzle-orm";
 import { deduplicateAndDraftTopics } from "../forecast/dedupe";
 import { z } from "zod";
 
@@ -50,9 +50,17 @@ export const forecastAdminRouter = router({
       }
 
       const sources = await ctx.db
-        .select()
+        .select({
+          id: forecastSource.id,
+          topicId: forecastSource.topicId,
+          sourceType: forecastSource.sourceType,
+          sourceUrl: forecastSource.sourceUrl,
+          rawContent: forecastSource.rawContent,
+          createdAt: forecastSource.createdAt,
+        })
         .from(forecastSource)
-        .where(inArray(forecastSource.topicId, topicIds));
+        .innerJoin(forecastTopic, eq(forecastSource.topicId, forecastTopic.id))
+        .where(whereClause);
 
       const reportCounts = await ctx.db
         .select({
@@ -60,7 +68,8 @@ export const forecastAdminRouter = router({
           count: countDistinct(forecastReport.userId),
         })
         .from(forecastReport)
-        .where(inArray(forecastReport.topicId, topicIds))
+        .innerJoin(forecastTopic, eq(forecastReport.topicId, forecastTopic.id))
+        .where(whereClause)
         .groupBy(forecastReport.topicId);
 
       const countMap = new Map<string, number>();
@@ -72,7 +81,16 @@ export const forecastAdminRouter = router({
         const topicSources = sources.filter((s) => s.topicId === t.id);
         let parsedQuestions: string[] = [];
         try {
-          parsedQuestions = JSON.parse(t.questions) as string[];
+          const raw = JSON.parse(t.questions);
+          if (raw && typeof raw === "object" && !Array.isArray(raw) && "cueCards" in raw && "part3" in raw) {
+            const cue = Array.isArray(raw.cueCards) ? raw.cueCards.map((c: unknown) => `[Cue] ${c}`) : [];
+            const p3 = Array.isArray(raw.part3) ? raw.part3.map((q: unknown) => `[Part 3] ${q}`) : [];
+            parsedQuestions = [...cue, ...p3];
+          } else if (Array.isArray(raw)) {
+            parsedQuestions = raw.map(String);
+          } else {
+            parsedQuestions = [];
+          }
         } catch {
           parsedQuestions = [];
         }
@@ -117,12 +135,30 @@ export const forecastAdminRouter = router({
       const newTopicId = crypto.randomUUID();
       const now = new Date();
 
+      let serializedQuestions = JSON.stringify(input.questions);
+      if (input.part === 2) {
+        const cueCards: string[] = [];
+        const part3: string[] = [];
+        for (const q of input.questions) {
+          if (q.startsWith("[Cue] ")) {
+            cueCards.push(q.slice(6));
+          } else if (q.startsWith("[Part 3] ")) {
+            part3.push(q.slice(9));
+          } else {
+            cueCards.push(q);
+          }
+        }
+        if (cueCards.length > 0 || part3.length > 0) {
+          serializedQuestions = JSON.stringify({ cueCards, part3 });
+        }
+      }
+
       await ctx.db.insert(forecastTopic).values({
         id: newTopicId,
         title: input.title,
         quarter: input.quarter,
         part: input.part,
-        questions: JSON.stringify(input.questions),
+        questions: serializedQuestions,
         status: "draft", // ALWAYS draft initially
         createdAt: now,
         updatedAt: now,
@@ -186,7 +222,39 @@ export const forecastAdminRouter = router({
       if (input.title !== undefined) updates.title = input.title;
       if (input.quarter !== undefined) updates.quarter = input.quarter;
       if (input.part !== undefined) updates.part = input.part;
-      if (input.questions !== undefined) updates.questions = JSON.stringify(input.questions);
+      if (input.questions !== undefined) {
+        const targetPart = input.part ?? existing[0]?.part ?? 1;
+        if (targetPart === 2) {
+          let isNew = false;
+          try {
+            const parsedExisting = JSON.parse(existing[0]?.questions ?? "{}");
+            if (parsedExisting && typeof parsedExisting === "object" && "isNew" in parsedExisting) {
+              isNew = Boolean(parsedExisting.isNew);
+            }
+          } catch {
+            isNew = false;
+          }
+
+          const cueCards: string[] = [];
+          const part3: string[] = [];
+          for (const q of input.questions) {
+            if (q.startsWith("[Cue] ")) {
+              cueCards.push(q.slice(6));
+            } else if (q.startsWith("[Part 3] ")) {
+              part3.push(q.slice(9));
+            } else {
+              cueCards.push(q);
+            }
+          }
+          if (cueCards.length > 0 || part3.length > 0) {
+            updates.questions = JSON.stringify({ cueCards, part3, isNew });
+          } else {
+            updates.questions = JSON.stringify(input.questions);
+          }
+        } else {
+          updates.questions = JSON.stringify(input.questions);
+        }
+      }
 
       await ctx.db.update(forecastTopic).set(updates).where(eq(forecastTopic.id, input.id));
 

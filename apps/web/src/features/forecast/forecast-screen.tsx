@@ -1,17 +1,20 @@
-import { Check, Mic, Shuffle, Sparkles, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertCircle, Check, Loader2, Mic, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
 import { useApp } from "@/features/app-state/types";
+import { mapApiTopicToForecastTopic } from "./builders";
 import { CoverageBanner } from "./components/coverage-banner";
 import { ForecastToolbar } from "./components/forecast-toolbar";
 import type { ForecastFilter } from "./components/forecast-toolbar";
 import { TopicCard } from "./components/topic-card";
 import { TopicDetailModal } from "./components/topic-detail-modal";
-import { FORECAST, QUARTER } from "@/features/forecast/data";
+import { QUARTER } from "@/features/forecast/data";
 import type { ForecastKind, ForecastTopic } from "@/features/forecast/types";
 import { PageHead } from "@/layouts/page-head";
+import { trpc } from "@/utils/trpc";
 
 export function ForecastScreen() {
   const { s, set, go, toast } = useApp();
@@ -20,33 +23,84 @@ export function ForecastScreen() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<ForecastTopic | null>(null);
 
+  const {
+    data: apiTopics,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery(trpc.forecast.listPublished.queryOptions({ quarter: QUARTER.id }));
+
+  const topics = useMemo(
+    () => (apiTopics ?? []).map(mapApiTopicToForecastTopic),
+    [apiTopics],
+  );
+
+  const counts = useMemo(
+    () => ({
+      p1: topics.filter((t) => t.kind === "p1").length,
+      p23: topics.filter((t) => t.kind === "p23").length,
+    }),
+    [topics],
+  );
+
   const suggestion = useMemo(
-    () => [...FORECAST].filter((t) => s.practiced[t.id] === undefined).sort((a, b) => b.reports - a.reports)[0],
-    [s.practiced],
+    () =>
+      [...topics]
+        .filter((t) => s.practiced[t.id] === undefined)
+        .sort((a, b) => b.reports - a.reports)[0],
+    [topics, s.practiced],
   );
 
   const list = useMemo(
     () =>
-      FORECAST.filter((t) => t.kind === kind)
-        .filter((t) => (filter === "hot" ? t.tag === "hot" : filter === "new" ? t.tag === "new" : filter === "todo" ? s.practiced[t.id] === undefined : filter === "saved" ? s.saved.includes(t.id) : true))
-        .filter((t) => !q || (t.title + t.category + t.items.map((i) => i.text).join(" ")).toLowerCase().includes(q.toLowerCase()))
+      topics
+        .filter((t) => t.kind === kind)
+        .filter((t) =>
+          filter === "hot"
+            ? t.tag === "hot"
+            : filter === "new"
+              ? t.tag === "new"
+              : filter === "todo"
+                ? s.practiced[t.id] === undefined
+                : filter === "saved"
+                  ? s.saved.includes(t.id)
+                  : true,
+        )
+        .filter((t) => {
+          if (!q) return true;
+          const searchableText = [
+            t.title,
+            t.category,
+            ...t.items.flatMap((i) => [
+              i.text,
+              ...(i.cue?.points ?? []),
+              i.cue?.ending ?? "",
+            ]),
+          ]
+            .join(" ")
+            .toLowerCase();
+          return searchableText.includes(q.toLowerCase());
+        })
         .sort((a, b) => b.reports - a.reports),
-    [kind, filter, q, s.practiced, s.saved],
+    [topics, kind, filter, q, s.practiced, s.saved],
   );
 
   const start = (t: ForecastTopic) => {
     set({ practice: { topicId: t.id, title: t.title, kind: t.kind, items: t.items } });
     go("exam");
   };
+
   const toggleSave = (id: string) => {
     const on = s.saved.includes(id);
     set({ saved: on ? s.saved.filter((x) => x !== id) : [...s.saved, id] });
     toast(on ? "Đã bỏ khỏi danh sách ôn" : "Đã lưu vào danh sách ôn");
   };
+
   const random = () => {
-    const pool = FORECAST.filter((t) => t.tag === "hot" && s.practiced[t.id] === undefined);
-    const pick = (pool.length ? pool : FORECAST)[Math.floor(Math.random() * (pool.length || FORECAST.length))];
-    setOpen(pick);
+    const pool = topics.filter((t) => t.tag === "hot" && s.practiced[t.id] === undefined);
+    const pick = (pool.length ? pool : topics)[Math.floor(Math.random() * (pool.length || topics.length))];
+    if (pick) setOpen(pick);
   };
 
   return (
@@ -56,7 +110,7 @@ export function ForecastScreen() {
         title="Luyện theo đề dự đoán"
         sub={`Tổng hợp từ báo cáo của thí sinh vừa thi, cập nhật ${QUARTER.updated}. Giám khảo AI vẫn hỏi nối tiếp theo câu trả lời của bạn — không thể học vẹt.`}
         right={
-          <Button variant="outline" onClick={random}>
+          <Button variant="outline" onClick={random} disabled={isLoading || topics.length === 0}>
             <Shuffle size={16} /> Bốc ngẫu nhiên đề hot
           </Button>
         }
@@ -64,8 +118,15 @@ export function ForecastScreen() {
 
       {/* Coverage + suggestion */}
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <CoverageBanner practiced={s.practiced} examDate={s.examDate} />
-        {suggestion ? (
+        <CoverageBanner topics={topics} practiced={s.practiced} examDate={s.examDate} />
+        {isLoading ? (
+          <Card className="flex flex-col p-7 animate-pulse" data-testid="suggestion-loading">
+            <div className="h-4 w-1/3 rounded bg-paper-2" />
+            <div className="mt-3 h-6 w-3/4 rounded bg-paper-2" />
+            <div className="mt-2 h-4 w-1/2 rounded bg-paper-2" />
+            <div className="mt-auto h-10 w-full rounded-full bg-paper-2" />
+          </Card>
+        ) : suggestion ? (
           <Card className="flex flex-col p-7">
             <div className="flex items-center gap-2 text-xs font-semibold text-brand">
               <Sparkles size={14} /> Gợi ý luyện tiếp
@@ -93,10 +154,49 @@ export function ForecastScreen() {
         )}
       </div>
 
-      <ForecastToolbar kind={kind} onKind={setKind} filter={filter} onFilter={setFilter} q={q} onQ={setQ} />
+      <ForecastToolbar
+        counts={counts}
+        kind={kind}
+        onKind={setKind}
+        filter={filter}
+        onFilter={setFilter}
+        q={q}
+        onQ={setQ}
+      />
+
+      {/* Loading Skeleton */}
+      {isLoading && (
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="forecast-loading">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i} className="animate-pulse p-6">
+              <div className="h-4 w-1/3 rounded bg-paper-2" />
+              <div className="mt-4 h-6 w-3/4 rounded bg-paper-2" />
+              <div className="mt-3 h-4 w-1/2 rounded bg-paper-2" />
+              <div className="mt-6 flex justify-between">
+                <div className="h-4 w-1/4 rounded bg-paper-2" />
+                <div className="h-4 w-1/4 rounded bg-paper-2" />
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Error state */}
+      {isError && (
+        <Card className="mt-5 border-error/30 p-8 text-center text-sm">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-error-soft text-error">
+            <AlertCircle size={24} />
+          </div>
+          <div className="mt-3 font-bold text-ink">Không thể tải danh sách đề forecast</div>
+          <p className="mt-1 text-subtle">{error?.message ?? "Lỗi kết nối máy chủ"}</p>
+          <Button variant="outline" className="mt-4" onClick={() => refetch()}>
+            <RotateCcw size={14} /> Thử lại
+          </Button>
+        </Card>
+      )}
 
       {/* Topic grid */}
-      {list.length ? (
+      {!isLoading && !isError && list.length > 0 && (
         <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {list.map((t) => (
             <TopicCard
@@ -109,8 +209,12 @@ export function ForecastScreen() {
             />
           ))}
         </div>
-      ) : (
-        <Card className="mt-5 py-16 text-center text-sm text-subtle">Không có chủ đề nào khớp bộ lọc.</Card>
+      )}
+
+      {!isLoading && !isError && list.length === 0 && (
+        <Card className="mt-5 py-16 text-center text-sm text-subtle">
+          Không có chủ đề nào khớp bộ lọc.
+        </Card>
       )}
 
       <TopicDetailModal

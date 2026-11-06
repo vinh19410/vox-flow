@@ -1,6 +1,5 @@
 import { Search } from "lucide-react";
 
-import { FORECAST } from "@/features/forecast/data";
 import type { ForecastKind } from "@/features/forecast/types";
 import { cx } from "@/lib/cx";
 
@@ -15,6 +14,7 @@ export const FORECAST_FILTERS: [ForecastFilter, string][] = [
 ];
 
 export interface ForecastToolbarProps {
+  counts: Record<ForecastKind, number>;
   kind: ForecastKind;
   onKind: (k: ForecastKind) => void;
   filter: ForecastFilter;
@@ -23,14 +23,13 @@ export interface ForecastToolbarProps {
   onQ: (q: string) => void;
 }
 
-export function ForecastToolbar({ kind, onKind, filter, onFilter, q, onQ }: ForecastToolbarProps) {
-  const count = (k: ForecastKind) => FORECAST.filter((t) => t.kind === k).length;
+export function ForecastToolbar({ counts, kind, onKind, filter, onFilter, q, onQ }: ForecastToolbarProps) {
   return (
     <div className="mt-10 flex flex-wrap items-center gap-3">
       <div className="flex gap-1 rounded-full bg-paper-2 p-1">
         {(["p1", "p23"] as ForecastKind[]).map((k) => (
           <button key={k} onClick={() => onKind(k)} className={cx("h-10 rounded-full px-5 text-sm font-semibold transition-all", kind === k ? "bg-white shadow-sm" : "text-ink-2")}>
-            {k === "p1" ? "Part 1" : "Part 2 & 3"} <span className="tnum ml-1 text-xs text-subtle">{count(k)}</span>
+            {k === "p1" ? "Part 1" : "Part 2 & 3"} <span className="tnum ml-1 text-xs text-subtle">{counts[k] ?? 0}</span>
           </button>
         ))}
       </div>

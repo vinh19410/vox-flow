@@ -48,8 +48,8 @@ export function useExamSession(): ExamSessionValue {
     const out: ExamStep[] = [];
     for (const i of source) {
       if (!parts.includes(i.part)) continue;
-      out.push({ key: i.id, part: i.part, text: i.text, answer: i.answer, cue: i.cue });
-      if (i.followUp) out.push({ key: `${i.id}-f`, part: i.part, text: i.followUp.text, answer: i.followUp.answer, follow: i.followUp.trigger });
+      out.push({ key: i.id, part: i.part, text: i.text, answer: i.answer ?? "", cue: i.cue });
+      if (i.followUp) out.push({ key: `${i.id}-f`, part: i.part, text: i.followUp.text, answer: i.followUp.answer ?? "", follow: i.followUp.trigger });
     }
     return out;
   }, [parts, source]);
@@ -112,9 +112,9 @@ export function useExamSession(): ExamSessionValue {
   }, [s.mode]);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
-  const words = step.answer.split(" ");
-  const spoken = Math.min(words.length, Math.floor(recT * WPS));
-  const maxRec = step.part === 2 ? 120 : step.part === 3 ? 60 : 40;
+  const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];
+  const spoken = words.length > 0 ? Math.min(words.length, Math.floor(recT * WPS)) : Math.floor(recT * WPS);
+  const maxRec = step?.part === 2 ? 120 : step?.part === 3 ? 60 : 40;
   // All exam timers pause while the exit or pre-submit modal is open.
   const paused = exitOpen || review;
 

@@ -6,12 +6,79 @@ import { createInitialState } from "@/features/app-state/initial-state";
 import { ProtoToast } from "@/features/app-state/toast";
 import { AppCtx, type AppCtxValue, type AppState } from "@/features/app-state/types";
 import { DashboardScreen } from "@/features/dashboard/dashboard-screen";
-import { FORECAST } from "@/features/forecast/data";
 import { ForecastScreen } from "@/features/forecast/forecast-screen";
+import { useQuery } from "@tanstack/react-query";
+import type * as TanstackQuery from "@tanstack/react-query";
 import { HistoryScreen } from "@/features/history/history-screen";
 import { SelectScreen } from "@/features/select/select-screen";
 import { MODES } from "@/features/exam/data";
 import { daysUntil } from "@/lib/format";
+
+const mockApiForecast = [
+  {
+    id: "f-hometown",
+    title: "Hometown",
+    quarter: "2026-Q3",
+    part: 1,
+    questions: [
+      "Where is your hometown?",
+      "What do you like most about it?",
+      "Has your hometown changed much in recent years?",
+    ],
+    status: "published",
+    realReportCount: 412,
+  },
+  {
+    id: "f-weather",
+    title: "Weather",
+    quarter: "2026-Q3",
+    part: 1,
+    questions: [
+      "What kind of weather do you like?",
+      "Does the weather affect your mood?",
+    ],
+    status: "published",
+    realReportCount: 180,
+  },
+  {
+    id: "f-ai",
+    title: "Artificial intelligence",
+    quarter: "2026-Q3",
+    part: 1,
+    questions: [
+      "Have you ever used artificial intelligence apps?",
+    ],
+    status: "published",
+    realReportCount: 198,
+  },
+  {
+    id: "f-place",
+    title: "A quiet place you like",
+    quarter: "2026-Q3",
+    part: 2,
+    questions: {
+      cueCards: ["Where it is", "How often you go there", "What you do there", "and explain why you like it"],
+      part3: ["Is it easy to find quiet places in cities?", "Why do people need quietness?"],
+    },
+    isNew: true,
+    status: "published",
+    realReportCount: 175,
+  },
+];
+
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof TanstackQuery>();
+  return {
+    ...actual,
+    useQuery: vi.fn(() => ({
+      data: mockApiForecast,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    })),
+  };
+});
 
 function createHarness(seed?: Partial<AppState>) {
   const go = vi.fn();
@@ -64,12 +131,10 @@ function renderWithApp(ui: ReactNode, seed?: Partial<AppState>) {
 describe("ForecastScreen", () => {
   it("renders the quarter label, kind tabs, and p1 topic cards", () => {
     renderWithApp(<ForecastScreen />);
-    expect(screen.getByText(/Quý 2\/2025/)).toBeTruthy();
+    expect(screen.getByText(/Quý 3\/2026/)).toBeTruthy();
 
-    const p1Count = FORECAST.filter((t) => t.kind === "p1").length;
-    const p23Count = FORECAST.filter((t) => t.kind === "p23").length;
-    expect(screen.getByRole("button", { name: new RegExp(`^Part 1 ${p1Count}`) })).toBeTruthy();
-    expect(screen.getByRole("button", { name: new RegExp(`^Part 2 & 3 ${p23Count}`) })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Part 1 3/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Part 2 & 3 1/ })).toBeTruthy();
 
     expect(screen.getAllByText("Hometown").length).toBeGreaterThan(0);
   });
@@ -85,14 +150,61 @@ describe("ForecastScreen", () => {
     renderWithApp(<ForecastScreen />);
     fireEvent.click(screen.getByRole("button", { name: "Hay gặp" }));
     expect(screen.getAllByText("Hometown").length).toBeGreaterThan(0);
-    expect(screen.getByText("Reading")).toBeTruthy();
     expect(screen.queryByText("Weather")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Đã lưu" }));
     expect(screen.getByText("Artificial intelligence")).toBeTruthy();
-    expect(screen.queryByText("Reading")).toBeNull();
+    expect(screen.queryByText("Weather")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Part 2 & 3/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Mới trong quý" }));
+    expect(screen.getByText("A quiet place you like")).toBeTruthy();
   });
 
+  it("renders skeleton loading state when query is loading", () => {
+    vi.mocked(useQuery).mockReturnValueOnce({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never);
+
+    renderWithApp(<ForecastScreen />);
+    expect(screen.getByTestId("forecast-loading")).toBeTruthy();
+  });
+
+  it("renders error state and triggers refetch on retry", () => {
+    const refetchSpy = vi.fn();
+    vi.mocked(useQuery).mockReturnValueOnce({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("Mất kết nối mạng"),
+      refetch: refetchSpy,
+    } as never);
+
+    renderWithApp(<ForecastScreen />);
+    expect(screen.getByText("Không thể tải danh sách đề forecast")).toBeTruthy();
+    expect(screen.getByText("Mất kết nối mạng")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+    expect(refetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts practice session from a forecast topic into /exam without error", () => {
+    const { set, go } = renderWithApp(<ForecastScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Luyện ngay" }));
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        practice: expect.objectContaining({
+          title: "Hometown",
+          kind: "p1",
+        }),
+      }),
+    );
+    expect(go).toHaveBeenCalledWith("exam");
+  });
   it("filters by search query and shows the empty state", () => {
     renderWithApp(<ForecastScreen />);
     const search = screen.getByPlaceholderText("Tìm chủ đề hoặc câu hỏi…");
