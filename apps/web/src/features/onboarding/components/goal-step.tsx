@@ -8,9 +8,23 @@ import { trpcClient } from "@/utils/trpc";
 
 const BANDS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0];
 
-export function GoalStep({ onNext }: { onNext: () => void }) {
+export interface GoalStepProps {
+  onNext: () => void;
+  chosenDate?: string | null;
+  onDateChange?: (date: string | null) => void;
+}
+
+export function GoalStep({
+  onNext,
+  chosenDate: propChosenDate,
+  onDateChange,
+}: GoalStepProps) {
   const { s, set } = useApp();
-  const [chosenDate, setChosenDate] = useState<string | null>(null);
+  const [localChosenDate, setLocalChosenDate] = useState<string | null>(null);
+  const chosenDate =
+    propChosenDate !== undefined ? propChosenDate : localChosenDate;
+  const setChosenDate = onDateChange ?? setLocalChosenDate;
+
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +48,8 @@ export function GoalStep({ onNext }: { onNext: () => void }) {
     }
   };
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   return (
     <>
@@ -47,6 +62,7 @@ export function GoalStep({ onNext }: { onNext: () => void }) {
             key={b}
             type="button"
             disabled={isSaving}
+            aria-pressed={s.target === b}
             onClick={() => set({ target: b })}
             className={cx(
               "tnum h-14 rounded-2xl border text-lg font-bold transition-all",
@@ -65,6 +81,7 @@ export function GoalStep({ onNext }: { onNext: () => void }) {
       </div>
       <input
         type="date"
+        aria-label="Ngày thi"
         min={todayStr}
         disabled={isSaving}
         value={chosenDate ?? ""}
@@ -83,7 +100,10 @@ export function GoalStep({ onNext }: { onNext: () => void }) {
         <button
           type="button"
           disabled={isSaving}
-          onClick={() => void saveAndNext(null)}
+          onClick={() => {
+            setChosenDate(null);
+            void saveAndNext(null);
+          }}
           className="text-sm font-medium text-subtle hover:text-ink disabled:opacity-50"
         >
           Bỏ qua ngày thi

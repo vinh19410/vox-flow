@@ -15,7 +15,15 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
   const [phase, setPhase] = useState<"idle" | "rec" | "done">("idle");
   const [t, setT] = useState(0);
   const [blocked, setBlocked] = useState<null | "denied" | "unavailable">(null);
+  const [maxLevel, setMaxLevel] = useState(0);
+  const [tooQuiet, setTooQuiet] = useState(false);
   const { level, status, denied } = useMicLevel(phase === "rec");
+
+  useEffect(() => {
+    if (phase === "rec") {
+      setMaxLevel((m) => Math.max(m, level));
+    }
+  }, [phase, level]);
 
   useEffect(() => {
     if (phase !== "rec") return;
@@ -33,12 +41,21 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
 
   useEffect(() => {
     if (t >= 5 && status === "listening") {
-      setPhase("done");
+      if (maxLevel >= 0.05) {
+        setPhase("done");
+        setTooQuiet(false);
+      } else {
+        setPhase("idle");
+        setTooQuiet(true);
+        setT(0);
+      }
     }
-  }, [t, status]);
+  }, [t, status, maxLevel]);
 
   const handleRetry = () => {
     setBlocked(null);
+    setTooQuiet(false);
+    setMaxLevel(0);
     setT(0);
     setPhase("rec");
   };
@@ -62,9 +79,11 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
                 "relative grid h-11 w-11 place-items-center rounded-full",
                 isBlocked
                   ? "bg-bad-soft text-bad"
-                  : phase === "rec"
-                    ? "bg-brand text-white"
-                    : "bg-paper-2 text-ink",
+                  : tooQuiet
+                    ? "bg-warn-soft text-warn"
+                    : phase === "rec"
+                      ? "bg-brand text-white"
+                      : "bg-paper-2 text-ink",
               )}
             >
               {phase === "rec" && !isBlocked && (
@@ -76,18 +95,22 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
               <div className="text-sm font-semibold">
                 {isBlocked
                   ? "Micro bị chặn"
-                  : phase === "idle"
-                    ? "Micro mặc định"
-                    : phase === "rec"
-                      ? "Đang ghi… đọc to câu bên dưới"
-                      : "Ghi thử xong"}
+                  : tooQuiet
+                    ? "Không nghe thấy tiếng"
+                    : phase === "idle"
+                      ? "Micro mặc định"
+                      : phase === "rec"
+                        ? "Đang ghi… đọc to câu bên dưới"
+                        : "Ghi thử xong"}
               </div>
               <div className="text-xs text-subtle">
                 {isBlocked
                   ? "Chưa cấp quyền truy cập micro"
-                  : status === "listening"
-                    ? "Đang dùng micro hệ thống"
-                    : "Sẵn sàng kiểm tra micro"}
+                  : tooQuiet
+                    ? "Tín hiệu âm thanh quá nhỏ"
+                    : status === "listening"
+                      ? "Đang dùng micro hệ thống"
+                      : "Sẵn sàng kiểm tra micro"}
               </div>
             </div>
           </div>
@@ -100,19 +123,8 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
         </p>
 
         {phase === "done" && (
-          <div className="mt-5 grid animate-rise grid-cols-3 gap-3">
-            {[
-              ["Âm lượng", "Đạt chuẩn", "good"],
-              ["Môi trường", "Ổn định", "good"],
-              ["Tín hiệu mic", "Rõ ràng", "good"],
-            ].map(([k, v]) => (
-              <div key={k} className="rounded-2xl bg-good-soft p-3">
-                <div className="text-[11px] text-good">{k}</div>
-                <div className="mt-0.5 flex items-center gap-1 font-bold text-good">
-                  <Check size={14} /> {v}
-                </div>
-              </div>
-            ))}
+          <div className="mt-5 flex items-center gap-2 rounded-2xl bg-good-soft p-4 font-semibold text-good">
+            <Check size={18} /> Đã nhận tín hiệu micro thành công
           </div>
         )}
       </div>
@@ -124,6 +136,16 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
             <div className="font-semibold">Trình duyệt đang chặn micro.</div>
             <div className="mt-0.5 text-ink-2">
               Vui lòng bấm vào biểu tượng ổ khóa trên thanh địa chỉ, bật quyền Micro, sau đó bấm nút “Thử lại quyền micro”.
+            </div>
+          </div>
+        </div>
+      ) : tooQuiet ? (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-[13px] text-warn">
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+          <div>
+            <div className="font-semibold">Không nghe thấy tiếng micro.</div>
+            <div className="mt-0.5 text-ink-2">
+              Vui lòng kiểm tra micro không bị tắt tiếng (mute), nói to hơn gần micro và bấm nút “Thử lại âm thanh”.
             </div>
           </div>
         </div>
@@ -143,11 +165,16 @@ export function MicCheck({ onNext, compact }: MicCheckProps) {
           <Button variant="accent" onClick={handleRetry}>
             <RefreshCw size={16} /> Thử lại quyền micro
           </Button>
+        ) : tooQuiet ? (
+          <Button variant="accent" onClick={handleRetry}>
+            <RefreshCw size={16} /> Thử lại âm thanh
+          </Button>
         ) : (
           <Button
             variant="accent"
             disabled={phase === "rec"}
             onClick={() => {
+              setMaxLevel(0);
               setT(0);
               setPhase("rec");
             }}

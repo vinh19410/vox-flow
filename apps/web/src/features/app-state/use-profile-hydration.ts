@@ -27,7 +27,14 @@ export function useProfileHydration(
       try {
         if (!trpcClient?.profile?.get?.query) return;
 
-        const profile = await trpcClient.profile.get.query().catch(() => null);
+        let profile = null;
+        try {
+          profile = await trpcClient.profile.get.query();
+        } catch {
+          // Network or server error: do not mark hydrated so it can retry later
+          return;
+        }
+
         if (cancelled) return;
 
         hydratedUserRef.current = uid;
