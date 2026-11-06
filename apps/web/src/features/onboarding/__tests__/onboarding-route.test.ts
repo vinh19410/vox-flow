@@ -33,7 +33,7 @@ describe("_proto/onboarding route beforeLoad", () => {
     if (!beforeLoad) throw new Error("beforeLoad is undefined");
 
     try {
-      await beforeLoad({} as never);
+      await beforeLoad({ location: { href: "/_proto/onboarding" } } as never);
       expect.fail("Expected beforeLoad to throw redirect");
     } catch (err: unknown) {
       expect(isRedirect(err)).toBe(true);
@@ -56,7 +56,7 @@ describe("_proto/onboarding route beforeLoad", () => {
     if (!beforeLoad) throw new Error("beforeLoad is undefined");
 
     try {
-      await beforeLoad({} as never);
+      await beforeLoad({ location: { href: "/_proto/onboarding" } } as never);
       expect.fail("Expected beforeLoad to throw redirect");
     } catch (err: unknown) {
       expect(isRedirect(err)).toBe(true);
@@ -74,7 +74,9 @@ describe("_proto/onboarding route beforeLoad", () => {
 
     if (!beforeLoad) throw new Error("beforeLoad is undefined");
 
-    await expect(beforeLoad({} as never)).resolves.not.toThrow();
+    await expect(
+      beforeLoad({ location: { href: "/_proto/onboarding" } } as never),
+    ).resolves.not.toThrow();
   });
 });
 
