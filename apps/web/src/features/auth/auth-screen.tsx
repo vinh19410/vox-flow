@@ -39,9 +39,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
   const errorMessage =
     localError ??
     (errorParam
-      ? errorParam === "cookie_blocked"
-        ? "Trình duyệt đang chặn cookie bên thứ ba. Vui lòng bật cookie hoặc sử dụng tên miền chính thức."
-        : "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
+      ? "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
       : null);
 
   const handleGoogleSignIn = async () => {
@@ -72,9 +70,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
 
       if (res?.error) {
         setIsPending(false);
-        setLocalError(
-          res.error.message || "Đăng nhập Google không thành công. Vui lòng thử lại.",
-        );
+        setLocalError("Đăng nhập Google không thành công. Vui lòng thử lại.");
       }
     } catch {
       setIsPending(false);

@@ -243,19 +243,29 @@ describe("AuthScreen", () => {
       }),
     );
   });
+  it("rejects malicious or invalid redirect paths and defaults to dashboard", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: { url: "https://accounts.google.com", redirect: true },
+      error: null,
+    } as never);
 
-  it("displays error messages for oauth_error and cookie_blocked search params", () => {
-    const { unmount: unmount1 } = renderWithApp(
-      <AuthScreen search={{ error: "oauth_error" }} />,
+    renderWithApp(<AuthScreen search={{ redirect: "//evil.com/hack" }} />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    expect(authClient.signIn.social).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google",
+        callbackURL: expect.stringMatching(/\/app\/dashboard$/),
+        errorCallbackURL: expect.stringMatching(/\/auth$/),
+      }),
     );
+  });
+
+  it("displays error message for oauth_error search param", () => {
+    renderWithApp(<AuthScreen search={{ error: "oauth_error" }} />);
     expect(
       screen.getByText(/Đăng nhập Google không thành công hoặc đã bị hủy/i),
-    ).toBeTruthy();
-    unmount1();
-
-    renderWithApp(<AuthScreen search={{ error: "cookie_blocked" }} />);
-    expect(
-      screen.getByText(/Trình duyệt đang chặn cookie bên thứ ba/i),
     ).toBeTruthy();
   });
 
@@ -278,7 +288,7 @@ describe("AuthScreen", () => {
       error: {
         status: 400,
         statusText: "Bad Request",
-        message: "Lỗi kết nối từ Google",
+        message: "OAuth server error",
       },
     } as never);
 
@@ -287,7 +297,9 @@ describe("AuthScreen", () => {
     fireEvent.click(googleBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Lỗi kết nối từ Google")).toBeTruthy();
+      expect(
+        screen.getByText("Đăng nhập Google không thành công. Vui lòng thử lại."),
+      ).toBeTruthy();
     });
     expect(googleBtn.getAttribute("disabled")).toBeNull();
   });
