@@ -44,6 +44,7 @@ Học viên đăng nhập thật bằng Google qua Better Auth, và màn `/auth`
 | 2 | [Phase 2: Nối màn đăng nhập](./phase-02-noi-man-dang-nhap.md) | Pending |
 
 ## Acceptance Criteria
+- [ ] Nhấn "Tiếp tục với Google" tạo session thật và vào được route cần đăng nhập (deploy-gated: nghiệm thu trên môi trường triển khai sau khi cấu hình OAuth client thật).
 - [ ] Nhấn "Tiếp tục với Google" trên `/auth` gọi `signIn.social` với Google provider và callback đầy đủ.
 - [ ] `emailAndPassword` không còn bật trong `createAuth` (`packages/auth/src/index.ts`).
 - [ ] Route cần đăng nhập (`_proto/app/*`, `_proto/exam`, `_proto/scoring`, `_proto/onboarding`) chuyển người chưa đăng nhập về `/auth`.
