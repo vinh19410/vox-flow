@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialState } from "@/features/app-state/initial-state";
 import { ProtoToast } from "@/features/app-state/toast";
@@ -18,6 +18,10 @@ vi.mock("@/lib/auth-client", () => ({
   authClient: {
     signIn: {
       social: vi.fn(),
+      email: vi.fn(),
+    },
+    signUp: {
+      email: vi.fn(),
     },
     signOut: vi.fn(),
     getSession: vi.fn(),
@@ -489,13 +493,175 @@ describe("ConsentRows", () => {
 });
 
 describe("AuthScreen", () => {
-  it("renders Google login only and no email input", () => {
+  it("renders Google login, an 'hoặc' divider, and the email sign-in form (no magic link)", () => {
     renderWithApp(<AuthScreen />);
     expect(screen.getByRole("heading", { name: "Đăng nhập Vox Flow" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Tiếp tục với Google/i })).toBeTruthy();
-    expect(screen.queryByPlaceholderText("ban@email.com")).toBeNull();
+    expect(screen.getByText("hoặc")).toBeTruthy();
+    expect(screen.getByLabelText("Email")).toBeTruthy();
+    expect(screen.getByLabelText("Mật khẩu")).toBeTruthy();
+    expect(screen.queryByLabelText("Tên hiển thị")).toBeNull();
+    expect(screen.getByRole("button", { name: "Đăng nhập" })).toBeTruthy();
     expect(screen.queryByText("Gửi link đăng nhập")).toBeNull();
-    expect(screen.queryByText("hoặc")).toBeNull();
+  });
+
+  describe("email/password", () => {
+    let assignSpy: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.mocked(authClient.signIn.email).mockClear();
+      vi.mocked(authClient.signUp.email).mockClear();
+      assignSpy = vi.fn();
+      vi.spyOn(window, "location", "get").mockReturnValue({
+        ...window.location,
+        origin: window.location.origin,
+        search: "",
+        assign: assignSpy,
+      } as unknown as Location);
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function fillAndSubmit(fields: { name?: string; email: string; password: string }) {
+      if (fields.name !== undefined) {
+        fireEvent.change(screen.getByLabelText("Tên hiển thị"), {
+          target: { value: fields.name },
+        });
+      }
+      fireEvent.change(screen.getByLabelText("Email"), { target: { value: fields.email } });
+      fireEvent.change(screen.getByLabelText("Mật khẩu"), {
+        target: { value: fields.password },
+      });
+      const submit = screen.getByRole("button", { name: /^(Đăng nhập|Tạo tài khoản)$/ });
+      fireEvent.submit(submit.closest("form")!);
+    }
+
+    it("signs in with email/password and navigates to the dashboard", async () => {
+      vi.mocked(authClient.signIn.email).mockResolvedValueOnce({
+        data: { user: { id: "u1" } },
+        error: null,
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fillAndSubmit({ email: " user@example.com ", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledWith(`${window.location.origin}/app/dashboard`);
+      });
+      expect(authClient.signIn.email).toHaveBeenCalledWith({
+        email: "user@example.com",
+        password: "Password123!",
+      });
+    });
+
+    it("shows a Vietnamese error on invalid credentials and does not navigate", async () => {
+      vi.mocked(authClient.signIn.email).mockResolvedValueOnce({
+        data: null,
+        error: { status: 401, code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid" },
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fillAndSubmit({ email: "user@example.com", password: "wrong-pass" });
+
+      await waitFor(() => {
+        expect(screen.getByText("Sai email hoặc mật khẩu.")).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Đăng nhập" }).getAttribute("disabled"),
+      ).toBeNull();
+    });
+
+    it("falls back to a generic error for unknown error codes", async () => {
+      vi.mocked(authClient.signIn.email).mockResolvedValueOnce({
+        data: null,
+        error: { status: 500, code: "SOMETHING_ELSE", message: "Boom" },
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fillAndSubmit({ email: "user@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Đăng nhập không thành công. Vui lòng thử lại."),
+        ).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it("toggles to sign-up, creates the account, and honours a valid redirect", async () => {
+      vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+        data: { user: { id: "u2" } },
+        error: null,
+      } as never);
+
+      renderWithApp(<AuthScreen search={{ redirect: "/app/history/att-123" }} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+      expect(screen.getByText("Tối thiểu 8 ký tự.")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Tạo tài khoản" })).toBeTruthy();
+
+      fillAndSubmit({ name: " Lan ", email: "lan@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledWith(
+          `${window.location.origin}/app/history/att-123`,
+        );
+      });
+      expect(authClient.signUp.email).toHaveBeenCalledWith({
+        name: "Lan",
+        email: "lan@example.com",
+        password: "Password123!",
+      });
+      expect(authClient.signIn.email).not.toHaveBeenCalled();
+    });
+
+    it("shows 'Email đã được sử dụng' when sign-up hits a duplicate email", async () => {
+      vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+        data: null,
+        error: { status: 422, code: "USER_ALREADY_EXISTS", message: "User already exists" },
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+      fillAndSubmit({ name: "Lan", email: "taken@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(screen.getByText("Email đã được sử dụng.")).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it("ignores a malicious redirect and navigates to the dashboard after sign-in", async () => {
+      vi.mocked(authClient.signIn.email).mockResolvedValueOnce({
+        data: { user: { id: "u1" } },
+        error: null,
+      } as never);
+
+      renderWithApp(<AuthScreen search={{ redirect: "//evil.com/hack" }} />);
+      fillAndSubmit({ email: "user@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledTimes(1);
+      });
+      expect(assignSpy).toHaveBeenCalledWith(`${window.location.origin}/app/dashboard`);
+      expect(String(assignSpy.mock.calls[0]?.[0])).not.toContain("evil.com");
+    });
+
+    it("shows a connection error when the auth request throws", async () => {
+      vi.mocked(authClient.signIn.email).mockRejectedValueOnce(new Error("network"));
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fillAndSubmit({ email: "user@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau."),
+        ).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
   });
 
   it("invokes authClient.signIn.social with Google provider on button click", async () => {
@@ -561,6 +727,11 @@ describe("AuthScreen", () => {
     expect(
       screen.getByText(/Đăng nhập Google không thành công hoặc đã bị hủy/i),
     ).toBeTruthy();
+  });
+
+  it("tells the user to sign in with a password when Google cannot link to a password account", () => {
+    renderWithApp(<AuthScreen search={{ error: "account_not_linked" }} />);
+    expect(screen.getByText(/đã đăng ký bằng mật khẩu/i)).toBeTruthy();
   });
 
   it("displays error message when search param is an array (duplicate error query keys)", () => {

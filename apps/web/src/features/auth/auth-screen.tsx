@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 import { useApp } from "@/features/app-state/types";
 import { authClient } from "@/lib/auth-client";
@@ -15,6 +15,40 @@ export type AuthScreenProps = {
   search?: AuthSearchParams;
 };
 
+type EmailMode = "signIn" | "signUp";
+
+const DEFAULT_REDIRECT = "/app/dashboard";
+
+/**
+ * Returns the redirect path only when it is a same-origin app path that does
+ * not loop back to the auth screens; otherwise null (open-redirect guard).
+ */
+function getSafeRedirect(target: string | undefined): string | null {
+  if (
+    target &&
+    target.startsWith("/") &&
+    !target.startsWith("//") &&
+    !target.startsWith("/\\") &&
+    !target.startsWith("/auth") &&
+    !target.startsWith("/login")
+  ) {
+    return target;
+  }
+  return null;
+}
+
+function getEmailAuthErrorMessage(mode: EmailMode, code: string | undefined): string {
+  if (code === "INVALID_EMAIL_OR_PASSWORD") return "Sai email hoặc mật khẩu.";
+  if (code?.startsWith("USER_ALREADY_EXISTS")) return "Email đã được sử dụng.";
+  return mode === "signIn"
+    ? "Đăng nhập không thành công. Vui lòng thử lại."
+    : "Đăng ký không thành công. Vui lòng thử lại.";
+}
+
+const inputClassName =
+  "mt-2 h-12 w-full rounded-2xl border border-line bg-white px-4 outline-none focus:border-ink disabled:opacity-50";
+const labelClassName = "mt-4 block text-xs font-semibold text-ink-2";
+
 export function AuthScreen({ search }: AuthScreenProps = {}) {
   const { go } = useApp();
   const activeSearch =
@@ -26,7 +60,16 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
         }
       : {});
   const [isPending, setIsPending] = useState(false);
+  const [isEmailPending, setIsEmailPending] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [emailMode, setEmailMode] = useState<EmailMode>("signIn");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const isBusy = isPending || isEmailPending;
+  const safeRedirect = getSafeRedirect(activeSearch?.redirect);
+  const callbackPath = safeRedirect ?? DEFAULT_REDIRECT;
 
   const rawError = activeSearch?.error;
   const errorParam =
@@ -38,28 +81,21 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
 
   const errorMessage =
     localError ??
-    (errorParam
-      ? "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
-      : null);
+    (errorParam === "account_not_linked"
+      ? "Email này đã đăng ký bằng mật khẩu. Vui lòng đăng nhập bằng email và mật khẩu."
+      : errorParam
+        ? "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
+        : null);
 
   const handleGoogleSignIn = async () => {
-    if (isPending) return;
+    if (isBusy) return;
     setIsPending(true);
     setLocalError(null);
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const targetRedirect = activeSearch?.redirect;
-      const isValidRedirect =
-        targetRedirect &&
-        targetRedirect.startsWith("/") &&
-        !targetRedirect.startsWith("//") &&
-        !targetRedirect.startsWith("/\\") &&
-        !targetRedirect.startsWith("/auth") &&
-        !targetRedirect.startsWith("/login");
-      const callbackPath = isValidRedirect ? targetRedirect : "/app/dashboard";
       const callbackURL = `${origin}${callbackPath}`;
-      const errorCallbackURL = isValidRedirect
-        ? `${origin}/auth?redirect=${encodeURIComponent(targetRedirect)}`
+      const errorCallbackURL = safeRedirect
+        ? `${origin}/auth?redirect=${encodeURIComponent(safeRedirect)}`
         : `${origin}/auth`;
 
       const res = await authClient.signIn.social({
@@ -77,6 +113,38 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
       setLocalError("Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau.");
     }
   };
+
+  const handleEmailSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isBusy) return;
+    setIsEmailPending(true);
+    setLocalError(null);
+    try {
+      const trimmedEmail = email.trim();
+      const res =
+        emailMode === "signIn"
+          ? await authClient.signIn.email({ email: trimmedEmail, password })
+          : await authClient.signUp.email({ name: name.trim(), email: trimmedEmail, password });
+
+      if (res?.error) {
+        setIsEmailPending(false);
+        setLocalError(getEmailAuthErrorMessage(emailMode, res.error.code));
+        return;
+      }
+
+      // Full page load, like the end of the Google flow, so the app boots with the new session.
+      window.location.assign(`${window.location.origin}${callbackPath}`);
+    } catch {
+      setIsEmailPending(false);
+      setLocalError("Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau.");
+    }
+  };
+
+  const toggleEmailMode = () => {
+    setEmailMode((m) => (m === "signIn" ? "signUp" : "signIn"));
+    setLocalError(null);
+  };
+
   return (
     <OnboardingFrame onBack={() => go("landing")}>
       <div className="animate-rise rounded-[28px] border border-line bg-white p-7 sm:p-10">
@@ -92,7 +160,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
         <button
           type="button"
           onClick={handleGoogleSignIn}
-          disabled={isPending}
+          disabled={isBusy}
           className="mt-8 flex h-12 w-full items-center justify-center gap-3 rounded-full border border-line font-semibold hover:border-ink/40 disabled:opacity-60"
         >
           {isPending ? (
@@ -106,6 +174,83 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
             </svg>
           )}
           {isPending ? "Đang kết nối..." : "Tiếp tục với Google"}
+        </button>
+
+        <div className="mt-6 flex items-center gap-3 text-xs text-ink-2">
+          <span className="h-px flex-1 bg-line" />
+          <span>hoặc</span>
+          <span className="h-px flex-1 bg-line" />
+        </div>
+
+        <form onSubmit={handleEmailSubmit}>
+          {emailMode === "signUp" && (
+            <>
+              <label htmlFor="auth-name" className={labelClassName}>
+                Tên hiển thị
+              </label>
+              <input
+                id="auth-name"
+                type="text"
+                autoComplete="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isBusy}
+                className={inputClassName}
+              />
+            </>
+          )}
+
+          <label htmlFor="auth-email" className={labelClassName}>
+            Email
+          </label>
+          <input
+            id="auth-email"
+            type="email"
+            autoComplete="email"
+            placeholder="ban@email.com"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isBusy}
+            className={inputClassName}
+          />
+
+          <label htmlFor="auth-password" className={labelClassName}>
+            Mật khẩu
+          </label>
+          <input
+            id="auth-password"
+            type="password"
+            autoComplete={emailMode === "signIn" ? "current-password" : "new-password"}
+            required
+            minLength={emailMode === "signUp" ? 8 : undefined}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isBusy}
+            className={inputClassName}
+          />
+          {emailMode === "signUp" && (
+            <p className="mt-2 text-xs text-ink-2">Tối thiểu 8 ký tự.</p>
+          )}
+
+          <button
+            type="submit"
+            disabled={isBusy}
+            className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-ink font-semibold text-paper hover:bg-ink/90 disabled:opacity-60"
+          >
+            {isEmailPending && <Loader2 className="animate-spin" size={18} />}
+            {emailMode === "signIn" ? "Đăng nhập" : "Tạo tài khoản"}
+          </button>
+        </form>
+
+        <button
+          type="button"
+          onClick={toggleEmailMode}
+          disabled={isBusy}
+          className="mt-4 w-full text-center text-sm text-ink-2 hover:text-ink disabled:opacity-60"
+        >
+          {emailMode === "signIn" ? "Chưa có tài khoản? Đăng ký" : "Đã có tài khoản? Đăng nhập"}
         </button>
       </div>
     </OnboardingFrame>

@@ -23,6 +23,10 @@ export function createAuth(
       schema,
     }),
     trustedOrigins: [cleanCorsOrigin, ...desktopOrigins],
+    emailAndPassword: {
+      enabled: true,
+      autoSignIn: true,
+    },
     socialProviders: {
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
