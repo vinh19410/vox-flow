@@ -1,4 +1,5 @@
 import { createAuth, type AuthConfig } from "@vox-flow/auth";
+import * as authSchema from "@vox-flow/db/schema/auth";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb, type TestDbContext } from "./db";
 
@@ -106,6 +107,40 @@ describe("Better Auth with Google provider (WI-07)", () => {
     expect(err).toMatchObject({
       statusCode: 401,
       body: { code: "INVALID_EMAIL_OR_PASSWORD" },
+    });
+  });
+
+  it("rejects a password sign-up whose email already belongs to a Google account", async () => {
+    await testCtx.db.insert(authSchema.user).values({
+      id: "google-user-1",
+      name: "Google User",
+      email: "google-user@example.com",
+      emailVerified: true,
+    });
+    await testCtx.db.insert(authSchema.account).values({
+      id: "google-account-1",
+      accountId: "google-sub-1",
+      providerId: "google",
+      userId: "google-user-1",
+    });
+
+    const auth = createAuth(authConfig, testCtx.db);
+    const err = await auth.api
+      .signUpEmail({
+        body: {
+          email: "google-user@example.com",
+          password: "Password123!",
+          name: "Impostor",
+        },
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+    expect(err).toMatchObject({
+      statusCode: 422,
+      body: { code: expect.stringMatching(/^USER_ALREADY_EXISTS/) },
     });
   });
 

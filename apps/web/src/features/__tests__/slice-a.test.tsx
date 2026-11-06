@@ -729,6 +729,11 @@ describe("AuthScreen", () => {
     ).toBeTruthy();
   });
 
+  it("tells the user to sign in with a password when Google cannot link to a password account", () => {
+    renderWithApp(<AuthScreen search={{ error: "account_not_linked" }} />);
+    expect(screen.getByText(/đã đăng ký bằng mật khẩu/i)).toBeTruthy();
+  });
+
   it("displays error message when search param is an array (duplicate error query keys)", () => {
     renderWithApp(
       <AuthScreen

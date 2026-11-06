@@ -81,9 +81,11 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
 
   const errorMessage =
     localError ??
-    (errorParam
-      ? "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
-      : null);
+    (errorParam === "account_not_linked"
+      ? "Email này đã đăng ký bằng mật khẩu. Vui lòng đăng nhập bằng email và mật khẩu."
+      : errorParam
+        ? "Đăng nhập Google không thành công hoặc đã bị hủy. Vui lòng thử lại."
+        : null);
 
   const handleGoogleSignIn = async () => {
     if (isBusy) return;
