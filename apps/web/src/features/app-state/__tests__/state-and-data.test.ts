@@ -4,10 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLANS } from "../../billing/data";
 import { planUntil } from "../../billing/plan-utils";
 import { ITEMS, MIN_WORDS, MODES, PART_INFO, VOICES, modeLabel } from "../../exam/data";
-import { p1, p23 } from "../../forecast/builders";
-import { FORECAST, QUARTER } from "../../forecast/data";
-import { FORECAST_P1 } from "../../forecast/topics-p1";
-import { FORECAST_P23 } from "../../forecast/topics-p23";
+import { mapApiTopicToForecastTopic, p1, p23 } from "../../forecast/builders";
+import { QUARTER } from "../../forecast/data";
 import { HISTORY, resolveAttemptView } from "../../history/data";
 import type { Attempt } from "../../history/types";
 import { RESULT } from "../../results/data";
@@ -43,17 +41,51 @@ describe("exam data & types", () => {
 });
 
 describe("forecast data & builders", () => {
-  it("combines 7 Part 1 and 4 Part 2&3 topics under Quarter 2/2025", () => {
+  it("exposes Quarter 3/2026 metadata", () => {
     expect(QUARTER).toEqual({
-      label: "Quý 2/2025",
-      range: "Tháng 5 – Tháng 8",
-      updated: "28/04/2025",
+      id: "2026-Q3",
+      label: "Quý 3/2026",
+      range: "Tháng 9 – Tháng 12",
+      updated: "26/10/2026",
     });
-    expect(FORECAST_P1).toHaveLength(7);
-    expect(FORECAST_P23).toHaveLength(4);
-    expect(FORECAST).toHaveLength(11);
   });
 
+  it("maps api topics correctly to ForecastTopic for part 1 and part 2&3", () => {
+    const p1Topic = mapApiTopicToForecastTopic({
+      id: "api-p1",
+      title: "Hometown",
+      quarter: "2026-Q3",
+      part: 1,
+      questions: ["Where is your hometown?", "What do you like about it?"],
+      status: "published",
+      realReportCount: 42,
+    });
+    expect(p1Topic.kind).toBe("p1");
+    expect(p1Topic.reports).toBe(42);
+    expect(p1Topic.items).toHaveLength(2);
+    expect(p1Topic.items[0]?.text).toBe("Where is your hometown?");
+
+    const p23Topic = mapApiTopicToForecastTopic({
+      id: "api-p23",
+      title: "Describe a creative person",
+      quarter: "2026-Q3",
+      part: 2,
+      questions: {
+        cueCards: ["Who this person is", "How you met them", "And explain why creative"],
+        part3: ["Is creativity important?", "Can it be taught?"],
+      },
+      status: "published",
+      realReportCount: 88,
+    });
+    expect(p23Topic.kind).toBe("p23");
+    expect(p23Topic.reports).toBe(88);
+    expect(p23Topic.items).toHaveLength(3); // 1 cue card + 2 part 3
+    expect(p23Topic.items[0]?.part).toBe(2);
+    expect(p23Topic.items[0]?.cue?.points).toEqual(["Who this person is", "How you met them"]);
+    expect(p23Topic.items[0]?.cue?.ending).toBe("And explain why creative");
+    expect(p23Topic.items[1]?.part).toBe(3);
+    expect(p23Topic.items[1]?.text).toBe("Is creativity important?");
+  });
   it("builds p1 and p23 topics with targeted follow-up questions", () => {
     const builtP1 = p1(
       "t-p1",

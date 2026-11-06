@@ -1,10 +1,28 @@
 import { TRPCError } from "@trpc/server";
-import { and, countDistinct, desc, eq, inArray } from "drizzle-orm";
+import { and, countDistinct, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { forecastReport, forecastTopic } from "@vox-flow/db/schema";
 import { protectedProcedure, publicProcedure, router } from "../index";
 
+export type Part23Questions = {
+  cueCards: string[];
+  part3: string[];
+  isNew?: boolean;
+};
+
+export type ForecastTopicQuestions = string[] | Part23Questions;
+
+export type PublishedForecastTopic = {
+  id: string;
+  title: string;
+  quarter: string;
+  part: number;
+  questions: ForecastTopicQuestions;
+  isNew: boolean;
+  status: string;
+  realReportCount: number;
+};
 export const forecastRouter = router({
   listPublished: publicProcedure
     .input(
@@ -34,14 +52,14 @@ export const forecastRouter = router({
         return [];
       }
 
-      const topicIds = topics.map((t) => t.id);
       const reportCounts = await ctx.db
         .select({
           topicId: forecastReport.topicId,
           count: countDistinct(forecastReport.userId),
         })
         .from(forecastReport)
-        .where(inArray(forecastReport.topicId, topicIds))
+        .innerJoin(forecastTopic, eq(forecastReport.topicId, forecastTopic.id))
+        .where(and(...conditions))
         .groupBy(forecastReport.topicId);
 
       const countMap = new Map<string, number>();
@@ -50,9 +68,26 @@ export const forecastRouter = router({
       }
 
       return topics.map((t) => {
-        let parsedQuestions: string[] = [];
+        let parsedQuestions: ForecastTopicQuestions = [];
+        let isNew = false;
         try {
-          parsedQuestions = JSON.parse(t.questions) as string[];
+          const raw = JSON.parse(t.questions);
+          if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+            if ("isNew" in raw) {
+              isNew = Boolean(raw.isNew);
+            }
+            if ("cueCards" in raw && "part3" in raw) {
+              parsedQuestions = {
+                cueCards: Array.isArray(raw.cueCards) ? raw.cueCards.map(String) : [],
+                part3: Array.isArray(raw.part3) ? raw.part3.map(String) : [],
+                isNew,
+              };
+            }
+          } else if (Array.isArray(raw)) {
+            parsedQuestions = raw.map(String);
+          } else {
+            parsedQuestions = [];
+          }
         } catch {
           parsedQuestions = [];
         }
@@ -63,6 +98,7 @@ export const forecastRouter = router({
           quarter: t.quarter,
           part: t.part,
           questions: parsedQuestions,
+          isNew,
           status: t.status,
           realReportCount: countMap.get(t.id) ?? 0,
         };

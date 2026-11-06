@@ -2,8 +2,9 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { D1Database } from "@cloudflare/workers-types";
-import { createDb, type Database } from "@vox-flow/db";
+import { createDb, type Database, forecastSource, forecastTopic } from "@vox-flow/db";
 import { Miniflare } from "miniflare";
+import { generateForecastSeed } from "../../../db/scripts/seed-forecast";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, "../../../db/src/migrations");
@@ -70,5 +71,36 @@ export async function createTestDb(): Promise<TestDbContext> {
   } catch (err) {
     await mf.dispose();
     throw err;
+  }
+}
+
+export async function seedForecastTestDb(db: Database): Promise<void> {
+  const { topics, sources } = generateForecastSeed();
+
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < topics.length; i += CHUNK_SIZE) {
+    const chunk = topics.slice(i, i + CHUNK_SIZE).map((t) => ({
+      id: t.id,
+      title: t.title,
+      quarter: t.quarter,
+      part: t.part,
+      questions: t.questions,
+      status: t.status,
+      createdAt: new Date(t.createdAt),
+      updatedAt: new Date(t.updatedAt),
+    }));
+    await db.insert(forecastTopic).values(chunk);
+  }
+
+  for (let i = 0; i < sources.length; i += CHUNK_SIZE) {
+    const chunk = sources.slice(i, i + CHUNK_SIZE).map((s) => ({
+      id: s.id,
+      topicId: s.topicId,
+      sourceType: s.sourceType,
+      sourceUrl: s.sourceUrl,
+      rawContent: s.rawContent,
+      createdAt: new Date(s.createdAt),
+    }));
+    await db.insert(forecastSource).values(chunk);
   }
 }

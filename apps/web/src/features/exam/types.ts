@@ -17,7 +17,7 @@ export interface ExamItem {
   id: string;
   part: Part;
   text: string;
-  answer: string;
+  answer?: string;
   followUp?: ExamFollowUp;
   cue?: ExamCue;
 }

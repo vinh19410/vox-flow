@@ -1,17 +1,13 @@
-import { FORECAST_P1 } from "./topics-p1";
-import { FORECAST_P23 } from "./topics-p23";
-import type { ForecastTopic } from "./types";
-
 export interface ForecastQuarter {
+  id: string;
   label: string;
   range: string;
   updated: string;
 }
 
 export const QUARTER: ForecastQuarter = {
-  label: "Quý 2/2025",
-  range: "Tháng 5 – Tháng 8",
-  updated: "28/04/2025",
+  id: "2026-Q3",
+  label: "Quý 3/2026",
+  range: "Tháng 9 – Tháng 12",
+  updated: "26/10/2026",
 };
-
-export const FORECAST: ForecastTopic[] = [...FORECAST_P1, ...FORECAST_P23];
