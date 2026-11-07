@@ -1,0 +1,71 @@
+name: Deploy Beta (dev)
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-beta
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Cloudflare Beta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: beta
+      url: https://vox.vinhtran.io.vn
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm check-types
+
+      - name: Run unit & integration tests
+        run: pnpm run test
+
+      - name: Deploy to Cloudflare via Alchemy
+        env:
+          NODE_ENV: production
+          ALCHEMY_STAGE: prod
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ALCHEMY_PASSWORD: ${{ secrets.ALCHEMY_PASSWORD }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          CORS_ORIGIN: https://vox.vinhtran.io.vn
+          SEPAY_WEBHOOK_API_KEY: ${{ secrets.SEPAY_WEBHOOK_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          LAUNCH_OPEN: ${{ vars.LAUNCH_OPEN || 'false' }}
+          LAUNCH_ALLOWED_EMAILS: ${{ vars.LAUNCH_ALLOWED_EMAILS || '' }}
+          ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS || '' }}
+          SCORE_DISPUTE_ENABLED: ${{ vars.SCORE_DISPUTE_ENABLED || 'false' }}
+        run: pnpm --filter @vox-flow/infra run deploy --yes
+
+      - name: Smoke test deployed endpoints
+        run: |
+          echo "Waiting 5s for edge propagation..."
+          sleep 5
+          echo "Checking API health..."
+          curl -fsS https://api.vox.vinhtran.io.vn/trpc/healthCheck
+          echo ""
+          echo "Checking Web SPA..."
+          curl -fsSI https://vox.vinhtran.io.vn/ | head -n 1
