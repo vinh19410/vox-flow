@@ -31,6 +31,7 @@ export const server = Cloudflare.Worker("server", {
     GOOGLE_CLIENT_SECRET: Config.Redacted("GOOGLE_CLIENT_SECRET"),
   },
   crons: ["0 * * * *"],
+  domain: "api.vox.vinhtran.io.vn",
   dev: {
     port: 3000,
   },
@@ -48,6 +49,7 @@ export default Alchemy.Stack(
     const serverWorker = yield* server;
     const webWorker = yield* Cloudflare.Website.Vite("web", {
       rootDir: "../../apps/web",
+      domain: "vox.vinhtran.io.vn",
       assets: {
         htmlHandling: "auto-trailing-slash",
         notFoundHandling: "single-page-application",

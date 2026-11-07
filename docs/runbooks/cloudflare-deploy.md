@@ -19,7 +19,7 @@ Alchemy sử dụng Cloudflare API Token để tương tác và tạo tài nguy�
 ### 1.2. Biến môi trường của ứng dụng
 Theo định nghĩa trong `apps/server/.env.schema` và `packages/infra/alchemy.run.ts`:
 - **`BETTER_AUTH_SECRET`**: Chuỗi bí mật ngẫu nhiên (tối thiểu 32 ký tự) dùng để ký session token cho Better Auth. Tạo nhanh bằng lệnh: `openssl rand -hex 32`.
-- **`CORS_ORIGIN`**: Tên miền hoặc URL của frontend Web được phép gửi request đến Worker (ví dụ: `http://localhost:3001` hoặc domain production). **Lưu ý**: Tuyệt đối không để dấu gạch chéo ở cuối (`/`).
+- **`CORS_ORIGIN`**: Tên miền hoặc URL của frontend Web được phép gửi request đến Worker (ví dụ: `http://localhost:3001` cục bộ hoặc `https://vox.vinhtran.io.vn` khi triển khai). **Lưu ý**: Tuyệt đối không để dấu gạch chéo ở cuối (`/`).
 - **`BETTER_AUTH_URL`**: Tự động được gán từ `Cloudflare.Worker.URL` trong runtime của Worker.
 - **`GOOGLE_CLIENT_ID`**: Client ID của ứng dụng Google OAuth 2.0 tạo trên Google Cloud Console (loại Web Application).
 - **`GOOGLE_CLIENT_SECRET`**: Client Secret tương ứng của ứng dụng Google OAuth 2.0.
@@ -28,12 +28,14 @@ Theo định nghĩa trong `apps/server/.env.schema` và `packages/infra/alchemy.
 Trên Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client IDs):
 - **Authorized JavaScript origins**:
   - Cục bộ: `http://localhost:3001`
-  - Triển khai: `<web-url>` (hoặc tên miền chính thức của web)
+  - Triển khai: `https://vox.vinhtran.io.vn`
 - **Authorized redirect URIs**:
   - Cục bộ: `http://localhost:3000/api/auth/callback/google`
-  - Triển khai: `<server-url>/api/auth/callback/google`
+  - Triển khai: `https://api.vox.vinhtran.io.vn/api/auth/callback/google`
 
-> **Lưu ý về Cookie và Domain (WI-07)**: Do `workers.dev` nằm trong danh sách Public Suffix List (PSL), hai worker `web-xyz.workers.dev` và `server-xyz.workers.dev` được trình duyệt coi là hai site khác nhau. Khi đưa vào vận hành thực tế cho học viên, bắt buộc cấu hình tên miền tùy chỉnh cùng eTLD+1 (ví dụ `app.chamro.vn` và `api.chamro.vn`) hoặc định tuyến proxy `/api/*` qua web worker để tránh các trình duyệt (Safari ITP, Brave, Chrome) chặn cookie session bên thứ ba.
+> **Lưu ý về Cookie và Domain (WI-07)**: Do `workers.dev` nằm trong danh sách Public Suffix List (PSL), hai worker `web-xyz.workers.dev` và `server-xyz.workers.dev` được trình duyệt coi là hai site khác nhau. Khi đưa vào vận hành thực tế cho học viên, bắt buộc cấu hình tên miền tùy chỉnh cùng eTLD+1 hoặc định tuyến proxy `/api/*` qua web worker để tránh các trình duyệt (Safari ITP, Brave, Chrome) chặn cookie session bên thứ ba.
+>
+> **Đã áp dụng từ `alchemy.run.ts`**: worker `web` gắn `domain: "vox.vinhtran.io.vn"`, worker `server` gắn `domain: "api.vox.vinhtran.io.vn"` (cùng eTLD+1 `vinhtran.io.vn`, zone đã nằm trên Cloudflare với NS `*.ns.cloudflare.com`). Đây là môi trường **Beta** phục vụ kiểm thử cho nhánh `dev` (mọi code merge vào `dev` sẽ triển khai lên domain này). Khi `domain` được set, URL của worker là `https://<domain>` (không còn workers.dev), nên `VITE_SERVER_URL` và `BETTER_AUTH_URL` tự nhận custom domain. Alchemy tự tạo DNS record và chứng chỉ cho cả hai hostname trong zone.
 
 ---
 
@@ -70,7 +72,7 @@ Alchemy tự động phát hiện các thư mục migration dạng `<dir>/migrat
 Vox Flow sử dụng `@alchemy.run/cloudflare` trong package `@vox-flow/infra` để quản lý hạ tầng dưới dạng mã nguồn (IaC).
 
 ### 3.1. Cố định Stage triển khai (`prod`)
-Mặc định Alchemy sẽ tạo stage theo tên `live_${USER}` nếu không chỉ định, dẫn tới phân mảnh tài nguyên. Đối với MVP của Vox Flow, toàn bộ lệnh triển khai đều phải cố định cờ `--stage prod` (hoặc đặt biến môi trường `ALCHEMY_STAGE=prod`).
+Mặc định Alchemy sẽ tạo stage theo tên `live_${USER}` nếu không chỉ định, dẫn tới phân mảnh tài nguyên. Đối với bản Beta của Vox Flow triển khai từ nhánh `dev`, toàn bộ lệnh triển khai cố định biến môi trường `ALCHEMY_STAGE=prod`.
 
 ### 3.2. Quản lý bí mật và lệnh triển khai chuẩn
 
@@ -78,41 +80,45 @@ Cấu hình biến môi trường và bí mật:
 - **Cách 1 (Khuyên dùng)**: Lưu biến vào file `.env` ở thư mục gốc repo (đã được `.gitignore` bảo vệ). `packages/infra/alchemy.run.ts` tự động nạp cấu hình thông qua `varlock/auto-load`.
 - **Cách 2**: Sử dụng công cụ `ak secrets run` nếu có quyền cấp phát thực thi:
   ```bash
-  ak secrets run -- pnpm --filter @vox-flow/infra run deploy -- --stage prod
+  ak secrets run -- env ALCHEMY_STAGE=prod pnpm --filter @vox-flow/infra run deploy
   ```
 
 Lệnh triển khai tiêu chuẩn từ thư mục gốc của repo:
 
 ```bash
-pnpm --filter @vox-flow/infra run deploy -- --stage prod
+ALCHEMY_STAGE=prod pnpm --filter @vox-flow/infra run deploy
 ```
 
 > **LƯU Ý QUAN TRỌNG**:
 > - **KHÔNG ĐƯỢC DÙNG `pnpm deploy`**: Đây là lệnh nội tại được xây dựng sẵn của trình quản lý gói `pnpm` (dùng để trích xuất monorepo package), không phải lệnh triển khai Alchemy của dự án.
+> - **KHÔNG truyền stage qua `pnpm run deploy -- --stage prod`**: pnpm giữ nguyên `--` khi chuyển đối số, alchemy đọc `--stage` thành positional config và lỗi `Expected: Path does not exist: .../--stage` (xảy ra thực tế 2026-11-06). Dùng biến môi trường `ALCHEMY_STAGE=prod` như lệnh trên.
 > - Luôn tuân thủ quy tắc trong `AGENTS.md`: Chỉ thực hiện lệnh triển khai lên môi trường thật khi đã có sự xác nhận trực tiếp từ người sở hữu sản phẩm.
 
-### 3.3. Xử lý CORS cho lần triển khai đầu tiên (Vòng lặp 2 bước)
-Lần đầu tiên triển khai, URL của frontend web chưa tồn tại:
-1. **Bước 1**: Chạy `pnpm --filter @vox-flow/infra run deploy -- --stage prod` lần đầu (tạm đặt `CORS_ORIGIN="http://localhost:3001"`). Alchemy sẽ xuất ra URL của Worker `server` và Website `web`.
-2. **Bước 2**: Lấy URL thật của `web` vừa tạo, cập nhật vào biến môi trường `CORS_ORIGIN`.
-3. **Bước 3**: Chạy lại `pnpm --filter @vox-flow/infra run deploy -- --stage prod` để Worker nhận nguồn gốc CORS chính xác.
+### 3.3. `CORS_ORIGIN` cho lần triển khai đầu tiên
+
+Kể từ khi worker `web` gắn domain cố định `vox.vinhtran.io.vn` trong `alchemy.run.ts`, URL frontend đã biết ngay từ đầu nên **không còn vòng lặp 2 bước**: đặt thẳng `CORS_ORIGIN=https://vox.vinhtran.io.vn` trong `.env` trước lần deploy đầu tiên. Lưu ý DNS/chứng chỉ custom domain cần vài phút để active sau khi Alchemy tạo record; request `curl` có thể thất bại tạm thời trong khoảng này — chờ rồi thử lại, không cần deploy lại.
 
 ---
+
 ## 4. Kiểm tra xác nhận sau triển khai (Verification)
 
 Sau khi lệnh deploy hoàn tất thành công, thực hiện 2 bước kiểm tra sau:
 
 ### 4.1. Kiểm tra Endpoint Worker
-Kiểm tra root URL và healthCheck endpoint tRPC:
+Kiểm tra root URL và healthCheck endpoint tRPC (domain Beta cố định; nếu DNS/chứng chỉ chưa active thì chờ vài phút rồi thử lại):
 
 ```bash
 # Kiểm tra root text
-curl -s <server-url>/
+curl -s https://api.vox.vinhtran.io.vn/
 # Kết quả mong đợi: OK
 
 # Kiểm tra tRPC healthCheck
-curl -s <server-url>/trpc/healthCheck | jq -r .result.data
+curl -s https://api.vox.vinhtran.io.vn/trpc/healthCheck | jq -r .result.data
 # Kết quả mong đợi: OK
+
+# Kiểm tra web SPA đã được phục vụ tại domain production
+curl -sI https://vox.vinhtran.io.vn/ | head -n 1
+# Kết quả mong đợi: HTTP/2 200
 ```
 
 ### 4.2. Kiểm tra bảng dữ liệu trong D1
