@@ -74,6 +74,8 @@ Vox Flow sử dụng `@alchemy.run/cloudflare` trong package `@vox-flow/infra` �
 ### 3.1. Cố định Stage triển khai (`prod`)
 Mặc định Alchemy sẽ tạo stage theo tên `live_${USER}` nếu không chỉ định, dẫn tới phân mảnh tài nguyên. Đối với bản Beta của Vox Flow triển khai từ nhánh `dev`, toàn bộ lệnh triển khai cố định biến môi trường `ALCHEMY_STAGE=prod`.
 
+> **CẢNH BÁO QUAN TRỌNG VỀ STAGE**: Stage `prod` trong Alchemy hiện tại được gán cho **môi trường Beta** (gắn với domain `vox.vinhtran.io.vn` và `api.vox.vinhtran.io.vn`). Khi thiết lập môi trường Production thật sau này, bắt buộc phải dùng tên stage khác (ví dụ: `production` hoặc `live`) VÀ cấu hình lại trường `domain` trong `packages/infra/alchemy.run.ts` để tránh ghi đè lên stack Beta hoặc xung đột hostname trên Cloudflare.
+
 ### 3.2. Quản lý bí mật và lệnh triển khai chuẩn
 
 Cấu hình biến môi trường và bí mật:
@@ -116,8 +118,7 @@ curl -s https://api.vox.vinhtran.io.vn/
 curl -s https://api.vox.vinhtran.io.vn/trpc/healthCheck | jq -r .result.data
 # Kết quả mong đợi: OK
 
-# Kiểm tra web SPA đã được phục vụ tại domain production
-curl -sI https://vox.vinhtran.io.vn/ | head -n 1
+# Kiểm tra web SPA đã được phục vụ tại domain Beta
 # Kết quả mong đợi: HTTP/2 200
 ```
 
