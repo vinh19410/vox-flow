@@ -12,12 +12,23 @@ export const attemptRouter = router({
       z
         .object({
           mode: z.enum(["full", "part1", "part2", "part3"]).default("full"),
+          topicId: z.string().regex(QUESTION_KEY_RE, "Invalid topicId format").optional(),
+          questionKey: z.string().regex(QUESTION_KEY_RE, "Invalid questionKey format").optional(),
         })
+        .refine(
+          (data) => {
+            return !data.questionKey || Boolean(data.topicId);
+          },
+          {
+            message: "questionKey requires topicId",
+          },
+        )
         .optional(),
     )
     .mutation(async ({ ctx, input }) => {
       const mode = input?.mode ?? "full";
-
+      const topicId = input?.topicId;
+      const questionKey = input?.questionKey;
       // Launch gate check: LAUNCH_OPEN === 'true' or email in LAUNCH_ALLOWED_EMAILS
       const isLaunchOpen = ctx.env?.LAUNCH_OPEN === "true";
       const allowedEmails = (ctx.env?.LAUNCH_ALLOWED_EMAILS ?? "")
@@ -46,6 +57,8 @@ export const attemptRouter = router({
         inHistory: consent.inHistory,
         calibrationGranted: consent.calibrationGranted,
         startedAt,
+        topicId,
+        questionKey,
       });
 
       return {
@@ -54,6 +67,8 @@ export const attemptRouter = router({
         inHistory: consent.inHistory,
         calibrationGranted: consent.calibrationGranted,
         startedAt,
+        topicId,
+        questionKey,
       };
     }),
 

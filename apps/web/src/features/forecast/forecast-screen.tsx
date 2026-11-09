@@ -12,6 +12,7 @@ import type { ForecastFilter } from "./components/forecast-toolbar";
 import { TopicCard } from "./components/topic-card";
 import { TopicDetailModal } from "./components/topic-detail-modal";
 import { QUARTER } from "@/features/forecast/data";
+import type { ExamItem } from "@/features/exam/types";
 import type { ForecastKind, ForecastTopic } from "@/features/forecast/types";
 import { PageHead } from "@/layouts/page-head";
 import { trpc } from "@/utils/trpc";
@@ -91,6 +92,23 @@ export function ForecastScreen() {
     go("exam");
   };
 
+  const startQuestion = (t: ForecastTopic, item: ExamItem, allItems: ExamItem[]) => {
+    const singleItem: ExamItem = {
+      ...item,
+      cue: undefined,
+    };
+    set({
+      practice: {
+        topicId: t.id,
+        title: t.title,
+        kind: t.kind,
+        items: [singleItem],
+        singleQuestionId: item.id,
+        topicItems: allItems,
+      },
+    });
+    go("exam");
+  };
   const toggleSave = (id: string) => {
     const on = s.saved.includes(id);
     set({ saved: on ? s.saved.filter((x) => x !== id) : [...s.saved, id] });
@@ -220,10 +238,12 @@ export function ForecastScreen() {
       <TopicDetailModal
         topic={open}
         practicedBand={open ? s.practiced[open.id] : undefined}
+        practicedQuestions={s.practicedQuestions}
         saved={open ? s.saved.includes(open.id) : false}
         onClose={() => setOpen(null)}
         onToggleSave={() => open && toggleSave(open.id)}
         onStart={() => open && start(open)}
+        onStartQuestion={(item, allItems) => open && startQuestion(open, item, allItems)}
       />
     </>
   );

@@ -39,6 +39,22 @@ const AttemptSchema = z.object({
   topic: z.string(),
 });
 
+const QuestionPracticeRecordSchema = z.object({
+  band: z.number(),
+  count: z.number(),
+  lastPracticedAt: z.string(),
+});
+
+const PracticeSessionSchema = z.object({
+  topicId: z.string(),
+  title: z.string(),
+  kind: z.enum(["p1", "p23"]),
+  items: z.array(ExamItemSchema),
+  singleQuestionId: z.string().optional(),
+  topicItems: z.array(ExamItemSchema).optional(),
+  attemptId: z.string().optional(),
+});
+
 const PersistedAppStateSchema = z
   .object({
     name: z.string(),
@@ -60,15 +76,10 @@ const PersistedAppStateSchema = z
     mode: ModeSchema,
     voice: z.string(),
     attempts: z.array(AttemptSchema),
-    practice: z
-      .object({
-        topicId: z.string(),
-        title: z.string(),
-        kind: z.enum(["p1", "p23"]),
-        items: z.array(ExamItemSchema),
-      })
-      .nullable(),
+    practice: PracticeSessionSchema.nullable(),
+    lastPracticeSession: PracticeSessionSchema.nullable().optional(),
     practiced: z.record(z.string(), z.number()),
+    practicedQuestions: z.record(z.string(), QuestionPracticeRecordSchema),
     saved: z.array(z.string()),
   })
   .partial();
@@ -98,7 +109,9 @@ function hydrateState(): AppState {
       voice: d.voice ?? base.voice,
       attempts: d.attempts ?? base.attempts,
       practice: d.practice !== undefined ? d.practice : base.practice,
+      lastPracticeSession: d.lastPracticeSession !== undefined ? d.lastPracticeSession : base.lastPracticeSession,
       practiced: d.practiced ?? base.practiced,
+      practicedQuestions: d.practicedQuestions ?? base.practicedQuestions,
       saved: d.saved ?? base.saved,
     };
   } catch {

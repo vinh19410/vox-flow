@@ -1,20 +1,33 @@
-import { ArrowRight, Bookmark, BookmarkCheck, CornerDownRight, Flame, Info, Users } from "lucide-react";
+import { ArrowRight, Bookmark, BookmarkCheck, CornerDownRight, Flame, Info, Mic, RotateCcw, Users } from "lucide-react";
 
 import { Badge } from "@/components/ds/badge";
 import { Button } from "@/components/ds/button";
 import { Modal } from "@/components/ds/modal";
+import type { QuestionPracticeRecord } from "@/features/app-state/types";
+import type { ExamItem } from "@/features/exam/types";
 import type { ForecastTopic } from "@/features/forecast/types";
 
 export interface TopicDetailModalProps {
   topic: ForecastTopic | null;
   practicedBand: number | undefined;
   saved: boolean;
+  practicedQuestions?: Record<string, QuestionPracticeRecord>;
   onClose: () => void;
   onToggleSave: () => void;
   onStart: () => void;
+  onStartQuestion?: (item: ExamItem, allItems: ExamItem[]) => void;
 }
 
-export function TopicDetailModal({ topic: open, practicedBand, saved, onClose, onToggleSave, onStart }: TopicDetailModalProps) {
+export function TopicDetailModal({
+  topic: open,
+  practicedBand,
+  saved,
+  practicedQuestions,
+  onClose,
+  onToggleSave,
+  onStart,
+  onStartQuestion,
+}: TopicDetailModalProps) {
   return (
     <Modal open={!!open} onClose={onClose} width="max-w-2xl">
       {open && (
@@ -35,12 +48,13 @@ export function TopicDetailModal({ topic: open, practicedBand, saved, onClose, o
               <Users size={13} /> {open.reports} thí sinh báo gặp
             </span>
             <span>Gặp gần nhất: {open.lastSeen}</span>
-            {practicedBand !== undefined && <span className="font-semibold text-good">Lần luyện trước: band {practicedBand.toFixed(1)}</span>}
+            {typeof practicedBand === "number" && <span className="font-semibold text-good">Lần luyện trước: band {practicedBand.toFixed(1)}</span>}
           </div>
 
           <div className="mt-6 space-y-2">
-            {open.items.map((it, k) =>
-              it.cue ? (
+            {open.items.map((it, k) => {
+              const qHistory = practicedQuestions?.[it.id];
+              return it.cue ? (
                 <div key={it.id} className="rounded-2xl bg-paper p-5">
                   <div className="font-mono text-[11px] tracking-wider text-subtle">PART 2 · CUE CARD</div>
                   <div className="mt-2 font-bold">{it.cue.title}</div>
@@ -48,11 +62,46 @@ export function TopicDetailModal({ topic: open, practicedBand, saved, onClose, o
                 </div>
               ) : (
                 <div key={it.id}>
-                  <div className="flex gap-3 rounded-2xl border border-line px-4 py-3">
-                    <span className="font-mono text-xs text-subtle">
-                      P{it.part}·{open.kind === "p1" ? k + 1 : k}
-                    </span>
-                    <span className="text-sm font-medium">{it.text}</span>
+                  <div className="flex flex-col gap-2 rounded-2xl border border-line p-3.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4 transition-colors hover:border-ink/20">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="mt-0.5 font-mono text-xs text-subtle shrink-0">
+                        P{it.part}·{open.kind === "p1" ? k + 1 : k}
+                      </span>
+                      <div className="space-y-1 min-w-0">
+                        <span className="text-sm font-medium leading-snug">{it.text}</span>
+                        {qHistory && typeof qHistory.band === "number" && (
+                          <div className="flex items-center gap-2 text-xs">
+                            <Badge tone={qHistory.band >= 6.5 ? "good" : "accent"}>
+                              Band {qHistory.band.toFixed(1)}
+                            </Badge>
+                            <span className="font-mono text-[11px] text-subtle">
+                              {qHistory.count} lần luyện
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {onStartQuestion && (
+                      <div className="flex shrink-0 justify-end sm:self-center">
+                        <Button
+                          size="sm"
+                          variant={qHistory ? "outline" : "soft"}
+                          onClick={() => onStartQuestion(it, open.items)}
+                          className="h-8 px-3 text-xs"
+                          aria-label={qHistory ? `Luyện lại: ${it.text}` : `Luyện câu này: ${it.text}`}
+                        >
+                          {qHistory ? (
+                            <>
+                              <RotateCcw size={13} /> Luyện lại
+                            </>
+                          ) : (
+                            <>
+                              <Mic size={13} /> Luyện câu này
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   {it.followUp && (
                     <div className="mt-1 ml-6 flex items-center gap-2 text-xs text-brand">
@@ -60,8 +109,8 @@ export function TopicDetailModal({ topic: open, practicedBand, saved, onClose, o
                     </div>
                   )}
                 </div>
-              ),
-            )}
+              );
+            })}
           </div>
 
           <div className="mt-5 flex items-start gap-2.5 rounded-2xl bg-info-soft px-4 py-3 text-[13px] text-info">

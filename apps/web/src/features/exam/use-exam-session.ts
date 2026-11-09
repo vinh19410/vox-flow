@@ -74,14 +74,37 @@ export function useExamSession(): ExamSessionValue {
 
   useEffect(() => {
     let active = true;
-    const examMode = (s.mode as "full" | "part1" | "part2" | "part3") ?? "full";
+    const examMode: "full" | "part1" | "part2" | "part3" = s.practice
+      ? s.practice.singleQuestionId
+        ? s.practice.items[0]?.part === 3
+          ? "part3"
+          : "part1"
+        : s.practice.kind === "p1"
+          ? "part1"
+          : "part2"
+      : s.mode === "p1"
+        ? "part1"
+        : s.mode === "p2"
+          ? "part2"
+          : s.mode === "p3"
+            ? "part3"
+            : "full";
 
     trpcClient.attempt.getActive
       .query()
       .then((activeAttempt) => {
         if (!active) return;
-        if (activeAttempt?.attempt) {
-          setAttemptId(activeAttempt.attempt.id);
+        const att = activeAttempt?.attempt;
+        const isPracticeMatch = Boolean(
+          s.practice &&
+            att &&
+            att.topicId === s.practice.topicId &&
+            att.questionKey === (s.practice.singleQuestionId ?? null),
+        );
+        const isMockMatch = Boolean(!s.practice && att && !att.topicId && !att.questionKey && att.mode === examMode);
+
+        if (att && (isPracticeMatch || isMockMatch)) {
+          setAttemptId(att.id);
           if (activeAttempt.answers && activeAttempt.answers.length > 0) {
             const rehydrated: Record<string, ExamAnswer> = {};
             for (const a of activeAttempt.answers) {
@@ -96,7 +119,11 @@ export function useExamSession(): ExamSessionValue {
           }
         } else {
           return trpcClient.attempt.start
-            .mutate({ mode: examMode })
+            .mutate({
+              mode: examMode,
+              topicId: s.practice?.topicId,
+              questionKey: s.practice?.singleQuestionId,
+            })
             .then((res) => {
               if (active) setAttemptId(res.attemptId);
             });
@@ -109,7 +136,7 @@ export function useExamSession(): ExamSessionValue {
     return () => {
       active = false;
     };
-  }, [s.mode]);
+  }, [s.mode, s.practice]);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];

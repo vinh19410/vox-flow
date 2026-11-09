@@ -16,13 +16,14 @@ import { ReportModal } from "./components/report-modal";
 import { ReviewList } from "./components/review-list";
 import { SoftPaywall } from "./components/soft-paywall";
 import { RESULT } from "./data";
+import type { ExamItem } from "@/features/exam/types";
 import type { Attempt } from "@/features/history/types";
 import type { CritKey } from "./types";
 
 /** S12–S15 — result page. Binds `latest` to the prototype default RESULT and
  * concrete ids (or the transient unsaved attempt) to the attempt's own band. */
 export function ResultsScreen({ attemptId }: { attemptId: string }) {
-  const { s, go, openPaywall, lastUnpersistedAttempt } = useApp();
+  const { s, set, go, openPaywall, lastUnpersistedAttempt } = useApp();
   const { isDefaultLatest, attempt } = resolveAttemptView(s.attempts, attemptId, lastUnpersistedAttempt);
   const pro = !!s.plan;
   const [tab, setTab] = useState<"criteria" | "review">("criteria");
@@ -58,11 +59,44 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
   const active: Attempt | null = isDefaultLatest ? null : attempt;
   const band = active?.band ?? RESULT.overall;
   const range = active?.range ?? RESULT.range;
+  const lastSession = s.lastPracticeSession;
+  const isViewingCurrentPracticeAttempt = Boolean(
+    lastSession?.singleQuestionId &&
+      ((attempt && lastSession.attemptId === attempt.id) ||
+        (isDefaultLatest && (!lastSession.attemptId || lastSession.attemptId === s.attempts[s.attempts.length - 1]?.id))),
+  );
+  const isSinglePractice = isViewingCurrentPracticeAttempt;
+  const topicItems = lastSession?.topicItems ?? [];
+  const currentIdx = topicItems.findIndex((it) => it.id === lastSession?.singleQuestionId);
+  const nextItem =
+    currentIdx >= 0 && currentIdx < topicItems.length - 1
+      ? topicItems.slice(currentIdx + 1).find((it) => !it.cue)
+      : undefined;
+
+  const handleNextQuestion = () => {
+    if (!lastSession || !nextItem) return;
+    const singleItem: ExamItem = {
+      ...nextItem,
+      cue: undefined,
+    };
+    set({
+      practice: {
+        topicId: lastSession.topicId,
+        title: lastSession.title,
+        kind: lastSession.kind,
+        items: [singleItem],
+        singleQuestionId: nextItem.id,
+        topicItems: lastSession.topicItems,
+      },
+      lastPracticeSession: null,
+    });
+    go("exam");
+  };
+
   const eyebrow = active
     ? `Kết quả · ${active.topic} · ${new Date(active.date).toLocaleDateString("vi-VN")}`
-    : `Kết quả · ${s.practice ? `Forecast: ${s.practice.title}` : modeLabel(s.mode)} · ${new Date().toLocaleDateString("vi-VN")}`;
+    : `Kết quả · ${lastSession ? `Forecast: ${lastSession.title}` : s.practice ? `Forecast: ${s.practice.title}` : modeLabel(s.mode)} · ${new Date().toLocaleDateString("vi-VN")}`;
   const crit = RESULT.criteria.find((c) => c.key === sel)!;
-
   const pickCriterion = (key: CritKey) => {
     setSel(key);
     setTab("criteria");
@@ -102,7 +136,31 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
               <Flag size={14} /> Báo lỗi chấm
             </Button>
           ) : null}
-          <Button size="sm" onClick={() => go("select")}>
+          {isSinglePractice && nextItem && (
+            <Button variant="accent" size="sm" onClick={handleNextQuestion} data-testid="next-question-btn">
+              Luyện câu kế tiếp trong chủ đề <ArrowRight size={14} />
+            </Button>
+          )}
+          {isSinglePractice && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                set({ lastPracticeSession: null });
+                go("forecast");
+              }}
+              data-testid="back-to-topic-btn"
+            >
+              Quay lại chủ đề
+            </Button>
+          )}
+          <Button
+            size="sm"
+            onClick={() => {
+              set({ lastPracticeSession: null });
+              go("select");
+            }}
+          >
             <Repeat size={14} /> Thi lại
           </Button>
         </div>
@@ -149,7 +207,12 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
           <div className="font-bold">Luyện lại câu yếu nhất</div>
           <div className="text-sm text-ink-2">“Why do some people prefer not to ask others for help?” — nói lại và so sánh trước/sau.</div>
         </div>
-        <Button onClick={() => go("select")}>
+        <Button
+          onClick={() => {
+            set({ lastPracticeSession: null });
+            go("select");
+          }}
+        >
           Luyện ngay <ArrowRight size={16} />
         </Button>
       </Card>

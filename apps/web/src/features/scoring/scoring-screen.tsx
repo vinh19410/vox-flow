@@ -28,20 +28,50 @@ export function ScoringScreen() {
         added.current = true;
         if (wasPending.current) {
           const pr = s.practice;
+          const isSingle = Boolean(pr?.singleQuestionId);
+          const singlePart = pr?.items?.[0]?.part;
+          const attemptMode = pr
+            ? isSingle
+              ? singlePart === 3
+                ? "p3"
+                : "p1"
+              : pr.kind === "p1"
+                ? "p1"
+                : "p2"
+            : s.mode;
+
           const attempt: Attempt = {
             id: `new${Date.now()}`,
             date: new Date().toISOString().slice(0, 10),
-            mode: pr ? (pr.kind === "p1" ? "p1" : "p2") : s.mode,
+            mode: attemptMode,
             band: RESULT.overall,
             range: RESULT.range,
             topic: pr ? `Forecast · ${pr.title}` : "Accommodation · Helping others",
           };
           newId.current = attempt.id;
-          set((prev) => ({
-            ...(pr ? { practiced: { ...prev.practiced, [pr.topicId]: RESULT.overall } } : {}),
-            practice: null,
-            attempts: [...prev.attempts, attempt],
-          }));
+
+          const qId = pr?.singleQuestionId;
+          set((prev) => {
+            const prevQ = qId ? prev.practicedQuestions?.[qId] : undefined;
+            const updatedQuestions = qId
+              ? {
+                  ...prev.practicedQuestions,
+                  [qId]: {
+                    band: RESULT.overall,
+                    count: (prevQ?.count ?? 0) + 1,
+                    lastPracticedAt: new Date().toISOString().slice(0, 10),
+                  },
+                }
+              : prev.practicedQuestions;
+
+            return {
+              ...(pr && !isSingle ? { practiced: { ...prev.practiced, [pr.topicId]: RESULT.overall } } : {}),
+              practicedQuestions: updatedQuestions,
+              lastPracticeSession: pr ? { ...pr, attemptId: attempt.id } : null,
+              practice: null,
+              attempts: [...prev.attempts, attempt],
+            };
+          });
           setPendingSubmission(false);
         }
       }
