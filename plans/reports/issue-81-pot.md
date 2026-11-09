@@ -1,7 +1,7 @@
 # Proof of Test (POT) — Loại bỏ mock data và xây dựng Empty State (#81)
 
 - **Nhánh:** `vinh19410/Empty-state`
-- **Commit SHA:** `650d2424327a78ede8f2d02ab06b6f4ebc328331`
+- **Commit SHA:** `f6cf146bf1cb2d9a42b9d25564140f29033d957c`
 - **Issue:** [#81](https://github.com/vinh19410/vox-flow/issues/81)
 
 ---
@@ -13,41 +13,41 @@
 | **1. Loại bỏ toàn bộ "Minh Anh" / "minhanh@" khỏi code source web** | ✅ Đạt | `rg -n "Minh Anh\|minhanh@" apps/web/src --glob '!**/*.test.*'` trả về đúng **0 dòng**. |
 | **2. Component `EmptyState` chuẩn trong Design System** | ✅ Đạt | File `apps/web/src/components/ds/empty-state.tsx` hỗ trợ 3 kích thước (`sm`, `md`, `lg`), bordered, icon, primary action, secondary action. File test `empty-state.test.tsx` (5/5 tests pass). |
 | **3. Trạng thái khởi tạo trung tính & sessionStorage an toàn** | ✅ Đạt | `createInitialState()` trả về `name: ""`, `email: ""`, `attempts: []`, `practiced: {}`, `saved: []`, `examDate: null`. Key lưu trữ đổi thành `vox-flow-proto-state-v2` và chỉ lưu trữ các tùy chọn UI (`mode`, `voice`, `practice`), không lưu thông tin người dùng hay lịch sử bài thi. |
-| **4. Đồng bộ dữ liệu người dùng thật từ Better Auth & API** | ✅ Đạt | `useProfileHydration` nạp `name`, `email` từ `authClient.useSession()`, nạp `targetBand`, `examDate` từ `profile.get`, nạp `consent` từ `privacy.getConsent`. Reset toàn bộ state về `createInitialState()` khi đăng xuất (bao gồm cả `consent`, `plan`, `attempts`, `practiced`, `saved`...). |
+| **4. Đồng bộ dữ liệu người dùng thật từ Better Auth & API** | ✅ Đạt | `useProfileHydration` nạp `name`, `email` từ `authClient.useSession()`, nạp `targetBand`, `examDate` từ `profile.get`, nạp `consent` từ `privacy.getConsent`. Reset toàn bộ dữ liệu người dùng về `createInitialState()` khi đăng xuất thật (`null`), đồng thời giữ lại tùy chọn giao diện (`mode`, `voice`); không reset khi phiên đang ở trạng thái pending (`undefined`). |
 | **5. EmptyState cho các section Dashboard, Lịch sử, Forecast** | ✅ Đạt | `DashboardScreen` (empty state khi chưa có bài thi), `TodayTasks` (empty state khi chưa có bài tập cá nhân), `RecentAttemptCard` (empty state khi `attempts` rỗng), `ReadinessCard` (bỏ chip điểm giả), `CountdownCard` (bỏ chuỗi 4 ngày giả), `HistoryScreen` (empty state cho bộ lọc và lịch sử trống), `ForecastScreen` (empty state khi danh sách lưu/tìm kiếm trống). |
 | **6. Beta Guard cho Chấm điểm và Thanh toán** | ✅ Đạt | Gated sau module cờ `FEATURES` (`lib/feature-flags.ts`, mặc định `false`). `ResultsScreen` hiển thị trạng thái "Tính năng chấm điểm AI sắp ra mắt", `ScoringScreen` hiển thị "Bài thi đã được ghi nhận!" mà không thêm điểm giả. `PaymentPanel` ẩn `FakeQR` và hiện "Cổng thanh toán sắp ra mắt". |
 | **7. Kiểm tra cơ học bản build production không chứa mock markers** | ✅ Đạt | `pnpm --filter web check:no-mock` chạy script `scripts/check-no-mock-in-dist.mjs` quét toàn bộ dist và báo `OK: no mock markers in dist` với các marker `Minh Anh`, `minhanh@gmail.com`, `Chuỗi 4 ngày`, `Phát âm 7.0`, `Trả lời trôi chảy, có mở rộng ý`, `128 từ/phút`. |
-| **8. Tests & Typecheck pass 100%** | ✅ Đạt | `pnpm check-types --force` thành công trên toàn bộ 7 packages. `pnpm --filter web test` đạt **28/28 files, 206/206 tests pass**. `pnpm --filter @vox-flow/api test` đạt **16/16 files, 119/119 tests pass**. |
+| **8. Tests & Typecheck pass 100%** | ✅ Đạt | `pnpm check-types --force` thành công trên toàn bộ 7 packages (0 cached). `pnpm --filter web test` đạt **28/28 files, 207/207 tests pass**. `pnpm --filter @vox-flow/api test` đạt **16/16 files, 119/119 tests pass**. |
 
 ---
 
 ## 2. Bằng chứng trực quan (Screenshots)
 
-> Chụp trên bản build production thực tế (`vite preview`) phục vụ qua static harness có giả lập `get-session` (user **"Trần Thị Lan"**, avatar mẫu cú) và `profile.get` (targetBand 7.0, examDate 2026-12-15) — đúng pattern POT #73 và POT #76. Route `/app` cố định light theme theo thiết kế nguyên mẫu → **dark mode N/A** (precedent POT #65, #66, #71, #73, #76).
+> Chụp trên bản build production thực tế (`vite preview`), sử dụng Puppeteer (`page.setRequestInterception`) để stub phiên đăng nhập Better Auth (`/api/auth/get-session`) với user **"Trần Thị Lan"** (hiển thị initial avatar 'T' và lời chào 'Chào Lan!') và stub `profile.get` (targetBand 7.0, examDate 2026-12-15). Route `/app` cố định light theme theo thiết kế nguyên mẫu → **dark mode N/A** (precedent POT #65, #66, #71, #73, #76).
 > Lưu ý: Không có ảnh chụp trực quan cho các màn hình Results, Scoring và Billing gate screens; các màn hình này được bảo đảm bằng unit/gate tests (`results-gate.test.tsx`, `billing-gate.test.tsx`).
 ### Dashboard — Empty State (Màn hình chính khi chưa có bài thi)
 
 - **Viewport 1280px (Desktop):**
-![Dashboard Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-dashboard-1280.png?raw=true)
+![Dashboard Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-1280.png?raw=true)
 
 - **Viewport 390px (Mobile chuẩn):**
-![Dashboard Empty State 390px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-dashboard-390.png?raw=true)
+![Dashboard Empty State 390px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-390.png?raw=true)
 
 - **Viewport 360px (Mobile nhỏ):**
-![Dashboard Empty State 360px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-dashboard-360.png?raw=true)
+![Dashboard Empty State 360px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-360.png?raw=true)
 
 ---
 
 ### Lịch sử thi (History) — Empty State
 
 - **Viewport 1280px (Desktop):**
-![History Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-history-1280.png?raw=true)
+![History Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-1280.png?raw=true)
 
 - **Viewport 390px (Mobile chuẩn):**
-![History Empty State 390px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-history-390.png?raw=true)
+![History Empty State 390px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-390.png?raw=true)
 
 - **Viewport 360px (Mobile nhỏ):**
-![History Empty State 360px](https://github.com/vinh19410/vox-flow/blob/650d2424327a78ede8f2d02ab06b6f4ebc328331/plans/reports/81-empty-state-history-360.png?raw=true)
+![History Empty State 360px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-360.png?raw=true)
 
 ---
 
@@ -64,10 +64,10 @@
 @vox-flow/api:check-types: tsc --noEmit
 server:check-types: tsc --noEmit
 web:check-types: vite build && tsc --noEmit
-✓ built in 4.47s
+✓ built in 2.40s
  Tasks:    7 successful, 7 total
 Cached:    0 cached, 7 total
-  Time:    54.388s
+  Time:    38.028s
 ```
 
 ### b. `pnpm --filter web check:no-mock`
@@ -81,8 +81,8 @@ OK: no mock markers in dist
 ### c. `pnpm --filter web test`
 ```text
 Test Files  28 passed (28)
-     Tests  206 passed (206)
-  Duration  24.39s
+     Tests  207 passed (207)
+  Duration  25.63s
 ```
 
 ### d. `pnpm --filter @vox-flow/api test`
