@@ -12,12 +12,14 @@ import {
 } from "@vox-flow/ui/components/dropdown-menu";
 
 import { useApp } from "@/features/app-state/types";
+import { useSignOut } from "@/hooks/use-sign-out";
 import { authClient } from "@/lib/auth-client";
 import { Logo } from "@/components/ds/logo";
 
 import { NAV_ITEMS, resolveActiveNav } from "./nav-items";
 export function BottomNav() {
   const { s, go } = useApp();
+  const signOut = useSignOut();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const active = resolveActiveNav(pathname);
   const { data: session } = authClient.useSession();
@@ -25,11 +27,6 @@ export function BottomNav() {
   // accounts see their own name; seed only covers the not-yet-loaded window.
   const displayName = session?.user?.name || s.name;
   const email = session?.user?.email;
-
-  const handleSignOut = async () => {
-    await authClient.signOut().catch(() => {});
-    go("landing");
-  };
 
   return (
     <>
@@ -66,7 +63,7 @@ export function BottomNav() {
               <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
                 variant="destructive"
-                onClick={handleSignOut}
+                onClick={() => void signOut()}
                 className="cursor-pointer gap-2.5 rounded-xl px-3 py-2 text-xs font-medium"
               >
                 <LogOut />
