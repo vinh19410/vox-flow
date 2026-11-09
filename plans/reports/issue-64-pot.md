@@ -63,9 +63,9 @@ Wordmark "Vox Flow" render trên landing header (Logo component dùng chung vớ
 
 | Viewport | Landing | Auth |
 |---|---|---|
-| 360px | ![landing-360](https://github.com/vinh19410/vox-flow/blob/<SHA>/plans/reports/64-vox-flow-logo-360.png?raw=true) | — |
-| 390px | ![landing-390](https://github.com/vinh19410/vox-flow/blob/<SHA>/plans/reports/64-vox-flow-logo-390.png?raw=true) | ![auth-390](https://github.com/vinh19410/vox-flow/blob/<SHA>/plans/reports/64-vox-flow-auth-390.png?raw=true) |
-| 430px | ![landing-430](https://github.com/vinh19410/vox-flow/blob/<SHA>/plans/reports/64-vox-flow-logo-430.png?raw=true) | — |
+| 360px | ![landing-360](https://github.com/vinh19410/vox-flow/blob/7f14d46/plans/reports/64-vox-flow-logo-360.png?raw=true) | — |
+| 390px | ![landing-390](https://github.com/vinh19410/vox-flow/blob/7f14d46/plans/reports/64-vox-flow-logo-390.png?raw=true) | ![auth-390](https://github.com/vinh19410/vox-flow/blob/7f14d46/plans/reports/64-vox-flow-auth-390.png?raw=true) |
+| 430px | ![landing-430](https://github.com/vinh19410/vox-flow/blob/7f14d46/plans/reports/64-vox-flow-logo-430.png?raw=true) | — |
 
 - DOM proof (trang thật, không phải test): `span.textContent === "Vox Flow"` trên cả `/` và `/auth`; `document.title === "Vox Flow — Thi thử IELTS Speaking AI"`. Wordmark thêm `whitespace-nowrap` sau khi screenshot đầu tiên phát hiện chữ xuống 2 dòng ở viewport hẹp (hành vi mới phát sinh do khoảng trắng; wordmark cũ "ChấmRõ" là 1 từ nên không wraps); sau sửa: overflow ngang = 0px tại cả 3 viewport.
 - Light/dark: chỉ chụp light vì toàn bộ surface người dùng nằm dưới route `_proto` vốn ép light theme (`apps/web/src/routes/_proto/route.tsx:14-17` xóa class `dark` và đặt `colorScheme = "light"`); prop `dark` của `Logo` không có call site nào truyền (`grep "Logo dark"` → 0 kết quả), nên không tồn tại trạng thái dark thật để chụp.
