@@ -1,4 +1,8 @@
-import { createAuth, type AuthConfig } from "@vox-flow/auth";
+import {
+  createAuth,
+  MAX_USER_IMAGE_LENGTH,
+  type AuthConfig,
+} from "@vox-flow/auth";
 import * as authSchema from "@vox-flow/db/schema/auth";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDb, type TestDbContext } from "./db";
@@ -80,6 +84,50 @@ describe("Better Auth with Google provider (WI-07)", () => {
     });
     expect(signIn.user.email).toBe("tester@example.com");
     expect(signIn.token).toBeTruthy();
+  });
+
+  it("sign-up accepts a Google avatar https URL via user.create.before", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+    const signUp = await auth.api.signUpEmail({
+      body: {
+        email: "google-avatar@example.com",
+        password: "Password123!",
+        name: "Google Avatar",
+        image: "https://lh3.googleusercontent.com/a/ACg8ocK-example=s96-c",
+      },
+    });
+    expect(signUp.user.image).toBe(
+      "https://lh3.googleusercontent.com/a/ACg8ocK-example=s96-c",
+    );
+  });
+
+  it("sign-up rejects a script-bearing SVG data URL with INVALID_IMAGE", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+    await expect(
+      auth.api.signUpEmail({
+        body: {
+          email: "evil-svg@example.com",
+          password: "Password123!",
+          name: "Evil SVG",
+          image:
+            "data:image/svg+xml;base64,PHN2Zz48c2NyaXB0PmFsZXJ0KDEpPC9zY3JpcHQ+PC9zdmc+",
+        },
+      }),
+    ).rejects.toThrow("INVALID_IMAGE");
+  });
+
+  it("sign-up rejects an image exceeding MAX_USER_IMAGE_LENGTH", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+    await expect(
+      auth.api.signUpEmail({
+        body: {
+          email: "huge-image@example.com",
+          password: "Password123!",
+          name: "Huge Image",
+          image: `data:image/webp;base64,${"A".repeat(MAX_USER_IMAGE_LENGTH)}`,
+        },
+      }),
+    ).rejects.toThrow("INVALID_IMAGE");
   });
 
   it("rejects sign-in with a wrong password with INVALID_EMAIL_OR_PASSWORD", async () => {

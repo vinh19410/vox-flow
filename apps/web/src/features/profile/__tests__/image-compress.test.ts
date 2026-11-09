@@ -79,6 +79,44 @@ describe("compressImageFile", () => {
     }
   });
 
+  it("rejects when the compressed data URL exceeds the max output length", async () => {
+    const drawImageMock = vi.fn();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: drawImageMock,
+    } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+      "data:image/webp;base64," + "A".repeat(64),
+    );
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 400;
+        naturalHeight = 300;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+
+    try {
+      const pngContent = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const imageFile = new File([pngContent], "big-output.png", {
+        type: "image/png",
+      });
+
+      await expect(compressImageFile(imageFile, 180, 0.85, 16)).rejects.toThrow(
+        "vượt quá giới hạn dung lượng",
+      );
+      expect(drawImageMock).not.toHaveBeenCalledTimes(0);
+    } finally {
+      vi.mocked(HTMLCanvasElement.prototype.getContext).mockRestore();
+      vi.mocked(HTMLCanvasElement.prototype.toDataURL).mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("rejects when the browser fails to decode the image", async () => {
     vi.stubGlobal(
       "Image",
