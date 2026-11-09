@@ -2,7 +2,7 @@
 
 - **Nhánh:** `vinh19410/feat-web-b-sung-menu-ng-xu-t-v-th-ng-tin-t-i-kho`
 - **Commit SHA:** `de67db4f8d5eb24b14fdf080a19a26b17ac4b924`
-- **PR:** _điền sau khi mở PR_
+- **PR:** [#70](https://github.com/vinh19410/vox-flow/pull/70)
 
 ## 1. Đối chiếu Done-means
 
