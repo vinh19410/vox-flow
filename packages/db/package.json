@@ -3,12 +3,15 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./schema/*": "./src/schema/*.ts",
     "./*": "./src/*.ts"
   },
   "scripts": {
     "check-types": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:deploy": "drizzle-kit migrate"
+    "db:migrate:deploy": "drizzle-kit migrate",
+    "seed:forecast": "node --experimental-strip-types ./scripts/seed-forecast.ts"
   },
   "dependencies": {
     "@libsql/client": "0.18.0",

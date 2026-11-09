@@ -121,6 +121,18 @@ vox-flow/
 │   └── db/          # Database schema & queries
 ```
 
+## Web Prototype UI (`apps/web`)
+
+The 12-screen ChấmRõ prototype (Issue #1) ships as mock-data routes in `apps/web`, split from the single-file prototype into feature-scoped components. No backend/auth wiring — state is a session-scoped React context persisted to `sessionStorage`.
+
+- **Routes (`src/routes/_proto/`)**: `/` landing, `/auth`, `/onboarding`, `/exam`, `/scoring`, and the sidebar shell under `/app/dashboard`, `/app/select`, `/app/forecast`, `/app/history`, `/app/history/$attemptId`, `/app/billing`, `/app/privacy`. A floating dev-only screen map (`src/layouts/screen-map.tsx`) jumps between screens in development.
+- **Legacy routes (`src/routes/_app-legacy/`)**: the scaffold `/login` and `/dashboard` screens, kept unchanged with their own dark theme + header.
+- **Design system (`src/components/ds/`)**: prototype-only primitives (Button, Card, Badge, Toggle, Modal, Logo, BandRange, Wave) kept separate from `packages/ui`. Prototype tokens use `brand*`/`subtle` names in `src/styles/prototype-theme.css` to avoid colliding with shadcn `accent`/`muted` tokens.
+- **Features (`src/features/`)**: one folder per screen (`landing`, `auth`, `onboarding`, `dashboard`, `select`, `forecast`, `exam`, `scoring`, `results`, `history`, `billing`, `privacy`), each with `components/*`, mock `data.ts`, and a thin `*-screen.tsx`; shared state in `features/app-state`.
+- **Hooks & libs**: `src/hooks/use-mic-level.ts` (live mic level), `src/lib/speech.ts` (safe `speechSynthesis` wrapper), `src/lib/format.ts`, `src/lib/cx.ts`.
+
+Web scripts (run from the workspace root or `apps/web`): `pnpm test`, `pnpm check-types`, `pnpm build`.
+
 ## Available Scripts
 
 - `pnpm run dev`: Start all applications in development mode

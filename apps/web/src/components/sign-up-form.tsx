@@ -12,7 +12,7 @@ import Loader from "./loader";
 
 export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () => void }) {
   const navigate = useNavigate({
-    from: "/",
+    from: "/login",
   });
   const { isPending } = authClient.useSession();
 
@@ -155,6 +155,12 @@ export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () 
           Already have an account? Sign In
         </Button>
       </div>
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Bằng việc đăng ký, bạn đồng ý với{" "}
+        <a href="/terms" className="underline underline-offset-2 hover:text-foreground">
+          Điều khoản dịch vụ & Chính sách sử dụng
+        </a>
+      </p>
     </div>
   );
 }

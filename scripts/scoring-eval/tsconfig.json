@@ -1,0 +1,10 @@
+{
+  "extends": "@vox-flow/config/tsconfig.base.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["./*.ts"]
+}

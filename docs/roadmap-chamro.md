@@ -1,15 +1,16 @@
 ---
 type: roadmap
-status: draft
+status: superseded-partial
 updated: 2026-11-05
 format: now-next-later
-next_review:
+next_review: null
+superseded_by: docs/_product/roadmap.md
 links: [plans/reports/advise-261104-0948-chamro-feature-map.md, docs/_product/prd.md, docs/_product/roadmap.md]
 ---
 
 # Vox Flow (ChấmRõ) — Roadmap đề xuất theo Feature Map
 
-Bản đề xuất này dựng từ feature map ngày 2026-11-04 (21 feature, 6 khoảng trống), đặt song song với `docs/_product/roadmap.md` và chưa thay thế bản đó. Feature map chưa được đưa vào PRD, nên các điểm lệch với PRD được liệt kê ở Mục 7.
+Bản đề xuất này dựng từ feature map ngày 2026-11-04 (21 feature, 6 khoảng trống). Từ ngày 2026-11-05, tài liệu roadmap chính thức là `docs/_product/roadmap.md`. Tuy nhiên, Mục 2 (Xếp hạng ưu tiên) và Mục 7 (Câu hỏi mở) tiếp tục được duy trì và kiểm tra trực tiếp tại tài liệu này cho tới khi các issue #7 (OQ-5), #8 (OQ-6) và #9 (kiểm chứng billing) đóng.
 
 ## 1. Outcome mỗi giai đoạn
 
@@ -146,36 +147,43 @@ Xanh: Now · Vàng: Next · Xám nhạt: Later · Xám xanh: dịch vụ ngoài.
 
 ### Từ feature map
 
-- [ ] OQ-1: Hạn mức lượt miễn phí chốt bao nhiêu? Feature map đề xuất 3 điểm/ngày (Full Test 3 điểm, mỗi Part 1 điểm), còn PRD đang ghi 5 bài/ngày.
-- [ ] OQ-2: Ai dùng công cụ admin đề forecast (người sở hữu sản phẩm, đội nội dung hay cộng tác viên)?
-- [ ] OQ-3: Tần suất tối đa mỗi ngày của nhắc luyện qua email và thông báo đẩy là bao nhiêu?
+- [x] OQ-1: Hạn mức lượt miễn phí chốt bao nhiêu? Feature map đề xuất 3 điểm/ngày (Full Test 3 điểm, mỗi Part 1 điểm), còn PRD đang ghi 5 bài/ngày. — Resolved: 3 điểm/ngày cho mỗi học viên miễn phí, kèm trần miễn phí toàn hệ thống đặt lại mỗi ngày theo giờ Việt Nam. Trần tạm tính khoảng 33.000đ/ngày từ ngân sách AI dưới 1 triệu/tháng, tương đương chừng 4 Full Test (ước tính 8.000đ/Full Test, chưa đo thật), và sẽ chỉnh theo kết quả OQ-5. Hết trần thì học viên miễn phí chờ ngày hôm sau, học viên trả phí không bị chặn.
+- [x] OQ-2: Ai dùng công cụ admin đề forecast (người sở hữu sản phẩm, đội nội dung hay cộng tác viên)? — Resolved: chỉ người sở hữu sản phẩm. Đề đến từ 3 nguồn (tự soạn, học viên báo, thu thập từ web), AI gộp trùng thành bản nháp và mọi đề đều phải được duyệt trước khi đăng. Nguồn web chỉ dùng làm tín hiệu về chủ đề, câu hỏi được viết lại và lưu đường dẫn nguồn. "Số thí sinh báo đã gặp" chỉ đếm báo cáo thật từ học viên.
+- [x] OQ-3: Tần suất tối đa mỗi ngày của nhắc luyện qua email và thông báo đẩy là bao nhiêu? — Resolved: tối đa 1 nhắc luyện/ngày trên mọi kênh, ưu tiên thông báo đẩy nếu học viên đã bật, nếu không thì gửi email, vào đúng giờ học viên chọn. Sau 7 ngày không mở lần nào thì giảm còn 1 lần/tuần. Thông báo hết hạn gói gửi trước 3 ngày và vào ngày hết hạn, không tính vào giới hạn này. Trên iPhone, thông báo đẩy chỉ hoạt động khi học viên đã thêm app vào màn hình chính, nên email là kênh chính cho nhóm này.
 
 ### Phát sinh khi xếp roadmap
 
-- [ ] OQ-4: Báo lỗi chấm thuộc MVP nhưng quy trình xử lý (GAP-03) ở Later, vậy sau ra mắt ai trả lời báo lỗi và có giữ cam kết 72 giờ của PRD không?
-- [ ] OQ-5: Chọn dịch vụ nhận dạng giọng nói và chấm phát âm nào, ngân sách chi phí mỗi bài là bao nhiêu (PRD OQ-9, OQ-3)? Đây là chốt chặn của `mock-exam` và `scoring-results`.
-- [ ] OQ-6: Rà yêu cầu chuyển audio ra nước ngoài theo Nghị định 13/2023 mất bao lâu, có chặn Now không (PRD OQ-11)?
+- [x] OQ-4: Báo lỗi chấm thuộc MVP nhưng quy trình xử lý (GAP-03) ở Later, vậy sau ra mắt ai trả lời báo lỗi và có giữ cam kết 72 giờ của PRD không? — Resolved: người sở hữu sản phẩm tự xử lý (có chuyên môn chấm IELTS) và giữ cam kết 72 giờ. Phần tối thiểu của GAP-03 chuyển lên Next, gồm hàng đợi, kiểm tra đồng ý, mẫu trả lời, cập nhật band và cảnh báo sắp quá hạn; phần mở rộng vẫn ở Later. Tìm thêm người khi quá 5 báo lỗi/tuần hoặc tỷ lệ đúng hạn dưới 90%.
+- [ ] OQ-5: Chọn dịch vụ nhận dạng giọng nói và chấm phát âm nào, ngân sách chi phí mỗi bài là bao nhiêu (PRD OQ-9, OQ-3)? Đây là chốt chặn của `mock-exam` và `scoring-results`. — hold: chờ thử trên 30 bài mẫu có đồng ý bằng văn bản, do người sở hữu sản phẩm chấm mù. Thử 2 hướng (Azure gộp nhận dạng và chấm phát âm; dịch vụ nhận dạng riêng kết hợp SpeechSuper) với 3 mô hình chấm (Claude Opus 5.5, Sonnet 5.5, Haiku 5.5). Ngân sách đề xuất: mục tiêu 8.000đ/Full Test và 3.000đ/Part, dừng để xem lại nếu vượt 12.000đ/Full Test. Ngưỡng đạt: ≥ 80% bài lệch trong 0.5 band so với điểm người chấm, ≥ 90% bài có độ chênh giữa 3 lần chấm ≤ 0.5 band.
+- [ ] OQ-6: Rà yêu cầu chuyển audio ra nước ngoài theo Nghị định 13/2023 mất bao lâu, có chặn Now không (PRD OQ-11)? — hold: chờ một buổi tư vấn luật sư. Căn cứ đã đổi: từ 01/01/2026, Luật 91/2025/QH15 và Nghị định 356/2025 thay Nghị định 13/2023. Luật yêu cầu nộp hồ sơ đánh giá chuyển dữ liệu ra nước ngoài trong 60 ngày kể từ lần chuyển đầu tiên (Điều 20). Việc này không chặn xây sản phẩm và thử bằng bài mẫu có đồng ý, nhưng chặn mở cho học viên thật cho tới khi xong buổi tư vấn. Không dựa vào miễn trừ vì sản phẩm chạy dưới tư cách cá nhân. Câu hỏi cho luật sư:
+  - Cá nhân vận hành sản phẩm có được hưởng miễn trừ nào không, và có nên đăng ký hộ kinh doanh trước khi thu tiền không?
+  - Giọng nói dùng để chấm bài có phải dữ liệu nhạy cảm không?
+  - Hồ sơ chuyển dữ liệu ra nước ngoài có được miễn không?
+  - Hồ sơ nộp sau khi bắt đầu chuyển dữ liệu hay phải được duyệt trước?
+  - Điều 24 có áp dụng cho học viên dưới 16 tuổi không, và ghi trong điều khoản sử dụng có đủ không?
+  - Thu thập đề từ web có rủi ro bản quyền gì không?
+  - Học viên có quyền yêu cầu xóa dữ liệu không, trong thời hạn nào, và sản phẩm có bắt buộc phải có nút xóa chủ động không?
 
 ### Điểm lệch cần chốt khi cập nhật PRD
 
-| Nội dung | Feature map | PRD hiện tại |
-|---|---|---|
-| Tên sản phẩm | ChấmRõ | Vox Flow |
-| Phạm vi v1 | 26 mục MVP, gồm cả forecast và nhắc luyện | 6 tính năng Must |
-| Đăng nhập | Chỉ Google | Google hoặc link qua email |
-| Bằng chứng miễn phí | Bằng chứng khóa sau paywall | Miễn phí bằng chứng câu yếu nhất |
-| Luyện lại câu yếu | Không có mục riêng | Thuộc `scoring-results` và là North Star |
-| Báo band thật sau ngày thi | Không có mục riêng | Thuộc `onboarding`, dùng để đối chiếu độ sát điểm |
-| Nguồn đề forecast | Công cụ admin và tự động hóa, đi trước `forecast-practice` | Học viên báo đề, đội nội dung duyệt bằng công cụ có sẵn, không có giao diện quản trị trong v1 |
-| Nhắc luyện | MVP, email và thông báo đẩy | Could, chỉ email |
-| Xử lý báo lỗi | Later | Must, phản hồi trong 72 giờ |
-| Đồng ý dữ liệu | "Huấn luyện AI" | "Hiệu chuẩn chấm điểm" |
-| Chứng từ thanh toán | Hóa đơn | Biên nhận, chưa xuất hóa đơn VAT |
-| Gói giáo viên (`teacher-plan`) | Không có, nên chưa xếp vào roadmap này | Could |
+| Mã | Nội dung | Feature map | PRD hiện tại | Trạng thái chốt (Issue #6) |
+|---|---|---|---|---|
+| D-01 | Tên sản phẩm | ChấmRõ | Vox Flow | Chốt: Vox Flow (`docs/product-decisions.md`) |
+| D-02 | Phạm vi v1 | 26 mục MVP, gồm cả forecast và nhắc luyện | 6 tính năng Must | Chốt: 26 mục MVP bám Feature Map (`docs/product-decisions.md`) |
+| D-03 | Đăng nhập | Chỉ Google | Google hoặc link qua email | Chốt: Google OAuth, mở rộng thêm email/mật khẩu ngày 2026-11-06 (`docs/product-decisions.md`) |
+| D-04 | Bằng chứng miễn phí | Bằng chứng khóa sau paywall | Miễn phí bằng chứng câu yếu nhất | Chốt: Miễn phí câu yếu nhất + band tổng; paywall 4 tiêu chí (`docs/product-decisions.md`) |
+| D-05 | Luyện lại câu yếu | Không có mục riêng | Thuộc `scoring-results` và là North Star | Chốt: Giữ là North Star trong `scoring-results` (`docs/product-decisions.md`) |
+| D-06 | Báo band thật sau ngày thi | Không có mục riêng | Thuộc `onboarding`, dùng để đối chiếu độ sát điểm | Chốt: Giữ ở Next, nhắc sau ngày thi (`docs/product-decisions.md`) |
+| D-07 | Nguồn đề forecast | Công cụ admin và tự động hóa, đi trước `forecast-practice` | Học viên báo đề, đội nội dung duyệt bằng công cụ có sẵn, không có giao diện quản trị trong v1 | Chốt: Công cụ admin do PO duyệt từ 3 nguồn (OQ-2) |
+| D-08 | Nhắc luyện | MVP, email và thông báo đẩy | Could, chỉ email | Chốt: MVP email + push, tối đa 1 lần/ngày (OQ-3) |
+| D-09 | Xử lý báo lỗi | Later | Must, phản hồi trong 72 giờ | Chốt: PO trực tiếp xử lý bản tối thiểu ở Next trong 72h (OQ-4) |
+| D-10 | Đồng ý dữ liệu | "Huấn luyện AI" | "Hiệu chuẩn chấm điểm" | Chốt: 2 công tắc opt-in, nhãn "Hiệu chuẩn chấm điểm", chờ OQ-6 |
+| D-11 | Chứng từ thanh toán | Hóa đơn | Biên nhận, chưa xuất hóa đơn VAT | Chốt: Biên nhận điện tử, chưa xuất VAT (`docs/product-decisions.md`) |
+| D-12 | Gói giáo viên (`teacher-plan`) | Không có, nên chưa xếp vào roadmap này | Could | Chốt: Xếp vào Later / Could (`docs/product-decisions.md`) |
 
 ## 8. Bước tiếp theo
 
 - Chốt OQ-5 và thử chấm thật trên bài mẫu trước, vì kết quả quyết định hạn mức miễn phí và mức giá có đủ nuôi chi phí không.
-- Chốt các điểm lệch ở Mục 7 rồi chạy `/prd` để đưa feature map vào PRD, sau đó thay `docs/_product/roadmap.md` bằng bản này.
+- [x] Đã chốt 12 điểm lệch ở Mục 7, ghi nhận quyết định tại `docs/product-decisions.md`, tạo `docs/_product/prd.md` và thiết lập roadmap chính thức `docs/_product/roadmap.md` (Issue #6).
 - Chạy `/srs mock-exam` vì `mock-exam` đã có brainstorm và là mắt xích tiếp theo chưa có SRS.
 - Kiểm chứng mức sẵn lòng trả cho `billing`, vì trong các tính năng đã có điểm ở Now, đây là tính năng duy nhất đang dựa trên giả định.

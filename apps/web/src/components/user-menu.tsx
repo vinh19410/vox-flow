@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Button } from "@vox-flow/ui/components/button";
 import {
   DropdownMenu,
@@ -11,10 +11,11 @@ import {
 } from "@vox-flow/ui/components/dropdown-menu";
 import { Skeleton } from "@vox-flow/ui/components/skeleton";
 
+import { useSignOut } from "@/hooks/use-sign-out";
 import { authClient } from "@/lib/auth-client";
 
 export default function UserMenu() {
-  const navigate = useNavigate();
+  const signOut = useSignOut();
   const { data: session, isPending } = authClient.useSession();
 
   if (isPending) {
@@ -41,17 +42,7 @@ export default function UserMenu() {
           <DropdownMenuItem>{session.user.email}</DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
-            onClick={() => {
-              authClient.signOut({
-                fetchOptions: {
-                  onSuccess: () => {
-                    navigate({
-                      to: "/",
-                    });
-                  },
-                },
-              });
-            }}
+            onClick={() => void signOut()}
           >
             Sign Out
           </DropdownMenuItem>

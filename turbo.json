@@ -13,6 +13,9 @@
     "check-types": {
       "dependsOn": ["^check-types"]
     },
+    "test": {
+      "dependsOn": ["^build"]
+    },
     "dev": {
       "cache": false,
       "persistent": true
@@ -41,6 +44,8 @@
     "BETTER_AUTH_URL",
     "CI",
     "CORS_ORIGIN",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
     "NODE_ENV",
     "VERCEL",
     "VERCEL_ENV",

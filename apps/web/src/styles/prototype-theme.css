@@ -1,0 +1,90 @@
+@theme {
+  --font-proto: "Be Vietnam Pro", ui-sans-serif, system-ui, sans-serif;
+  --font-proto-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-paper: #f5f3ee;
+  --color-paper-2: #ece9e1;
+  --color-ink: #12141c;
+  --color-ink-2: #3b3f4d;
+  --color-subtle: #747887;
+  --color-line: #dedad0;
+  --color-brand: #ff5b24;
+  --color-brand-soft: #ffe4d8;
+  --color-good: #128a5c;
+  --color-good-soft: #dcf2e8;
+  --color-warn: #b7791f;
+  --color-warn-soft: #fbefd6;
+  --color-bad: #d23a3a;
+  --color-bad-soft: #fbe1e1;
+  --color-info: #2f5bea;
+  --color-info-soft: #e1e8fd;
+
+  --animate-rise: proto-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade: proto-fade 0.3s ease both;
+  --animate-pulse-ring: proto-pulse-ring 1.6s ease-out infinite;
+
+  @keyframes proto-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes proto-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes proto-pulse-ring {
+    0% {
+      transform: scale(1);
+      opacity: 0.55;
+    }
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  .proto-root {
+    color-scheme: light;
+    --background: #f5f3ee;
+    --foreground: #12141c;
+    --border: var(--color-line);
+    --font-mono: var(--font-proto-mono);
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-proto);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .proto-root .font-mono {
+    font-family: var(--font-proto-mono);
+  }
+
+  .proto-root ::selection {
+    background: var(--color-brand-soft);
+  }
+
+  .proto-root button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  .proto-root button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

@@ -7,6 +7,8 @@ export type AuthConfig = {
   BETTER_AUTH_URL: string;
   BETTER_AUTH_SECRET: string;
   CORS_ORIGIN: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
 };
 
 export function createAuth(
@@ -14,13 +16,23 @@ export function createAuth(
   database: Database,
   desktopOrigins: readonly string[] = [],
 ) {
+  const cleanCorsOrigin = env.CORS_ORIGIN.replace(/\/+$/, "");
   return betterAuth({
     database: drizzleAdapter(database, {
       provider: "sqlite",
       schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN, ...desktopOrigins],
-    emailAndPassword: { enabled: true },
+    trustedOrigins: [cleanCorsOrigin, ...desktopOrigins],
+    emailAndPassword: {
+      enabled: true,
+      autoSignIn: true,
+    },
+    socialProviders: {
+      google: {
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+      },
+    },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
     advanced: {
