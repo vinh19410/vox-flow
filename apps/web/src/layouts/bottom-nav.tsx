@@ -1,6 +1,5 @@
 import { useRouterState } from "@tanstack/react-router";
-import { CreditCard, LogOut } from "lucide-react";
-
+import { CreditCard, LogOut, User } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,9 +34,17 @@ export function BottomNav() {
         <DropdownMenu>
           <DropdownMenuTrigger
             aria-label="Tài khoản người dùng"
-            className="grid h-9 w-9 cursor-pointer place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            className="grid h-9 w-9 cursor-pointer place-items-center overflow-hidden rounded-full bg-brand-soft text-sm font-bold text-brand transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            {displayName.charAt(0).toUpperCase()}
+            {session?.user?.image ? (
+              <img
+                src={session.user.image}
+                alt={displayName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              displayName.charAt(0).toUpperCase()
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
@@ -54,10 +61,17 @@ export function BottomNav() {
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
+                onClick={() => go("profile")}
+                className="cursor-pointer gap-2.5 rounded-xl px-3 py-2 text-xs font-medium"
+              >
+                <User size={16} className="text-subtle" />
+                <span>Hồ sơ cá nhân</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onClick={() => go("billing")}
                 className="cursor-pointer gap-2.5 rounded-xl px-3 py-2 text-xs font-medium"
               >
-                <CreditCard className="text-subtle" />
+                <CreditCard size={16} className="text-subtle" />
                 <span>Gói & thanh toán</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="my-1" />

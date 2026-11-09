@@ -51,8 +51,8 @@ describe("screenToRoute", () => {
 });
 
 describe("SCREEN_MAP", () => {
-  it("covers all 12 prototype screens with feature-map codes", () => {
-    expect(SCREEN_MAP).toHaveLength(12);
+  it("covers all 13 prototype screens with feature-map codes", () => {
+    expect(SCREEN_MAP).toHaveLength(13);
     expect(SCREEN_MAP.map((entry) => entry.code)).toEqual([
       "S01",
       "S02",
@@ -65,6 +65,7 @@ describe("SCREEN_MAP", () => {
       "S12–15",
       "S19",
       "S22–24",
+      "S21",
       "S25",
     ]);
   });
