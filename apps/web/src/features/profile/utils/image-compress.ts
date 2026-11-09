@@ -3,10 +3,13 @@
  * Tự động cắt vuông phần giữa ảnh và giới hạn độ phân giải (mặc định 180x180 px).
  * Luôn trả về ảnh đã nén — không bao giờ trả về dữ liệu gốc chưa xử lý.
  */
+import { MAX_USER_IMAGE_LENGTH } from "@vox-flow/auth/image-validation";
+
 export async function compressImageFile(
   file: File,
   maxDimension = 180,
   quality = 0.85,
+  maxOutputLength = MAX_USER_IMAGE_LENGTH,
 ): Promise<string> {
   if (!file.type.startsWith("image/")) {
     throw new Error("Tệp được chọn không phải là hình ảnh hợp lệ (PNG, JPG, WebP...).");
@@ -77,6 +80,14 @@ export async function compressImageFile(
         }
         if (!dataUrl.startsWith("data:image/webp") && !dataUrl.startsWith("data:image/jpeg")) {
           reject(new Error("Trình duyệt không hỗ trợ nén ảnh."));
+          return;
+        }
+        if (dataUrl.length > maxOutputLength) {
+          reject(
+            new Error(
+              "Ảnh sau khi nén vẫn vượt quá giới hạn dung lượng cho phép. Vui lòng chọn ảnh nhỏ hơn.",
+            ),
+          );
           return;
         }
 
