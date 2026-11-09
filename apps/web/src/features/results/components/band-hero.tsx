@@ -3,16 +3,22 @@ import { ArrowRight, Quote } from "lucide-react";
 import { Badge } from "@/components/ds/badge";
 import { BandRange } from "@/components/ds/band-range";
 
-import { RESULT } from "../data";
-
 export interface BandHeroProps {
   band: number;
   range: readonly [number, number];
   target: number;
+  runs?: readonly number[];
+  oneLiner?: string;
 }
 
 /** S12 — overall band card, always free. */
-export function BandHero({ band, range, target }: BandHeroProps) {
+export function BandHero({
+  band,
+  range,
+  target,
+  runs = [band, band, band],
+  oneLiner = "Điểm số và khoảng tin cậy được tính toán từ các lượt chấm độc lập.",
+}: BandHeroProps) {
   return (
     <div className="rounded-[28px] bg-ink p-7 text-paper">
       <div className="flex items-center justify-between">
@@ -36,7 +42,7 @@ export function BandHero({ band, range, target }: BandHeroProps) {
       <div className="mt-6 rounded-2xl bg-white/[0.06] p-4">
         <div className="text-[11px] font-semibold tracking-wider text-white/45 uppercase">Chấm 3 lần độc lập</div>
         <div className="mt-2 flex items-center gap-2 font-mono text-sm">
-          {RESULT.runs.map((r, k) => (
+          {runs.map((r, k) => (
             <span key={k} className="rounded-lg bg-white/10 px-2 py-1">
               {r.toFixed(1)}
             </span>
@@ -48,7 +54,7 @@ export function BandHero({ band, range, target }: BandHeroProps) {
       </div>
       <p className="mt-5 text-[15px] leading-relaxed text-white/80">
         <Quote size={14} className="mr-1.5 inline text-brand" />
-        {RESULT.oneLiner}
+        {oneLiner}
       </p>
     </div>
   );

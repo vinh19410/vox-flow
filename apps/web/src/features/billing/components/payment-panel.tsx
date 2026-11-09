@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, CircleCheck, LoaderCircle, QrCode } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, CircleCheck, LoaderCircle, QrCode, Receipt } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
+import { EmptyState } from "@/components/ds/empty-state";
+import { FEATURES } from "@/lib/feature-flags";
 import { cx } from "@/lib/cx";
 import { mmss, vnd } from "@/lib/format";
-
 import { FakeQR } from "./fake-qr";
 import { planUntil } from "../plan-utils";
 import type { Plan } from "../data";
@@ -22,13 +23,30 @@ export function PaymentPanel({ plan, onBack, onDone }: PaymentPanelProps) {
   const { s, set, toast } = useApp();
   const [left, setLeft] = useState(600);
   const [status, setStatus] = useState<PaymentStatus>("waiting");
-  const code = `CR${s.email.slice(0, 4).toUpperCase()}7Q`;
+  const code = `CR${(s.email ? s.email.slice(0, 4) : "USER").toUpperCase()}7Q`;
+
+  if (!FEATURES.billing) {
+    return (
+      <div className="p-7 sm:p-8 text-center">
+        <EmptyState
+          size="md"
+          icon={Receipt}
+          title="Cổng thanh toán sắp ra mắt"
+          description={`Gói ${plan.name} đang được tích hợp cổng thanh toán tự động VietQR qua SePay. Trong thời gian thử nghiệm Beta, toàn bộ tính năng đều được mở miễn phí.`}
+          action={{
+            label: "Đóng",
+            onClick: onBack,
+            variant: "outline",
+          }}
+        />
+      </div>
+    );
+  }
 
   useEffect(() => {
     const id = setInterval(() => setLeft((l) => l - 1), 1000);
     return () => clearInterval(id);
   }, []);
-
   useEffect(() => {
     if (status !== "received") return;
     const t = setTimeout(() => {

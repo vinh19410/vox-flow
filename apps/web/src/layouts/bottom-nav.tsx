@@ -22,9 +22,8 @@ export function BottomNav() {
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const active = resolveActiveNav(pathname);
   const { data: session } = authClient.useSession();
-  // Session user wins over the prototype state seed ("Minh Anh") so real
-  // accounts see their own name; seed only covers the not-yet-loaded window.
-  const displayName = session?.user?.name || s.name;
+  // Session user wins over app state; fallback to email prefix or "Học viên"
+  const displayName = session?.user?.name || s.name || (session?.user?.email ? session.user.email.split("@")[0] : "") || "Học viên";
   const email = session?.user?.email;
 
   return (

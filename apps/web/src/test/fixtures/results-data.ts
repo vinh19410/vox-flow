@@ -1,4 +1,4 @@
-import type { ResultData } from "./types";
+import type { ResultData } from "@/features/results/types";
 
 export const RESULT: ResultData = {
   overall: 6.5,

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Receipt } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Badge } from "@/components/ds/badge";
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
+import { EmptyState } from "@/components/ds/empty-state";
 import { Modal } from "@/components/ds/modal";
 import { PageHead } from "@/layouts/page-head";
 import { vnd } from "@/lib/format";
@@ -55,13 +56,15 @@ export function BillingScreen() {
       <PlanGrid onPick={setPlan} />
 
       <h2 className="mt-10 mb-4 text-lg font-bold">Hóa đơn</h2>
-      <Card className="min-w-0 divide-y divide-line overflow-hidden">
-        {(s.plan
-          ? [{ d: new Date().toLocaleDateString("vi-VN"), n: s.plan.name, a: PLANS.find((p) => p.id === s.plan!.id)!.price }]
-          : []
-        )
-          .concat([{ d: "02/04/2025", n: "Theo lượt", a: 49000 }])
-          .map((iv, k) => (
+      {s.plan ? (
+        <Card className="min-w-0 divide-y divide-line overflow-hidden">
+          {[
+            {
+              d: new Date().toLocaleDateString("vi-VN"),
+              n: s.plan.name,
+              a: PLANS.find((p) => p.id === s.plan!.id)?.price ?? 0,
+            },
+          ].map((iv, k) => (
             <div key={k} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm sm:px-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
                 <span className="font-medium text-ink">Gói {iv.n}</span>
@@ -76,8 +79,17 @@ export function BillingScreen() {
               </div>
             </div>
           ))}
-      </Card>
-
+        </Card>
+      ) : (
+        <Card className="p-6">
+          <EmptyState
+            size="sm"
+            icon={Receipt}
+            title="Chưa có hóa đơn nào"
+            description="Lịch sử các hóa đơn thanh toán gói luyện thi sẽ được lưu trữ tại đây."
+          />
+        </Card>
+      )}
       <Modal open={!!plan} onClose={() => setPlan(null)} width="max-w-2xl">
         {plan && <PaymentPanel plan={plan} onBack={() => setPlan(null)} onDone={() => setPlan(null)} />}
       </Modal>

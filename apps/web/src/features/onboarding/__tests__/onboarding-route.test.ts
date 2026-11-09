@@ -21,6 +21,7 @@ vi.mock("@/utils/trpc", () => ({
   },
 }));
 
+import { createInitialState } from "@/features/app-state/initial-state";
 import { useProfileHydration } from "@/features/app-state/use-profile-hydration";
 import { Route as OnboardingRoute } from "@/routes/_proto/onboarding";
 
@@ -127,5 +128,66 @@ describe("useProfileHydration hook", () => {
         examDate: null,
       });
     });
+  });
+  it("hydrates name and email from session user and cleans state on logout", async () => {
+    const setSpy = vi.fn();
+    profileGetSpy.mockResolvedValue({
+      targetBand: 7.5,
+      examDate: "2029-11-11",
+      onboardedAt: 1730000000000,
+    });
+
+    const { rerender } = renderHook(
+      ({ user }: { user: { id: string; name?: string; email?: string } | null }) =>
+        useProfileHydration(user, setSpy),
+      {
+        initialProps: {
+          user: { id: "usr_charlie", name: "Charlie Nguyen", email: "charlie@example.com" } as { id: string; name?: string; email?: string } | null,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(profileGetSpy).toHaveBeenCalled();
+    });
+
+    // Check that updater or partial sets name & email
+    const updaterCall = setSpy.mock.calls.find(
+      (c) => typeof c[0] === "function",
+    );
+    expect(updaterCall).toBeDefined();
+    if (typeof updaterCall?.[0] === "function") {
+      const updated = updaterCall[0]({ name: "", email: "" });
+      expect(updated.name).toBe("Charlie Nguyen");
+      expect(updated.email).toBe("charlie@example.com");
+    }
+
+    // Now log out: preserves UI mode/voice while clearing user-owned data
+    setSpy.mockClear();
+    rerender({ user: null });
+    const logoutUpdater = setSpy.mock.calls.find(
+      (c) => typeof c[0] === "function",
+    );
+    expect(logoutUpdater).toBeDefined();
+    if (typeof logoutUpdater?.[0] === "function") {
+      const reset = logoutUpdater[0]({
+        ...createInitialState(),
+        mode: "p2",
+        voice: "au-f",
+        attempts: [{ id: "temp", date: "2026-11-09", mode: "full", band: 6.0, range: [5.5, 6.5], topic: "Topic" }],
+      });
+      expect(reset.mode).toBe("p2");
+      expect(reset.voice).toBe("au-f");
+      expect(reset.attempts).toHaveLength(0);
+      expect(reset.name).toBe("");
+    }
+  });
+
+  it("does not touch state when session is pending (undefined)", () => {
+    const setSpy = vi.fn();
+    profileGetSpy.mockClear();
+    renderHook(() => useProfileHydration(undefined, setSpy));
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(profileGetSpy).not.toHaveBeenCalled();
   });
 });

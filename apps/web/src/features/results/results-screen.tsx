@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Flag, Repeat } from "lucide-react";
+import { ArrowRight, Flag, Mic, Repeat, Sparkles } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
+import { EmptyState } from "@/components/ds/empty-state";
+import { PageHead } from "@/layouts/page-head";
+import { FEATURES } from "@/lib/feature-flags";
 import { modeLabel } from "@/features/exam/data";
 import { resolveAttemptView } from "@/features/history/data";
 import { cx } from "@/lib/cx";
@@ -15,14 +18,21 @@ import { CriterionDetail } from "./components/criterion-detail";
 import { ReportModal } from "./components/report-modal";
 import { ReviewList } from "./components/review-list";
 import { SoftPaywall } from "./components/soft-paywall";
-import { RESULT } from "./data";
+import type { CritKey, ResultData, ReviewItem } from "./types";
 import type { ExamItem } from "@/features/exam/types";
 import type { Attempt } from "@/features/history/types";
-import type { CritKey } from "./types";
 
+export function ResultsScreen({
+  attemptId,
+  resultData,
+  reviews,
+}: {
+  attemptId: string;
+  resultData?: ResultData;
+  reviews?: ReviewItem[];
+}) {
 /** S12–S15 — result page. Binds `latest` to the prototype default RESULT and
  * concrete ids (or the transient unsaved attempt) to the attempt's own band. */
-export function ResultsScreen({ attemptId }: { attemptId: string }) {
   const { s, set, go, openPaywall, lastUnpersistedAttempt } = useApp();
   const { isDefaultLatest, attempt } = resolveAttemptView(s.attempts, attemptId, lastUnpersistedAttempt);
   const pro = !!s.plan;
@@ -56,9 +66,38 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
   useEffect(() => {
     loadDispute();
   }, [loadDispute]);
+  if (!FEATURES.scoring) {
+    return (
+      <div className="py-6">
+        <PageHead
+          eyebrow="Kết quả bài thi"
+          title="Bài thi đã được lưu"
+          sub="Hệ thống đã ghi nhận toàn bộ phần nói của bài thi."
+        />
+        <Card className="mt-6 p-8">
+          <EmptyState
+            size="lg"
+            icon={Sparkles}
+            title="Tính năng chấm điểm AI sắp ra mắt"
+            description="Bài thi của bạn đã được ghi nhận và lưu trữ an toàn. Tính năng chấm điểm 4 tiêu chí và trích xuất bằng chứng tự động đang trong giai đoạn hoàn thiện cho bản Beta."
+            action={{
+              label: "Về trang chủ",
+              onClick: () => go("dashboard"),
+            }}
+            secondaryAction={{
+              label: "Luyện đề khác",
+              onClick: () => go("forecast"),
+              variant: "outline",
+            }}
+          />
+        </Card>
+      </div>
+    );
+  }
+
   const active: Attempt | null = isDefaultLatest ? null : attempt;
-  const band = active?.band ?? RESULT.overall;
-  const range = active?.range ?? RESULT.range;
+  const band = active?.band ?? resultData?.overall ?? 6.5;
+  const range = active?.range ?? resultData?.range ?? [6.0, 7.0];
   const lastSession = s.lastPracticeSession;
   const isViewingCurrentPracticeAttempt = Boolean(
     lastSession?.singleQuestionId &&
@@ -97,7 +136,7 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
   const eyebrow = active
     ? `Kết quả · ${active.topic} · ${new Date(active.date).toLocaleDateString("vi-VN")}`
     : `Kết quả · ${lastSession ? `Forecast: ${lastSession.title}` : s.practice ? `Forecast: ${s.practice.title}` : modeLabel(s.mode)} · ${new Date().toLocaleDateString("vi-VN")}`;
-  const crit = RESULT.criteria.find((c) => c.key === sel)!;
+  const crit = resultData?.criteria?.find((c) => c.key === sel);
   const pickCriterion = (key: CritKey) => {
     setSel(key);
     setTab("criteria");
@@ -170,8 +209,8 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.15fr]">
-        <BandHero band={band} range={range} target={s.target} />
-        <CriteriaGrid sel={tab === "criteria" ? sel : null} pro={pro} onPick={pickCriterion} />
+        <BandHero band={band} range={range} target={s.target} runs={resultData?.runs} oneLiner={resultData?.oneLiner} />
+        <CriteriaGrid criteria={resultData?.criteria} sel={tab === "criteria" ? sel : null} pro={pro} onPick={pickCriterion} />
       </div>
 
       <div className="mt-10 flex gap-1 rounded-full bg-paper-2 p-1 sm:w-fit">
@@ -193,12 +232,12 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
         {tab === "criteria" ? (
           <div className="relative">
             <div className={cx(!pro && "pointer-events-none max-h-[420px] overflow-hidden select-none [mask-image:linear-gradient(to_bottom,black_30%,transparent)]")}>
-              <CriterionDetail key={sel} c={crit} />
+            {crit && <CriterionDetail key={sel} c={crit} />}
             </div>
             {!pro && <SoftPaywall />}
           </div>
         ) : (
-          <ReviewList pro={pro} />
+          <ReviewList pro={pro} items={reviews ?? resultData?.reviews} />
         )}
       </div>
 
@@ -208,7 +247,7 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-bold">Luyện lại câu yếu nhất</div>
-          <div className="text-sm text-ink-2">“Why do some people prefer not to ask others for help?” — nói lại và so sánh trước/sau.</div>
+          <div className="text-sm text-ink-2">Thực hành nói lại các câu cần cải thiện để so sánh trước và sau.</div>
         </div>
         <Button
           onClick={() => {

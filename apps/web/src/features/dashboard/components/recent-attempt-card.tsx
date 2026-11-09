@@ -1,6 +1,7 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Mic } from "lucide-react";
 
 import { Card } from "@/components/ds/card";
+import { EmptyState } from "@/components/ds/empty-state";
 import { useApp } from "@/features/app-state/types";
 import { modeLabel } from "@/features/exam/data";
 import type { Attempt } from "@/features/history/types";
@@ -8,6 +9,28 @@ import { fmtBand } from "@/lib/format";
 
 export function RecentAttemptCard({ attempts }: { attempts: Attempt[] }) {
   const { go, goResult } = useApp();
+
+  if (!attempts.length) {
+    return (
+      <Card className="min-w-0 p-5 sm:p-7">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">Bài gần nhất</h2>
+        </div>
+        <EmptyState
+          size="sm"
+          icon={Mic}
+          title="Chưa có bài thi nào"
+          description="Bắt đầu bài thi thử đầu tiên để ghi nhận điểm số và lịch sử."
+          action={{
+            label: "Thi thử ngay",
+            onClick: () => go("select"),
+          }}
+          className="py-8"
+        />
+      </Card>
+    );
+  }
+
   const last = attempts[attempts.length - 1];
   return (
     <Card className="min-w-0 p-5 sm:p-7">

@@ -1,6 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/feature-flags", () => ({
+  FEATURES: {
+    scoring: true,
+    billing: true,
+  },
+}));
 import { useQuery } from "@tanstack/react-query";
 import type * as TanstackQuery from "@tanstack/react-query";
 import type * as TrpcModule from "@/utils/trpc";
@@ -361,66 +367,24 @@ describe("Forecast practice flow", () => {
       });
     });
   });
-  it("updates practicedQuestions and assigns mode p1 or p3 when single question scoring finishes", () => {
-    vi.useFakeTimers();
-    try {
-      const h = renderWithApp(
-        <ScoringScreen />,
-        {
-          practice: {
-            topicId: "p1-tidiness",
-            title: "Tidiness",
-            kind: "p1",
-            items: [{ id: "p1-tidiness-0", part: 1, text: "Were you tidy?" }],
-            singleQuestionId: "p1-tidiness-0",
-            topicItems: [{ id: "p1-tidiness-0", part: 1, text: "Were you tidy?" }],
-          },
+  it("clears practice and pendingSubmission without appending fake attempts when single question finishes", () => {
+    const h = renderWithApp(
+      <ScoringScreen />,
+      {
+        practice: {
+          topicId: "p1-tidiness",
+          title: "Tidiness",
+          kind: "p1",
+          items: [{ id: "p1-tidiness-0", part: 1, text: "Were you tidy?" }],
+          singleQuestionId: "p1-tidiness-0",
+          topicItems: [{ id: "p1-tidiness-0", part: 1, text: "Were you tidy?" }],
         },
-        true,
-      );
-
-      for (let k = 0; k < 7; k += 1) {
-        act(() => {
-          vi.advanceTimersByTime(700);
-        });
-      }
-
-      const final = h.state();
-      expect(final.practicedQuestions["p1-tidiness-0"]).toEqual({
-        band: 6.5,
-        count: 1,
-        lastPracticedAt: expect.any(String),
-      });
-      const lastAttempt = final.attempts[final.attempts.length - 1];
-      expect(lastAttempt.mode).toBe("p1");
-      expect(final.lastPracticeSession?.singleQuestionId).toBe("p1-tidiness-0");
-      expect(final.practiced["p1-tidiness"]).toBeUndefined();
-
-      // Now test single Part 3 scoring appends mode 'p3'
-      const hP3 = renderWithApp(
-        <ScoringScreen />,
-        {
-          practice: {
-            topicId: "p23-environment",
-            title: "Environment",
-            kind: "p23",
-            items: [{ id: "p23-environment-p3-0", part: 3, text: "Protect nature?" }],
-            singleQuestionId: "p23-environment-p3-0",
-            topicItems: [{ id: "p23-environment-p3-0", part: 3, text: "Protect nature?" }],
-          },
-        },
-        true,
-      );
-      for (let k = 0; k < 7; k += 1) {
-        act(() => {
-          vi.advanceTimersByTime(700);
-        });
-      }
-      const attemptsP3 = hP3.state().attempts;
-      expect(attemptsP3[attemptsP3.length - 1]?.mode).toBe("p3");
-    } finally {
-      vi.useRealTimers();
-    }
+      },
+      true,
+    );
+    const final = h.state();
+    expect(final.practice).toBeNull();
+    expect(final.attempts).toHaveLength(0);
   });
 
   it("allows navigating to next question from ResultsScreen when practicing single question", () => {

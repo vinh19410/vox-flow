@@ -11,9 +11,18 @@ import { useQuery } from "@tanstack/react-query";
 import type * as TanstackQuery from "@tanstack/react-query";
 import { HistoryScreen } from "@/features/history/history-screen";
 import { SelectScreen } from "@/features/select/select-screen";
+import type { Attempt } from "@/features/history/types";
 import { MODES } from "@/features/exam/data";
 import { daysUntil } from "@/lib/format";
 
+const TEST_ATTEMPTS: Attempt[] = [
+  { id: "a1", date: "2025-04-02", mode: "full", band: 5.5, range: [5.0, 6.0], topic: "Work · A place you visited" },
+  { id: "a2", date: "2025-04-06", mode: "p1", band: 6.0, range: [5.5, 6.0], topic: "Hometown · Music" },
+  { id: "a3", date: "2025-04-10", mode: "p2", band: 5.5, range: [5.5, 6.0], topic: "A useful skill" },
+  { id: "a4", date: "2025-04-15", mode: "full", band: 6.0, range: [5.5, 6.5], topic: "Travel · A gift" },
+  { id: "a5", date: "2025-04-19", mode: "p3", band: 6.0, range: [6.0, 6.5], topic: "Technology & society" },
+  { id: "a6", date: "2025-04-23", mode: "p1", band: 6.5, range: [6.0, 6.5], topic: "Weather · Sports" },
+];
 const mockApiForecast = [
   {
     id: "f-hometown",
@@ -147,7 +156,7 @@ describe("ForecastScreen", () => {
   });
 
   it("filters by hot and saved chips", () => {
-    renderWithApp(<ForecastScreen />);
+    renderWithApp(<ForecastScreen />, { saved: ["f-ai"] });
     fireEvent.click(screen.getByRole("button", { name: "Hay gặp" }));
     expect(screen.getAllByText("Hometown").length).toBeGreaterThan(0);
     expect(screen.queryByText("Weather")).toBeNull();
@@ -217,7 +226,7 @@ describe("ForecastScreen", () => {
   });
 
   it("toggles save on a topic and shows the save toast", () => {
-    const { set, toast } = renderWithApp(<ForecastScreen />);
+    const { set, toast } = renderWithApp(<ForecastScreen />, { saved: ["f-ai"] });
     fireEvent.click(screen.getAllByRole("button", { name: "Lưu chủ đề" })[0]);
     expect(set).toHaveBeenCalledWith({ saved: ["f-ai", "f-hometown"] });
     expect(toast).toHaveBeenCalledWith("Đã lưu vào danh sách ôn");
@@ -227,7 +236,7 @@ describe("ForecastScreen", () => {
 
 describe("HistoryScreen", () => {
   it("filters attempts by mode chip and opens a result", () => {
-    const { goResult } = renderWithApp(<HistoryScreen />);
+    const { goResult } = renderWithApp(<HistoryScreen />, { attempts: TEST_ATTEMPTS });
     fireEvent.click(screen.getByRole("button", { name: "Part 2" }));
     expect(screen.getByText("A useful skill")).toBeTruthy();
     expect(screen.queryByText("Work · A place you visited")).toBeNull();
@@ -292,14 +301,18 @@ describe("DashboardScreen", () => {
   });
 
   it("renders readiness, countdown, today tasks, and the recent attempt card", () => {
-    const seed = createInitialState();
-    const { goResult } = renderWithApp(<DashboardScreen />);
+    const inThreeWeeks = new Date(Date.now() + 23 * 86400000).toISOString().slice(0, 10);
+    const { goResult } = renderWithApp(<DashboardScreen />, {
+      attempts: TEST_ATTEMPTS,
+      examDate: inThreeWeeks,
+      target: 7.0,
+    });
     expect(screen.getByText("Band ước lượng hiện tại")).toBeTruthy();
     expect(screen.getByText("còn thiếu 1.0")).toBeTruthy();
-    expect(screen.getByText(String(daysUntil(seed.examDate)))).toBeTruthy();
+    expect(screen.getByText(String(daysUntil(inThreeWeeks)))).toBeTruthy();
     expect(screen.getByText("ngày nữa")).toBeTruthy();
     expect(screen.getByText("Việc hôm nay")).toBeTruthy();
-    expect(screen.getByText("Luyện lại câu yếu nhất")).toBeTruthy();
+    expect(screen.getByText("Chưa có việc cần làm hôm nay")).toBeTruthy();
     expect(screen.getByText("Bài gần nhất")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Weather · Sports"));

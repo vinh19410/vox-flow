@@ -29,10 +29,10 @@ export function CountdownCard({ examDate }: { examDate: string | null }) {
             </div>
             <div className="mt-2 grid grid-cols-7 gap-1">
               {Array.from({ length: 7 }).map((_, i) => (
-                <span key={i} className={cx("h-2 rounded-full", i < 4 ? "bg-good" : i === 4 ? "bg-brand" : "bg-paper-2")} />
+                <span key={i} className="h-2 rounded-full bg-paper-2" />
               ))}
             </div>
-            <div className="mt-2 text-xs text-subtle">Chuỗi 4 ngày liên tiếp</div>
+            <div className="mt-2 text-xs text-subtle">Duy trì đều đặn để đạt mục tiêu</div>
           </div>
         </>
       ) : (

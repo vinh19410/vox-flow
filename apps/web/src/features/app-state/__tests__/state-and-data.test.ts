@@ -8,9 +8,10 @@ import { mapApiTopicToForecastTopic, p1, p23 } from "../../forecast/builders";
 import { QUARTER } from "../../forecast/data";
 import { HISTORY, resolveAttemptView } from "../../history/data";
 import type { Attempt } from "../../history/types";
-import { RESULT } from "../../results/data";
-import { MARK, REVIEW } from "../../results/review-data";
-import { SCORING_STEPS } from "../../scoring/data";
+import { RESULT } from "@/test/fixtures/results-data";
+import { MARK } from "../../results/review-data";
+import { REVIEW } from "@/test/fixtures/review-data";
+import { SCORING_STEPS } from "@/test/fixtures/scoring-data";
 import { INITIAL_STATE, createInitialState } from "../initial-state";
 import { PROTO_STORAGE_KEY, useAppStateStore } from "../store";
 import { ProtoToast } from "../toast";
@@ -208,65 +209,71 @@ describe("history & resolveAttemptView", () => {
 describe("useAppStateStore & ProtoToast", () => {
   it("hydrates initial state, persists updates to sessionStorage, and rehydrates on remount", () => {
     const initial = createInitialState();
-    expect(INITIAL_STATE.name).toBe("Minh Anh");
-    expect(initial.attempts).toHaveLength(6);
+    expect(INITIAL_STATE.name).toBe("");
+    expect(initial.attempts).toHaveLength(0);
 
     const { result, unmount } = renderHook(() => useAppStateStore());
-    expect(result.current.s.name).toBe("Minh Anh");
+    expect(result.current.s.name).toBe("");
     expect(result.current.s.target).toBe(7.0);
 
     act(() => {
-      result.current.set({ name: "Bảo Châu", voice: "au-f" });
+      result.current.set({ name: "Bảo Châu", voice: "au-f", mode: "p2" });
       result.current.set((prev) => ({ target: prev.target + 0.5 }));
     });
 
     expect(result.current.s.name).toBe("Bảo Châu");
     expect(result.current.s.target).toBe(7.5);
     expect(result.current.s.voice).toBe("au-f");
+    expect(result.current.s.mode).toBe("p2");
 
     const raw = sessionStorage.getItem(PROTO_STORAGE_KEY);
     expect(raw).not.toBeNull();
-    expect(JSON.parse(raw!)).toMatchObject({
-      name: "Bảo Châu",
-      target: 7.5,
+    const parsed = JSON.parse(raw!);
+    expect(parsed).toEqual({
+      mode: "p2",
       voice: "au-f",
+      practice: null,
     });
+    expect(parsed.name).toBeUndefined();
+    expect(parsed.target).toBeUndefined();
 
     unmount();
 
     const remounted = renderHook(() => useAppStateStore());
-    expect(remounted.result.current.s.name).toBe("Bảo Châu");
-    expect(remounted.result.current.s.target).toBe(7.5);
+    // Name and target are not restored from sessionStorage
+    expect(remounted.result.current.s.name).toBe("");
+    expect(remounted.result.current.s.target).toBe(7.0);
+    // UI preferences are restored
     expect(remounted.result.current.s.voice).toBe("au-f");
+    expect(remounted.result.current.s.mode).toBe("p2");
   });
-  it("persists practicedQuestions and rehydrates correctly", () => {
+  it("persists practice session and rehydrates correctly while ignoring server-owned attempts", () => {
+    const practiceSample = {
+      topicId: "p1-tidiness",
+      title: "Tidiness",
+      kind: "p1" as const,
+      items: [{ id: "p1-tidiness-0", part: 1 as const, text: "Do you keep things tidy?", answer: "" }],
+    };
     const { result, unmount } = renderHook(() => useAppStateStore());
     act(() => {
       result.current.set({
-        practicedQuestions: {
-          "p1-tidiness-0": { band: 6.5, count: 2, lastPracticedAt: "2026-11-09" },
-        },
+        practice: practiceSample,
+        attempts: [{ id: "att-1", date: "2026-11-09", mode: "full", band: 7.0, range: [6.5, 7.5], topic: "Topic" }],
       });
     });
-    expect(result.current.s.practicedQuestions["p1-tidiness-0"]).toEqual({
-      band: 6.5,
-      count: 2,
-      lastPracticedAt: "2026-11-09",
-    });
+    expect(result.current.s.practice?.topicId).toBe("p1-tidiness");
+    expect(result.current.s.attempts).toHaveLength(1);
     unmount();
 
     const remounted = renderHook(() => useAppStateStore());
-    expect(remounted.result.current.s.practicedQuestions["p1-tidiness-0"]).toEqual({
-      band: 6.5,
-      count: 2,
-      lastPracticedAt: "2026-11-09",
-    });
+    expect(remounted.result.current.s.practice?.topicId).toBe("p1-tidiness");
+    // Server-owned attempts are not restored across remount
+    expect(remounted.result.current.s.attempts).toHaveLength(0);
   });
-
   it("falls back safely to initial state when sessionStorage has malformed JSON", () => {
     sessionStorage.setItem(PROTO_STORAGE_KEY, "{corrupt-json");
     const { result } = renderHook(() => useAppStateStore());
-    expect(result.current.s.name).toBe("Minh Anh");
+    expect(result.current.s.name).toBe("");
     expect(result.current.s.target).toBe(7.0);
   });
 

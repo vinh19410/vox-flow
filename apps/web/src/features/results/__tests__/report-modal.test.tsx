@@ -10,6 +10,12 @@ import { ResultsScreen } from "@/features/results/results-screen";
 const mutateSpy = vi.fn();
 const querySpy = vi.fn();
 
+vi.mock("@/lib/feature-flags", () => ({
+  FEATURES: {
+    scoring: true,
+    billing: true,
+  },
+}));
 vi.mock("@/utils/trpc", () => ({
   trpcClient: {
     dispute: {

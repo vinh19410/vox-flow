@@ -6,10 +6,15 @@ import { Button } from "@/components/ds/button";
 import { Modal } from "@/components/ds/modal";
 import { cx } from "@/lib/cx";
 import { trpcClient } from "@/utils/trpc";
-
-import { RESULT } from "../data";
 import type { CritKey } from "../types";
 
+const CRITERIA_OPTIONS: { key: CritKey | "ALL"; vi: string }[] = [
+  { key: "ALL", vi: "Band tổng" },
+  { key: "FC", vi: "Độ trôi chảy & mạch lạc" },
+  { key: "LR", vi: "Vốn từ vựng" },
+  { key: "GRA", vi: "Ngữ pháp" },
+  { key: "P", vi: "Phát âm" },
+];
 export interface ReportModalProps {
   open: boolean;
   onClose: () => void;
@@ -79,7 +84,7 @@ export function ReportModal({ open, onClose, attemptId, onSubmitted }: ReportMod
 
         <div className="mt-6 text-xs font-semibold text-ink-2">Tiêu chí bạn thấy chưa đúng</div>
         <div className="mt-2 flex flex-wrap gap-2">
-          {[{ key: "ALL" as const, vi: "Band tổng" }, ...RESULT.criteria].map((c) => (
+          {CRITERIA_OPTIONS.map((c) => (
             <button
               type="button"
               key={c.key}

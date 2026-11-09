@@ -1,6 +1,8 @@
+import { History, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
 import { Card } from "@/components/ds/card";
+import { EmptyState } from "@/components/ds/empty-state";
 import { useApp } from "@/features/app-state/types";
 import { MODES } from "@/features/exam/data";
 import type { Mode } from "@/features/exam/types";
@@ -11,7 +13,7 @@ import { AttemptList } from "./components/attempt-list";
 import { TrendChart } from "./components/trend-chart";
 
 export function HistoryScreen() {
-  const { s } = useApp();
+  const { s, go } = useApp();
   const [filter, setFilter] = useState<Mode | "all">("all");
   const list = s.attempts.filter((a) => filter === "all" || a.mode === filter);
 
@@ -45,11 +47,32 @@ export function HistoryScreen() {
         {list.length ? (
           <TrendChart list={list} target={s.target} />
         ) : (
-          <div className="py-16 text-center text-sm text-subtle">Chưa có bài nào cho bộ lọc này.</div>
+          <EmptyState
+            size="md"
+            icon={TrendingUp}
+            title="Chưa có bài nào cho bộ lọc này."
+            description="Hãy thử chọn bộ lọc chế độ thi khác hoặc làm thêm bài thi để xem biểu đồ tiến độ."
+            className="py-12"
+          />
         )}
       </Card>
 
-      <AttemptList list={list} />
+      {list.length ? (
+        <AttemptList list={list} />
+      ) : s.attempts.length === 0 ? (
+        <Card className="mt-5 p-6">
+          <EmptyState
+            size="md"
+            icon={History}
+            title="Chưa có lịch sử làm bài"
+            description="Mọi bài thi thử và kết quả đánh giá sẽ được ghi nhận tại đây để bạn tiện theo dõi sự tiến bộ."
+            action={{
+              label: "Thi thử ngay",
+              onClick: () => go("select"),
+            }}
+          />
+        </Card>
+      ) : null}
     </>
   );
 }
