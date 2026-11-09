@@ -44,7 +44,7 @@ Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script kh�
   - Luôn kèm: PR/commit SHA và các gate đã chạy (`pnpm check`, `pnpm check-types`, test liên quan, e2e nếu có).
 - **Đính kèm ảnh bằng** `gh`**:** `gh` (đang dùng 2.45) không có cờ upload ảnh cho `gh issue comment` (chỉ có `--body`/`--body-file`), và `gh issue comment` không nhận file đính kèm. Quy trình thay thế:
   1. Lưu ảnh vào `plans/reports/` (ví dụ `plans/reports/<issue>-<slug>-<viewport>.png`, theo precedent `542-select-chevron-*.png`), commit + push lên branch.
-  2. Nhúng ảnh bằng permalink theo SHA (không dùng tên branch để ảnh không vỡ khi branch bị xoá/squash): `![mô tả](https://github.com/vinh19410/teacher-os/blob/<commit-sha>/plans/reports/<file>.png?raw=true)`. Repo private nên ảnh chỉ hiển thị với người đã đăng nhập có quyền — đủ cho nội bộ.
+  2. Nhúng ảnh bằng permalink theo SHA (không dùng tên branch để ảnh không vỡ khi branch bị xoá/squash): `![mô tả](https://github.com/vinh19410/vox-flow/blob/<commit-sha>/plans/reports/<file>.png?raw=true)`. Repo private nên ảnh chỉ hiển thị với người đã đăng nhập có quyền — đủ cho nội bộ.
   3. Đăng comment: `gh issue comment <N> --body-file <file.md>` (dùng `--body-file` để giữ nguyên markdown nhiều dòng).
   4. Mở lại comment (`gh issue view <N> --comments`) kiểm tra link đã đúng SHA và đường dẫn; ảnh phải tồn tại trong commit đó trước khi đăng.
 - Không dán secret/token/dữ liệu cá nhân vào ảnh hay log của POT; che hoặc chụp lại bằng dữ liệu seed/e2e.
