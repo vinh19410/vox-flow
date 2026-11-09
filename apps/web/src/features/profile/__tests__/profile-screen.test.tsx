@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -239,6 +239,46 @@ describe("ProfileScreen component", () => {
     expect(dateInput?.className).toContain("min-w-0");
     expect(dateInput?.className).toContain("max-w-full");
     expect(dateInput?.className).toContain("w-full");
+  });
+  it("initializes with empty date string when examDate in app state is null", () => {
+    renderProfile({ examDate: null });
+
+    const dateInput = document.getElementById("user-exam-date") as HTMLInputElement;
+    expect(dateInput).toBeTruthy();
+    expect(dateInput.value).toBe("");
+  });
+
+  it("clears examDate input when s.examDate changes to null dynamically", () => {
+    let setStateFn: (val: Partial<AppState>) => void = () => {};
+    function DynamicProvider({ children }: { children: ReactNode }) {
+      const [state, setState] = useState<AppState>(() => ({
+        ...createInitialState(),
+        examDate: "2026-12-15",
+      }));
+      setStateFn = (upd) => setState((prev) => ({ ...prev, ...upd }));
+      const value: AppCtxValue = {
+        s: state,
+        set: vi.fn(),
+        go: vi.fn(),
+        toast: vi.fn(),
+      } as unknown as AppCtxValue;
+      return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
+    }
+
+    render(
+      <DynamicProvider>
+        <ProfileScreen />
+      </DynamicProvider>,
+    );
+
+    const dateInput = document.getElementById("user-exam-date") as HTMLInputElement;
+    expect(dateInput.value).toBe("2026-12-15");
+
+    act(() => {
+      setStateFn({ examDate: null });
+    });
+
+    expect(dateInput.value).toBe("");
   });
 
   it("navigates to billing screen when clicking 'Quản lý & Nâng cấp gói'", () => {

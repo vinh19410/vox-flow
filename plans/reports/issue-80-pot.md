@@ -10,20 +10,25 @@
 
 | Tiêu chí | Trạng thái | Bằng chứng kiểm chứng |
 | :--- | :---: | :--- |
-| **Loại bỏ nút "Mở bộ chọn ảnh đại diện"** | ✅ Đạt | Đã xóa phần tử `<Button>` dư thừa dưới email trong `profile-screen.tsx`. DOM test `screen.queryByRole("button", { name: "Mở bộ chọn ảnh đại diện" }) === null`. |
-| **Giữ nguyên nút camera đổi avatar** | ✅ Đạt | Nút Camera tròn overlay trên vòng tròn avatar (`aria-label="Đổi ảnh đại diện"`) vẫn hoạt động 100%, test click mở AvatarModal pass. |
-| **Sửa lỗi tràn ngang input ngày thi trên mobile (iOS Safari/WebKit)** | ✅ Đạt | Bổ sung `w-full min-w-0` cho container flex, `min-w-0 flex-1` cho wrapper, và `w-full min-w-0 max-w-full` cho thẻ `<input type="date">`. Đo đạc bounding rect trên WebKit engine: **overflow = 0px** (trước khi sửa tràn 29px). |
+| **Loại bỏ nút "Mở bộ chọn ảnh đại diện"** | ✅ Đạt | Đã xóa phần tử `<Button>` dư thừa dưới email trong `profile-screen.tsx`. Test khẳng định `screen.queryByRole("button", { name: "Mở bộ chọn ảnh đại diện" }) === null`. |
+| **Giữ nguyên nút camera đổi avatar** | ✅ Đạt | Nút Camera tròn overlay trên vòng tròn avatar (`aria-label="Đổi ảnh đại diện"`) vẫn hoạt động 100%, test click mở `AvatarModal` pass. |
+| **Sửa lỗi tràn ngang input ngày thi trên mobile** | ✅ Đạt | Bổ sung `w-full min-w-0` cho container flex, `min-w-0 flex-1` cho wrapper, và `w-full min-w-0 max-w-full` cho thẻ `<input type="date">`. Đo đạc bounding rect trên WebKitGTK engine: **overflow = 0px** (trước khi sửa tràn 29px). |
 | **Nút "Xóa ngày" không bị co méo** | ✅ Đạt | Thêm `shrink-0` cho Button "Xóa ngày". |
 | **Bảo vệ toàn cục cho `input[type="date"]`** | ✅ Đạt | Bổ sung `.proto-root input[type="date"] { min-width: 0; max-width: 100%; box-sizing: border-box; }` vào `prototype-theme.css`. |
-| **Đồng bộ giá trị rỗng khi DB không có ngày thi** | ✅ Đạt | Sửa `if (s.examDate) setExamDate(s.examDate)` thành `setExamDate(s.examDate ?? "")` để khi `s.examDate` là null thì input hiển thị rỗng chính xác. |
-| **Unit tests pass 100%** | ✅ Đạt | `pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx` (11/11 passed). |
-| **Kiểm tra kiểu & Vite build** | ✅ Đạt | `pnpm check-types` pass 8/8 package trong monorepo. |
+| **Đồng bộ giá trị rỗng khi DB không có ngày thi** | ✅ Đạt | Sửa `if (s.examDate) setExamDate(s.examDate)` thành `setExamDate(s.examDate ?? "")` để khi `s.examDate` là null thì input hiển thị rỗng chính xác. Bổ sung 2 regression test kiểm chứng đường dẫn này. |
+| **Unit tests pass 100%** | ✅ Đạt | `pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx` (**13/13 passed** — gồm test nút avatar cũ biến mất, camera mở modal, CSS classes chống tràn, và 2 regression test cho sync examDate null). |
+| **Kiểm tra kiểu & Vite build** | ✅ Đạt | `pnpm check-types` pass **7/7 task** trong monorepo (web chạy cả `vite build`). |
 
 ---
 
-## 2. Bằng chứng đo đạc & hình ảnh trực quan (WebKit Engine)
+## 2. Phần chưa kiểm chứng được (Unverified surface)
 
-> Tất cả ảnh được chụp thực tế bằng **WebKit 27.2 (Playwright WebKit)** với device descriptor `iPhone 13` và các viewport tương ứng.
+- **Chưa kiểm chứng trên thiết bị iOS vật lý thật:** Kiểm chứng trực quan được thực hiện qua **Playwright WebKit 27.2 (WebKitGTK trên Linux x64)** với device descriptor `iPhone 13` và các viewport 360px, 390px, 1280px.
+- **Minh chứng Before/After:** Số liệu trước/sau (width 354px vs 300px, tràn 29px $\rightarrow$ 0px) được đo đạc và chụp từ trang HTML tái hiện đúng cấu trúc Flexbox và CSS của component trước và sau khi thêm `min-w-0`/`max-w-full`. Người dùng sẽ kiểm chứng lại lần cuối trên thiết bị iOS thật sau khi deploy lên môi trường staging/beta.
+
+---
+
+## 3. Bằng chứng đo đạc & hình ảnh trực quan (WebKit Engine)
 
 ### So sánh trực tiếp Trước và Sau khi sửa trên WebKit (iPhone 13 viewport)
 - **Trước khi sửa (Pre-fix):** Input date width = 354px, right = 389px, cardRight = 360px $\rightarrow$ **Tràn 29px ra ngoài viền Card** (chính xác với ảnh chụp lỗi người dùng gửi).
@@ -34,7 +39,7 @@
 ---
 
 ### Màn hình Profile trên iPhone 13 (390px) — Trạng thái ô ngày thi TRỐNG
-Input ngày thi nằm gọn hoàn toàn trong viền Card, nút "Mở bộ chọn ảnh đại diện" dưới email đã được loại bỏ gọn gàng:
+Input ngày thi nằm gọn hoàn toàn trong viền Card (inputRight: 345px < cardRight: 370px, overflow = 0px), nút "Mở bộ chọn ảnh đại diện" dưới email đã được loại bỏ gọn gàng:
 
 ![iPhone 13 Empty Date WebKit](https://github.com/vinh19410/vox-flow/blob/d1348c39ba33a5c655f8d7225c5806a678929688/plans/reports/80-profile-screen-webkit-iphone13-empty-date.png?raw=true)
 
@@ -61,7 +66,7 @@ Giao diện hiển thị chuẩn xác, không còn nút thừa, bố cục 2 c�
 
 ---
 
-## 3. Log Gates
+## 4. Log Gates
 
 ```text
 > pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx
@@ -69,12 +74,12 @@ Giao diện hiển thị chuẩn xác, không còn nút thừa, bố cục 2 c�
  RUN  v5.1.0 /root/projects/worktrees/vox-flow-profile-date-input-and-avatar-cleanup/apps/web
 
  Test Files  1 passed (1)
-      Tests  11 passed (11)
-   Duration  3.26s
+      Tests  13 passed (13)
+   Duration  3.43s
 
 > pnpm check-types
  turbo run check-types
    • Running check-types in 8 packages
-   • web: vite build && tsc --noEmit (✓ built in 1.94s)
+   • web: vite build && tsc --noEmit (✓ built in 1.69s)
  Tasks:    7 successful, 7 total
 ```
