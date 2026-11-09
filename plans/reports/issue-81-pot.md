@@ -1,7 +1,7 @@
 # Proof of Test (POT) — Loại bỏ mock data và xây dựng Empty State (#81)
 
 - **Nhánh:** `vinh19410/Empty-state`
-- **Commit SHA:** `f6cf146bf1cb2d9a42b9d25564140f29033d957c`
+- **Commit SHA:** `b564f849ffb737fa12ec5ce91c532ea48da401b5`
 - **Issue:** [#81](https://github.com/vinh19410/vox-flow/issues/81)
 
 ---
@@ -17,7 +17,7 @@
 | **5. EmptyState cho các section Dashboard, Lịch sử, Forecast** | ✅ Đạt | `DashboardScreen` (empty state khi chưa có bài thi), `TodayTasks` (empty state khi chưa có bài tập cá nhân), `RecentAttemptCard` (empty state khi `attempts` rỗng), `ReadinessCard` (bỏ chip điểm giả), `CountdownCard` (bỏ chuỗi 4 ngày giả), `HistoryScreen` (empty state cho bộ lọc và lịch sử trống), `ForecastScreen` (empty state khi danh sách lưu/tìm kiếm trống). |
 | **6. Beta Guard cho Chấm điểm và Thanh toán** | ✅ Đạt | Gated sau module cờ `FEATURES` (`lib/feature-flags.ts`, mặc định `false`). `ResultsScreen` hiển thị trạng thái "Tính năng chấm điểm AI sắp ra mắt", `ScoringScreen` hiển thị "Bài thi đã được ghi nhận!" mà không thêm điểm giả. `PaymentPanel` ẩn `FakeQR` và hiện "Cổng thanh toán sắp ra mắt". |
 | **7. Kiểm tra cơ học bản build production không chứa mock markers** | ✅ Đạt | `pnpm --filter web check:no-mock` chạy script `scripts/check-no-mock-in-dist.mjs` quét toàn bộ dist và báo `OK: no mock markers in dist` với các marker `Minh Anh`, `minhanh@gmail.com`, `Chuỗi 4 ngày`, `Phát âm 7.0`, `Trả lời trôi chảy, có mở rộng ý`, `128 từ/phút`. |
-| **8. Tests & Typecheck pass 100%** | ✅ Đạt | `pnpm check-types --force` thành công trên toàn bộ 7 packages (0 cached). `pnpm --filter web test` đạt **28/28 files, 207/207 tests pass**. `pnpm --filter @vox-flow/api test` đạt **16/16 files, 119/119 tests pass**. |
+| **8. Tests & Typecheck pass 100%** | ✅ Đạt | `pnpm check-types --force` thành công trên toàn bộ 7 packages (0 cached). `pnpm --filter web test` đạt **28/28 files, 210/210 tests pass**. `pnpm --filter @vox-flow/api test` đạt **16/16 files, 119/119 tests pass**. |
 
 ---
 
@@ -28,26 +28,26 @@
 ### Dashboard — Empty State (Màn hình chính khi chưa có bài thi)
 
 - **Viewport 1280px (Desktop):**
-![Dashboard Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-1280.png?raw=true)
+![Dashboard Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-dashboard-1280.png?raw=true)
 
 - **Viewport 390px (Mobile chuẩn):**
-![Dashboard Empty State 390px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-390.png?raw=true)
+![Dashboard Empty State 390px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-dashboard-390.png?raw=true)
 
 - **Viewport 360px (Mobile nhỏ):**
-![Dashboard Empty State 360px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-dashboard-360.png?raw=true)
+![Dashboard Empty State 360px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-dashboard-360.png?raw=true)
 
 ---
 
 ### Lịch sử thi (History) — Empty State
 
 - **Viewport 1280px (Desktop):**
-![History Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-1280.png?raw=true)
+![History Empty State 1280px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-history-1280.png?raw=true)
 
 - **Viewport 390px (Mobile chuẩn):**
-![History Empty State 390px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-390.png?raw=true)
+![History Empty State 390px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-history-390.png?raw=true)
 
 - **Viewport 360px (Mobile nhỏ):**
-![History Empty State 360px](https://github.com/vinh19410/vox-flow/blob/f6cf146bf1cb2d9a42b9d25564140f29033d957c/plans/reports/81-empty-state-history-360.png?raw=true)
+![History Empty State 360px](https://github.com/vinh19410/vox-flow/blob/b564f849ffb737fa12ec5ce91c532ea48da401b5/plans/reports/81-empty-state-history-360.png?raw=true)
 
 ---
 
@@ -81,8 +81,8 @@ OK: no mock markers in dist
 ### c. `pnpm --filter web test`
 ```text
 Test Files  28 passed (28)
-     Tests  207 passed (207)
-  Duration  25.63s
+     Tests  210 passed (210)
+  Duration  23.20s
 ```
 
 ### d. `pnpm --filter @vox-flow/api test`
