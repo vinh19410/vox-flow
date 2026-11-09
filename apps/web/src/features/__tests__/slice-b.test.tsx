@@ -80,6 +80,14 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
+// DashboardScreen reads the auth session for its greeting; keep the suite
+// hermetic by returning no session so it falls back to the seed name.
+vi.mock("@/lib/auth-client", () => ({
+  authClient: {
+    useSession: vi.fn(() => ({ data: null, isPending: false, error: null })),
+  },
+}));
+
 function createHarness(seed?: Partial<AppState>) {
   const go = vi.fn();
   const goResult = vi.fn();
