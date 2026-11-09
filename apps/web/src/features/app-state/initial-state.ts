@@ -18,6 +18,7 @@ export function createInitialState(): AppState {
     practiced: { "f-helped": 6.0, "f-weather": 6.5 },
     practicedQuestions: {},
     saved: ["f-ai"],
+    reopenTopicId: null,
   };
 }
 

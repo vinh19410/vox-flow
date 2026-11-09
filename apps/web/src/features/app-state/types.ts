@@ -65,6 +65,8 @@ export interface AppState {
   practiced: Record<string, number>;
   practicedQuestions: Record<string, QuestionPracticeRecord>;
   saved: string[];
+  /** Target forecast topic to reopen upon returning from practice results */
+  reopenTopicId?: string | null;
 }
 
 export type AppStateUpdater = Partial<AppState> | ((prev: AppState) => Partial<AppState>);

@@ -37,13 +37,15 @@ export function ForecastScreen() {
   );
 
   useEffect(() => {
-    if (s.lastPracticeSession?.topicId && !open && topics.length > 0) {
-      const match = topics.find((t) => t.id === s.lastPracticeSession?.topicId);
+    if (s.reopenTopicId && topics.length > 0) {
+      const match = topics.find((t) => t.id === s.reopenTopicId);
       if (match) {
+        setKind(match.kind);
         setOpen(match);
       }
+      set({ reopenTopicId: null });
     }
-  }, [s.lastPracticeSession?.topicId, topics, open]);
+  }, [s.reopenTopicId, topics, set]);
   const counts = useMemo(
     () => ({
       p1: topics.filter((t) => t.kind === "p1").length,
@@ -248,12 +250,7 @@ export function ForecastScreen() {
         practicedQuestions={s.practicedQuestions}
         saved={open ? s.saved.includes(open.id) : false}
         target={s.target}
-        onClose={() => {
-          setOpen(null);
-          if (s.lastPracticeSession) {
-            set({ lastPracticeSession: null });
-          }
-        }}
+        onClose={() => setOpen(null)}
         onToggleSave={() => open && toggleSave(open.id)}
         onStart={() => open && start(open)}
         onStartQuestion={(item, allItems) => open && startQuestion(open, item, allItems)}

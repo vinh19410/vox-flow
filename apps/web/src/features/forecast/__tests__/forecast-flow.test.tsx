@@ -1,12 +1,13 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useQuery } from "@tanstack/react-query";
 import type * as TanstackQuery from "@tanstack/react-query";
+import type * as TrpcModule from "@/utils/trpc";
 import { ExamScreen } from "@/features/exam/exam-screen";
 import { ResultsScreen } from "@/features/results/results-screen";
 import { ScoringScreen } from "@/features/scoring/scoring-screen";
-
+import { trpcClient } from "@/utils/trpc";
 import { createInitialState } from "@/features/app-state/initial-state";
 import { AppCtx, type AppCtxValue, type AppState } from "@/features/app-state/types";
 import { ForecastScreen } from "../forecast-screen";
@@ -43,6 +44,32 @@ const mockApiForecast = [
     realReportCount: 420,
   },
 ];
+const attemptStartSpy = vi.fn().mockResolvedValue({
+  attemptId: "att-default",
+  mode: "full",
+  inHistory: true,
+  calibrationGranted: false,
+  startedAt: new Date(),
+});
+const attemptGetActiveSpy = vi.fn().mockResolvedValue(null);
+
+vi.mock("@/utils/trpc", async (importOriginal) => {
+  const actual = await importOriginal<typeof TrpcModule>();
+  return {
+    ...actual,
+    trpcClient: {
+      ...actual.trpcClient,
+      attempt: {
+        getActive: {
+          query: (...args: unknown[]) => attemptGetActiveSpy(...args),
+        },
+        start: {
+          mutate: (...args: unknown[]) => attemptStartSpy(...args),
+        },
+      },
+    },
+  };
+});
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof TanstackQuery>();
@@ -57,7 +84,6 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     })),
   };
 });
-
 function renderWithApp(ui: ReactNode, seed?: Partial<AppState>, initialPendingSubmission = false) {
   const go = vi.fn();
   const goResult = vi.fn();
@@ -280,6 +306,61 @@ describe("Forecast practice flow", () => {
     expect(go).toHaveBeenCalledWith("exam");
   });
 
+  it("sends mode part3, topicId, and questionKey to attempt.start for single Part 3 practice", async () => {
+    attemptGetActiveSpy.mockResolvedValue(null);
+    attemptStartSpy.mockResolvedValue({
+      attemptId: "att-p3-test",
+      mode: "part3",
+      inHistory: true,
+      calibrationGranted: false,
+      startedAt: new Date(),
+    });
+
+    renderWithApp(<ExamScreen />, {
+      practice: {
+        topicId: "p23-environment",
+        title: "Environment",
+        kind: "p23",
+        items: [{ id: "p23-environment-p3-0", part: 3, text: "What things can people do?" }],
+        singleQuestionId: "p23-environment-p3-0",
+      },
+    });
+    await waitFor(() => {
+      expect(attemptStartSpy).toHaveBeenCalledWith({
+        mode: "part3",
+        topicId: "p23-environment",
+        questionKey: "p23-environment-p3-0",
+      });
+    });
+  });
+
+  it("sends mode part1, topicId, and questionKey to attempt.start for single Part 1 practice", async () => {
+    attemptGetActiveSpy.mockResolvedValue(null);
+    attemptStartSpy.mockResolvedValue({
+      attemptId: "att-p1-test",
+      mode: "part1",
+      inHistory: true,
+      calibrationGranted: false,
+      startedAt: new Date(),
+    });
+
+    renderWithApp(<ExamScreen />, {
+      practice: {
+        topicId: "p1-tidiness",
+        title: "Tidiness",
+        kind: "p1",
+        items: [{ id: "p1-tidiness-0", part: 1, text: "Were you a tidy person?" }],
+        singleQuestionId: "p1-tidiness-0",
+      },
+    });
+    await waitFor(() => {
+      expect(attemptStartSpy).toHaveBeenCalledWith({
+        mode: "part1",
+        topicId: "p1-tidiness",
+        questionKey: "p1-tidiness-0",
+      });
+    });
+  });
   it("updates practicedQuestions and assigns mode p1 or p3 when single question scoring finishes", () => {
     vi.useFakeTimers();
     try {
@@ -314,6 +395,29 @@ describe("Forecast practice flow", () => {
       expect(lastAttempt.mode).toBe("p1");
       expect(final.lastPracticeSession?.singleQuestionId).toBe("p1-tidiness-0");
       expect(final.practiced["p1-tidiness"]).toBeUndefined();
+
+      // Now test single Part 3 scoring appends mode 'p3'
+      const hP3 = renderWithApp(
+        <ScoringScreen />,
+        {
+          practice: {
+            topicId: "p23-environment",
+            title: "Environment",
+            kind: "p23",
+            items: [{ id: "p23-environment-p3-0", part: 3, text: "Protect nature?" }],
+            singleQuestionId: "p23-environment-p3-0",
+            topicItems: [{ id: "p23-environment-p3-0", part: 3, text: "Protect nature?" }],
+          },
+        },
+        true,
+      );
+      for (let k = 0; k < 7; k += 1) {
+        act(() => {
+          vi.advanceTimersByTime(700);
+        });
+      }
+      const attemptsP3 = hP3.state().attempts;
+      expect(attemptsP3[attemptsP3.length - 1]?.mode).toBe("p3");
     } finally {
       vi.useRealTimers();
     }
@@ -391,20 +495,15 @@ describe("Forecast practice flow", () => {
     expect(screen.queryByTestId("next-question-btn")).toBeNull();
   });
 
-  it("reopens topic modal automatically when returning from ResultsScreen via lastPracticeSession", () => {
+  it("reopens topic modal automatically and switches tab when returning via reopenTopicId", () => {
     const { set } = renderWithApp(<ForecastScreen />, {
-      lastPracticeSession: {
-        topicId: "p1-tidiness",
-        title: "Tidiness",
-        kind: "p1",
-        items: [{ id: "p1-tidiness-0", part: 1, text: "Were you a tidy person?" }],
-        singleQuestionId: "p1-tidiness-0",
-        attemptId: "attempt-1",
-      },
+      reopenTopicId: "p23-environment",
     });
 
-    // Modal opens automatically and shows topic details
-    expect(screen.getByText("Were you a tidy person when you were a child?")).toBeTruthy();
+    // Modal opens automatically and shows Part 2 & 3 topic heading in modal (level 2)
+    expect(screen.getByRole("heading", { level: 2, name: "Describe a person who helps to protect the environment" })).toBeTruthy();
+    expect(screen.getByText(/PART 2 · CUE CARD/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Luyện chủ đề này/ })).toBeTruthy();
+    expect(set).toHaveBeenCalledWith({ reopenTopicId: null });
   });
 });

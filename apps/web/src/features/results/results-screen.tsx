@@ -147,6 +147,9 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
               variant="outline"
               size="sm"
               onClick={() => {
+                if (lastSession?.topicId) {
+                  set({ reopenTopicId: lastSession.topicId });
+                }
                 go("forecast");
               }}
               data-testid="back-to-topic-btn"

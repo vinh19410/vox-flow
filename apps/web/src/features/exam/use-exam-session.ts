@@ -71,24 +71,30 @@ export function useExamSession(): ExamSessionValue {
   );
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const recorder = useRecorder();
+  const startParamsRef = useRef({
+    examMode: s.practice
+      ? s.practice.singleQuestionId
+        ? s.practice.items[0]?.part === 3
+          ? ("part3" as const)
+          : ("part1" as const)
+        : s.practice.kind === "p1"
+          ? ("part1" as const)
+          : ("part2" as const)
+      : s.mode === "p1"
+        ? ("part1" as const)
+        : s.mode === "p2"
+          ? ("part2" as const)
+          : s.mode === "p3"
+            ? ("part3" as const)
+            : ("full" as const),
+    topicId: s.practice?.topicId,
+    questionKey: s.practice?.singleQuestionId,
+    isPractice: Boolean(s.practice),
+  });
 
   useEffect(() => {
     let active = true;
-    const examMode: "full" | "part1" | "part2" | "part3" = s.practice
-      ? s.practice.singleQuestionId
-        ? s.practice.items[0]?.part === 3
-          ? "part3"
-          : "part1"
-        : s.practice.kind === "p1"
-          ? "part1"
-          : "part2"
-      : s.mode === "p1"
-        ? "part1"
-        : s.mode === "p2"
-          ? "part2"
-          : s.mode === "p3"
-            ? "part3"
-            : "full";
+    const { examMode, topicId, questionKey, isPractice } = startParamsRef.current;
 
     trpcClient.attempt.getActive
       .query()
@@ -96,12 +102,12 @@ export function useExamSession(): ExamSessionValue {
         if (!active) return;
         const att = activeAttempt?.attempt;
         const isPracticeMatch = Boolean(
-          s.practice &&
+          isPractice &&
             att &&
-            att.topicId === s.practice.topicId &&
-            att.questionKey === (s.practice.singleQuestionId ?? null),
+            att.topicId === topicId &&
+            att.questionKey === (questionKey ?? null),
         );
-        const isMockMatch = Boolean(!s.practice && att && !att.topicId && !att.questionKey && att.mode === examMode);
+        const isMockMatch = Boolean(!isPractice && att && !att.topicId && !att.questionKey && att.mode === examMode);
 
         if (att && (isPracticeMatch || isMockMatch)) {
           setAttemptId(att.id);
@@ -121,8 +127,8 @@ export function useExamSession(): ExamSessionValue {
           return trpcClient.attempt.start
             .mutate({
               mode: examMode,
-              topicId: s.practice?.topicId,
-              questionKey: s.practice?.singleQuestionId,
+              topicId,
+              questionKey,
             })
             .then((res) => {
               if (active) setAttemptId(res.attemptId);
@@ -136,7 +142,7 @@ export function useExamSession(): ExamSessionValue {
     return () => {
       active = false;
     };
-  }, [s.mode, s.practice?.topicId, s.practice?.singleQuestionId]);
+  }, []);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];

@@ -81,6 +81,7 @@ const PersistedAppStateSchema = z
     practiced: z.record(z.string(), z.number()),
     practicedQuestions: z.record(z.string(), QuestionPracticeRecordSchema),
     saved: z.array(z.string()),
+    reopenTopicId: z.string().nullable().optional(),
   })
   .partial();
 
@@ -113,6 +114,7 @@ function hydrateState(): AppState {
       practiced: d.practiced ?? base.practiced,
       practicedQuestions: d.practicedQuestions ?? base.practicedQuestions,
       saved: d.saved ?? base.saved,
+      reopenTopicId: d.reopenTopicId !== undefined ? d.reopenTopicId : base.reopenTopicId,
     };
   } catch {
     return base;
