@@ -4,7 +4,7 @@ import type { Attempt } from "../history/types";
 import { createInitialState } from "./initial-state";
 import type { AppState, AppStateUpdater, AppStoreValue } from "./types";
 
-export const PROTO_STORAGE_KEY = "vox-flow-proto-state";
+export const PROTO_STORAGE_KEY = "vox-flow-proto-state-v2";
 
 const ModeSchema = z.enum(["full", "p1", "p2", "p3"]);
 const PartSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
@@ -30,20 +30,6 @@ const ExamItemSchema = z.object({
     .optional(),
 });
 
-const AttemptSchema = z.object({
-  id: z.string(),
-  date: z.string(),
-  mode: ModeSchema,
-  band: z.number(),
-  range: z.tuple([z.number(), z.number()]),
-  topic: z.string(),
-});
-
-const QuestionPracticeRecordSchema = z.object({
-  band: z.number(),
-  count: z.number(),
-  lastPracticedAt: z.string(),
-});
 
 const PracticeSessionSchema = z.object({
   topicId: z.string(),
@@ -57,34 +43,11 @@ const PracticeSessionSchema = z.object({
 
 const PersistedAppStateSchema = z
   .object({
-    name: z.string(),
-    email: z.string(),
-    target: z.number(),
-    examDate: z.string().nullable(),
-    consent: z.object({
-      save: z.boolean(),
-      calibration: z.boolean().optional(),
-      train: z.boolean().optional(),
-    }),
-    plan: z
-      .object({
-        id: z.string(),
-        name: z.string(),
-        until: z.string(),
-      })
-      .nullable(),
     mode: ModeSchema,
     voice: z.string(),
-    attempts: z.array(AttemptSchema),
     practice: PracticeSessionSchema.nullable(),
-    lastPracticeSession: PracticeSessionSchema.nullable().optional(),
-    practiced: z.record(z.string(), z.number()),
-    practicedQuestions: z.record(z.string(), QuestionPracticeRecordSchema),
-    saved: z.array(z.string()),
-    reopenTopicId: z.string().nullable().optional(),
   })
   .partial();
-
 function hydrateState(): AppState {
   const base = createInitialState();
   try {
@@ -94,27 +57,10 @@ function hydrateState(): AppState {
     if (!result.success) return base;
     const d = result.data;
     return {
-      name: d.name ?? base.name,
-      email: d.email ?? base.email,
-      target: d.target ?? base.target,
-      examDate: d.examDate !== undefined ? d.examDate : base.examDate,
-      consent: d.consent
-        ? {
-            save: d.consent.save,
-            calibration: d.consent.calibration ?? d.consent.train ?? base.consent.calibration,
-            train: d.consent.train ?? d.consent.calibration ?? base.consent.train,
-          }
-        : base.consent,
-      plan: d.plan !== undefined ? d.plan : base.plan,
+      ...base,
       mode: d.mode ?? base.mode,
       voice: d.voice ?? base.voice,
-      attempts: d.attempts ?? base.attempts,
       practice: d.practice !== undefined ? d.practice : base.practice,
-      lastPracticeSession: d.lastPracticeSession !== undefined ? d.lastPracticeSession : base.lastPracticeSession,
-      practiced: d.practiced ?? base.practiced,
-      practicedQuestions: d.practicedQuestions ?? base.practicedQuestions,
-      saved: d.saved ?? base.saved,
-      reopenTopicId: d.reopenTopicId !== undefined ? d.reopenTopicId : base.reopenTopicId,
     };
   } catch {
     return base;
@@ -131,11 +77,16 @@ export function useAppStateStore(): AppStoreValue {
 
   useEffect(() => {
     try {
-      globalThis.sessionStorage?.setItem(PROTO_STORAGE_KEY, JSON.stringify(s));
+      const persisted = {
+        mode: s.mode,
+        voice: s.voice,
+        practice: s.practice,
+      };
+      globalThis.sessionStorage?.setItem(PROTO_STORAGE_KEY, JSON.stringify(persisted));
     } catch {
       // Ignore storage quota or restricted-mode errors
     }
-  }, [s]);
+  }, [s.mode, s.voice, s.practice]);
 
   useEffect(() => {
     return () => {

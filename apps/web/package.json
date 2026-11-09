@@ -8,6 +8,7 @@
     "serve": "vite preview",
     "start": "vite",
     "check-types": "vite build && tsc --noEmit",
+    "check:no-mock": "node scripts/check-no-mock-in-dist.mjs",
     "test": "vitest run",
     "dev:bare": "vite dev",
     "env:generate": "varlock codegen"

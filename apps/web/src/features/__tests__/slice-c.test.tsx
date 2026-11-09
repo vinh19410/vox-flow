@@ -2,6 +2,12 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
 
+vi.mock("@/lib/feature-flags", () => ({
+  FEATURES: {
+    scoring: true,
+    billing: true,
+  },
+}));
 import { createInitialState } from "@/features/app-state/initial-state";
 import { ProtoToast } from "@/features/app-state/toast";
 import { useApp, AppCtx, type AppCtxValue, type AppState, type PracticeSession } from "@/features/app-state/types";
@@ -13,7 +19,10 @@ import { HISTORY } from "@/features/history/data";
 import type { Attempt } from "@/features/history/types";
 import { ResultsScreen } from "@/features/results/results-screen";
 import { ScoringScreen } from "@/features/scoring/scoring-screen";
+import { RESULT } from "@/test/fixtures/results-data";
+import { REVIEW } from "@/test/fixtures/review-data";
 
+const MOCK_RESULT_DATA = { ...RESULT, reviews: REVIEW };
 /**
  * Test harness mirroring AppStateProvider: real AppState transitions through
  * `set`, spyable `go`/`goResult`/`toast`, plus a probe capturing the latest
@@ -313,43 +322,25 @@ describe("ScoringScreen", () => {
     }
   }
 
-  it("appends the attempt and replaces /scoring in history", () => {
+  it("clears practice and pendingSubmission without appending fake attempts in Beta", () => {
     const h = renderWithApp(<ScoringScreen />, { practice: PRACTICE }, { pendingSubmission: true });
-    const baseline = createInitialState().attempts.length;
-
-    runScoringAnimation();
-
     const final = h.state();
-    expect(final.attempts).toHaveLength(baseline + 1);
-    const added = final.attempts[final.attempts.length - 1];
-    expect(added.band).toBe(6.5);
-    expect(added.mode).toBe("p2"); // practice kind p23 maps to p2
-    expect(added.topic).toBe(`Forecast · ${PRACTICE.title}`);
+    expect(final.attempts).toHaveLength(0);
     expect(final.practice).toBeNull();
     expect(h.setPendingSubmission).toHaveBeenCalledWith(false);
-    expect(h.goResult).toHaveBeenCalledTimes(1);
-    const [id, navOpts] = h.goResult.mock.calls[0] as [string, { replace?: boolean }];
-    expect(navOpts).toEqual({ replace: true });
-    expect(added.id).toBe(id);
   });
-
 
   it("tolerates a direct /scoring visit without committing an attempt", () => {
     const h = renderWithApp(<ScoringScreen />);
-    const baseline = createInitialState().attempts.length;
-
-    runScoringAnimation();
-
-    expect(h.state().attempts).toHaveLength(baseline);
-    expect(h.setLastUnpersistedAttempt).not.toHaveBeenCalled();
-    expect(h.setPendingSubmission).not.toHaveBeenCalled();
-    expect(h.goResult).toHaveBeenCalledWith("latest", { replace: true });
+    expect(h.state().attempts).toHaveLength(0);
+    expect(screen.getByText("Bài thi đã được ghi nhận!")).toBeTruthy();
   });
+
 });
 
 describe("ResultsScreen", () => {
   it("renders the default latest result with the soft paywall while plan is null", () => {
-    const h = renderWithApp(<ResultsScreen attemptId="latest" />);
+    const h = renderWithApp(<ResultsScreen attemptId="latest" resultData={MOCK_RESULT_DATA} />);
     expect(screen.getByText(/Bạn đạt band 6\.5/)).toBeTruthy();
     expect(screen.getByText("6.0 – 7.0")).toBeTruthy();
     expect(screen.getByText("Xem vì sao bạn được từng band")).toBeTruthy();
@@ -358,20 +349,20 @@ describe("ResultsScreen", () => {
   });
 
   it("renders a concrete attempt's band, range and topic", () => {
-    renderWithApp(<ResultsScreen attemptId="a3" />, { attempts: [...HISTORY] });
+    renderWithApp(<ResultsScreen attemptId="a3" resultData={MOCK_RESULT_DATA} />, { attempts: [...HISTORY] });
     expect(screen.getByText("Bạn đạt band 5.5")).toBeTruthy();
     expect(screen.getByText("5.5 – 6.0")).toBeTruthy();
     expect(screen.getByText(/A useful skill/)).toBeTruthy();
   });
 
   it("falls back to the default result for unknown ids without throwing", () => {
-    renderWithApp(<ResultsScreen attemptId="missing-id" />, { attempts: [...HISTORY] });
+    renderWithApp(<ResultsScreen attemptId="missing-id" resultData={MOCK_RESULT_DATA} />, { attempts: [...HISTORY] });
     expect(screen.getByText(/Bạn đạt band 6\.5/)).toBeTruthy();
     expect(screen.getByText("6.0 – 7.0")).toBeTruthy();
   });
 
   it("reveals criteria detail and review mark popovers once the plan is unlocked", () => {
-    const h = renderWithApp(<ResultsScreen attemptId="latest" />, {
+    const h = renderWithApp(<ResultsScreen attemptId="latest" resultData={MOCK_RESULT_DATA} reviews={REVIEW} />, {
       plan: { id: "pack", name: "Theo lượt", until: "Không hết hạn · 3 lượt" },
     });
     expect(screen.queryByText("Xem vì sao bạn được từng band")).toBeNull();
@@ -416,7 +407,7 @@ describe("Billing & PaywallModal", () => {
   });
 
   it("activates a plan through the paywall modal opened from results", () => {
-    const h = renderWithApp(<ResultsScreen attemptId="latest" />);
+    const h = renderWithApp(<ResultsScreen attemptId="latest" resultData={MOCK_RESULT_DATA} />);
     fireEvent.click(screen.getByText("Mở khóa từ 49.000đ"));
     expect(h.openPaywall).toHaveBeenCalledTimes(1);
     h.unmount();

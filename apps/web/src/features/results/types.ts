@@ -37,6 +37,7 @@ export interface ResultData {
   runs: number[];
   oneLiner: string;
   criteria: Criterion[];
+  reviews?: ReviewItem[];
 }
 
 export type MarkType = "grammar" | "vocab" | "pron";

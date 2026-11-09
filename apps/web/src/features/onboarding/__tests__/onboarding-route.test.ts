@@ -128,4 +128,54 @@ describe("useProfileHydration hook", () => {
       });
     });
   });
+  it("hydrates name and email from session user and cleans state on logout", async () => {
+    const setSpy = vi.fn();
+    profileGetSpy.mockResolvedValue({
+      targetBand: 7.5,
+      examDate: "2029-11-11",
+      onboardedAt: 1730000000000,
+    });
+
+    const { rerender } = renderHook(
+      ({ user }: { user: { id: string; name?: string; email?: string } | null }) =>
+        useProfileHydration(user, setSpy),
+      {
+        initialProps: {
+          user: { id: "usr_charlie", name: "Charlie Nguyen", email: "charlie@example.com" } as { id: string; name?: string; email?: string } | null,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(profileGetSpy).toHaveBeenCalled();
+    });
+
+    // Check that updater or partial sets name & email
+    const updaterCall = setSpy.mock.calls.find(
+      (c) => typeof c[0] === "function",
+    );
+    expect(updaterCall).toBeDefined();
+    if (typeof updaterCall?.[0] === "function") {
+      const updated = updaterCall[0]({ name: "", email: "" });
+      expect(updated.name).toBe("Charlie Nguyen");
+      expect(updated.email).toBe("charlie@example.com");
+    }
+
+    // Now log out
+    setSpy.mockClear();
+    rerender({ user: null });
+    expect(setSpy).toHaveBeenCalledWith({
+      name: "",
+      email: "",
+      target: 7.0,
+      examDate: null,
+      plan: null,
+      attempts: [],
+      practice: null,
+      lastPracticeSession: null,
+      practiced: {},
+      practicedQuestions: {},
+      saved: [],
+    });
+  });
 });

@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Check, Loader2, Mic, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
+import { AlertCircle, Bookmark, Check, Loader2, Mic, RotateCcw, Search, Shuffle, Sparkles, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
+import { EmptyState } from "@/components/ds/empty-state";
 import { useApp } from "@/features/app-state/types";
 import { mapApiTopicToForecastTopic } from "./builders";
 import { CoverageBanner } from "./components/coverage-banner";
@@ -239,8 +240,35 @@ export function ForecastScreen() {
       )}
 
       {!isLoading && !isError && list.length === 0 && (
-        <Card className="mt-5 py-16 text-center text-sm text-subtle">
-          Không có chủ đề nào khớp bộ lọc.
+        <Card className="mt-5 p-8">
+          <EmptyState
+            size="md"
+            icon={filter === "saved" ? Bookmark : Search}
+            title={
+              filter === "saved"
+                ? "Chưa có chủ đề nào được lưu"
+                : "Không có chủ đề nào khớp bộ lọc."
+            }
+            description={
+              filter === "saved"
+                ? "Bấm biểu tượng đánh dấu trên các thẻ chủ đề để lưu lại và ôn tập sau."
+                : q
+                  ? `Không tìm thấy chủ đề nào cho "${q}". Thử tìm kiếm với từ khóa khác.`
+                  : "Thử chọn bộ lọc khác hoặc chuyển sang tab Part khác."
+            }
+            action={
+              filter !== "all" || q
+                ? {
+                    label: "Xem tất cả chủ đề",
+                    onClick: () => {
+                      setFilter("all");
+                      setQ("");
+                    },
+                    variant: "outline",
+                  }
+                : undefined
+            }
+          />
         </Card>
       )}
 

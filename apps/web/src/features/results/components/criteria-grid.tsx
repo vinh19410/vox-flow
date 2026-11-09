@@ -1,21 +1,20 @@
 import { Lock } from "lucide-react";
 
 import { cx } from "@/lib/cx";
-
-import { RESULT } from "../data";
-import type { CritKey } from "../types";
+import type { Criterion, CritKey } from "../types";
 
 export interface CriteriaGridProps {
   /** Currently selected criterion, or null to highlight nothing. */
   sel: CritKey | null;
   pro: boolean;
   onPick: (key: CritKey) => void;
+  criteria?: Criterion[];
 }
 
-export function CriteriaGrid({ sel, pro, onPick }: CriteriaGridProps) {
+export function CriteriaGrid({ sel, pro, onPick, criteria = [] }: CriteriaGridProps) {
   return (
     <div className="grid grid-cols-2 gap-3">
-      {RESULT.criteria.map((c) => {
+      {criteria.map((c) => {
         const on = sel === c.key;
         return (
           <button

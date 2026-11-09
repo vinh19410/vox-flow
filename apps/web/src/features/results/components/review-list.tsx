@@ -7,17 +7,29 @@ import { Card } from "@/components/ds/card";
 import { cx } from "@/lib/cx";
 import { mmss } from "@/lib/format";
 
-import { MARK, REVIEW } from "../review-data";
-import type { Seg } from "../types";
+import { MARK } from "../review-data";
+import type { ReviewItem, Seg } from "../types";
 
-export function ReviewList({ pro }: { pro: boolean }) {
+export interface ReviewListProps {
+  pro: boolean;
+  items?: ReviewItem[];
+}
+
+export function ReviewList({ pro, items = [] }: ReviewListProps) {
   const { openPaywall } = useApp();
   const [playing, setPlaying] = useState<string | null>(null);
   const [pos, setPos] = useState(0);
   const [mark, setMark] = useState<{ id: string; i: number } | null>(null);
 
-  const current = playing ? (REVIEW.find((r) => r.id === playing) ?? null) : null;
+  if (!items.length) {
+    return (
+      <div className="py-12 text-center text-sm text-subtle">
+        Chưa có dữ liệu phân tích từng câu.
+      </div>
+    );
+  }
 
+  const current = playing ? (items.find((r) => r.id === playing) ?? null) : null;
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => setPos((p) => p + 0.2), 200);
@@ -46,7 +58,7 @@ export function ReviewList({ pro }: { pro: boolean }) {
           </button>
         )}
       </div>
-      {REVIEW.map((r) => {
+      {items.map((r) => {
         const isPlaying = playing === r.id;
         const selected = mark?.id === r.id ? (r.segs[mark.i] as Exclude<Seg, string>) : null;
         return (

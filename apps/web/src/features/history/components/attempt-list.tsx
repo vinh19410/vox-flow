@@ -8,6 +8,7 @@ import type { Attempt } from "@/features/history/types";
 
 export function AttemptList({ list }: { list: Attempt[] }) {
   const { goResult } = useApp();
+  if (!list.length) return null;
   return (
     <Card className="mt-5 divide-y divide-line overflow-hidden">
       {[...list].reverse().map((a, k) => (

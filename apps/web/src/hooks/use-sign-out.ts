@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback } from "react";
 import { toast } from "sonner";
 
+import { PROTO_STORAGE_KEY } from "@/features/app-state/store";
 import { authClient } from "@/lib/auth-client";
 
 const SIGN_OUT_ERROR = "Đăng xuất thất bại. Vui lòng thử lại.";
@@ -20,6 +21,11 @@ export function useSignOut(redirect: string = "/auth") {
     if (thrown || res?.error) {
       toast.error(SIGN_OUT_ERROR);
       return;
+    }
+    try {
+      globalThis.sessionStorage?.removeItem(PROTO_STORAGE_KEY);
+    } catch {
+      // Ignore
     }
     await navigate({ to: redirect });
   }, [navigate, redirect]);

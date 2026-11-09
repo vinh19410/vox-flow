@@ -4,8 +4,13 @@ import { BandRange } from "@/components/ds/band-range";
 import { Badge } from "@/components/ds/badge";
 import { Button } from "@/components/ds/button";
 import { useApp } from "@/features/app-state/types";
-import { RESULT } from "@/features/results/data";
 
+const HERO_CRITERIA = [
+  { key: "FC", band: 6.5 },
+  { key: "LR", band: 6.0 },
+  { key: "GRA", band: 6.0 },
+  { key: "PRON", band: 6.5 },
+];
 export function Hero() {
   const { go } = useApp();
   return (
@@ -63,7 +68,7 @@ export function Hero() {
             <BandRange band={6.5} range={[6.0, 7.0]} dark />
           </div>
           <div className="mt-6 grid grid-cols-4 gap-2">
-            {RESULT.criteria.map((c) => (
+            {HERO_CRITERIA.map((c) => (
               <div key={c.key} className="rounded-2xl bg-white/[0.06] p-3">
                 <div className="text-[10px] font-semibold tracking-wider text-white/45">{c.key}</div>
                 <div className="tnum mt-1 text-xl font-bold">{c.band.toFixed(1)}</div>
