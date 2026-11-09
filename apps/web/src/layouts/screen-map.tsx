@@ -23,8 +23,7 @@ export const SCREEN_MAP: ScreenMapEntry[] = [
   { id: "scoring", code: "S11", label: "Đang chấm" },
   { id: "results", code: "S12–15", label: "Kết quả · Bằng chứng · Paywall" },
   { id: "history", code: "S19", label: "Lịch sử bài làm" },
-  { id: "billing", code: "S22–24", label: "Bảng giá · Thanh toán" },
-  { id: "profile", code: "S21", label: "Hồ sơ cá nhân" },
+  { id: "billing", code: "S22–24", label: "Bảng giá · Thanh toán · Tài khoản" },
   { id: "terms", code: "S25", label: "Điều khoản sử dụng" },
 ];
 
@@ -95,6 +94,5 @@ const ROUTES_BY_SCREEN: Record<ProtoScreen, string> = {
   results: "/app/history/latest",
   history: "/app/history",
   billing: "/app/billing",
-  profile: "/app/profile",
   terms: "/terms",
 };

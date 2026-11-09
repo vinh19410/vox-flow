@@ -1,15 +1,7 @@
-import { APIError } from "@better-auth/core/error";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import type { Database } from "@vox-flow/db";
 import * as schema from "@vox-flow/db/schema/auth";
 import { betterAuth } from "better-auth";
-
-import { validateUserImage } from "./image-validation";
-
-export {
-  MAX_USER_IMAGE_LENGTH,
-  validateUserImage,
-} from "./image-validation";
 
 export type AuthConfig = {
   BETTER_AUTH_URL: string;
@@ -43,34 +35,6 @@ export function createAuth(
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
-    databaseHooks: {
-      user: {
-        create: {
-          before: async (data) => {
-            if (!("image" in data)) return;
-            const result = validateUserImage(data.image);
-            if (result === false) {
-              throw new APIError("BAD_REQUEST", {
-                message: "INVALID_IMAGE",
-              });
-            }
-            return result;
-          },
-        },
-        update: {
-          before: async (data) => {
-            if (!("image" in data)) return;
-            const result = validateUserImage(data.image);
-            if (result === false) {
-              throw new APIError("BAD_REQUEST", {
-                message: "INVALID_IMAGE",
-              });
-            }
-            return result;
-          },
-        },
-      },
-    },
     advanced: {
       defaultCookieAttributes: {
         sameSite: "none",

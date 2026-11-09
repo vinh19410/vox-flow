@@ -118,20 +118,8 @@ describe("BottomNav component", () => {
       expect(screen.queryByText("Bảo Châu")).toBeNull();
     });
 
-    expect(screen.getByRole("menuitem", { name: /Hồ sơ cá nhân/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /Gói & thanh toán/i })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /Đăng xuất/i })).toBeTruthy();
-  });
-
-  it("navigates to profile when clicking 'Hồ sơ cá nhân'", async () => {
-    const { go } = renderBottomNav();
-
-    fireEvent.click(screen.getByRole("button", { name: "Tài khoản người dùng" }));
-
-    const profileItem = await screen.findByRole("menuitem", { name: /Hồ sơ cá nhân/i });
-    fireEvent.click(profileItem);
-
-    expect(go).toHaveBeenCalledWith("profile");
   });
 
   it("navigates to billing when clicking 'Gói & thanh toán'", async () => {
@@ -176,26 +164,5 @@ describe("BottomNav component", () => {
       expect(screen.getByText("Gói Miễn phí")).toBeTruthy();
       expect(screen.queryByText("lan@example.com")).toBeNull();
     });
-  });
-
-  it("renders image in avatar button when session user has image URL", () => {
-    vi.mocked(authClient.useSession).mockReturnValue({
-      data: {
-        user: {
-          id: "u-img",
-          email: "img@example.com",
-          name: "Ảnh Đại Diện",
-          image: "https://example.com/avatar.png",
-        },
-        session: { id: "s-img", userId: "u-img" },
-      },
-      isPending: false,
-      error: null,
-    } as never);
-
-    renderBottomNav();
-    const img = screen.getByRole("img", { name: "Ảnh Đại Diện" });
-    expect(img).toBeTruthy();
-    expect(img.getAttribute("src")).toBe("https://example.com/avatar.png");
   });
 });

@@ -16,7 +16,6 @@ export type ProtoScreen =
   | "results"
   | "history"
   | "billing"
-  | "profile"
   | "terms";
 
 export interface QuestionPracticeRecord {
