@@ -79,10 +79,13 @@ export function ProfileScreen() {
     setIsSavingIdentity(true);
     try {
       if (typeof authClient?.updateUser === "function") {
-        await authClient.updateUser({
+        const res = await authClient.updateUser({
           name: trimmed,
           image: avatar || undefined,
         });
+        if (res?.error) {
+          throw new Error(res.error.message || "UPDATE_USER_FAILED");
+        }
       }
       set({ name: trimmed });
       setIdentitySaved(true);
@@ -101,14 +104,17 @@ export function ProfileScreen() {
     // Tự động lưu avatar mới
     try {
       if (typeof authClient?.updateUser === "function") {
-        await authClient.updateUser({
+        const res = await authClient.updateUser({
           name: name.trim(),
           image: newAvatarUrl,
         });
+        if (res?.error) {
+          throw new Error(res.error.message || "UPDATE_AVATAR_FAILED");
+        }
       }
       toast("Đã cập nhật ảnh đại diện mới!");
     } catch {
-      // Non-blocking, người dùng vẫn có thể bấm nút Lưu chung
+      toast("Không thể lưu ảnh đại diện. Vui lòng thử lại.");
     }
   };
 

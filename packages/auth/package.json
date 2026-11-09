@@ -6,7 +6,8 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@better-auth/core": "1.7.12",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@vox-flow/config": "workspace:*",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "^5.1.0"
   }
 }

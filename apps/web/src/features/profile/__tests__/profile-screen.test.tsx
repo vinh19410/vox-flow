@@ -180,7 +180,7 @@ describe("ProfileScreen component", () => {
       expect(authClient.updateUser).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Lan Nguyễn",
-          image: expect.stringMatching(/^data:image\/svg\+xml/),
+          image: expect.stringMatching(/^\/avatars\//),
         }),
       );
     });
