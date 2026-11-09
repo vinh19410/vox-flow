@@ -192,12 +192,16 @@ describe("ProfileScreen component", () => {
     expect(trpcClient.profile.upsert.mutate).not.toHaveBeenCalled();
   });
 
-  it("opens AvatarModal when clicking 'Mở bộ chọn ảnh đại diện'", () => {
+  it("does not render redundant 'Mở bộ chọn ảnh đại diện' button and opens AvatarModal via camera button", () => {
     renderProfile();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Mở bộ chọn ảnh đại diện" }),
-    );
+    // Redundant text button is removed
+    expect(
+      screen.queryByRole("button", { name: "Mở bộ chọn ảnh đại diện" }),
+    ).toBeNull();
+
+    // Camera button on avatar still opens modal
+    fireEvent.click(screen.getByRole("button", { name: "Đổi ảnh đại diện" }));
 
     expect(screen.getByText("Chọn ảnh đại diện")).toBeTruthy();
   });
@@ -209,7 +213,7 @@ describe("ProfileScreen component", () => {
 
     // Open the modal
     fireEvent.click(
-      screen.getByRole("button", { name: "Mở bộ chọn ảnh đại diện" }),
+      screen.getByRole("button", { name: "Đổi ảnh đại diện" }),
     );
 
     // Confirm with a preset
@@ -225,6 +229,16 @@ describe("ProfileScreen component", () => {
         }),
       );
     });
+  });
+
+  it("renders exam date input with overflow prevention classes", () => {
+    renderProfile();
+
+    const dateInput = document.getElementById("user-exam-date");
+    expect(dateInput).toBeTruthy();
+    expect(dateInput?.className).toContain("min-w-0");
+    expect(dateInput?.className).toContain("max-w-full");
+    expect(dateInput?.className).toContain("w-full");
   });
 
   it("navigates to billing screen when clicking 'Quản lý & Nâng cấp gói'", () => {

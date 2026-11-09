@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Loại bỏ nút avatar và sửa lỗi CSS date input"
-status: todo
+status: completed
 ---
 
 # Phase 1: Loại bỏ nút avatar và sửa lỗi CSS date input
@@ -11,13 +11,13 @@ Loại bỏ phần tử nút "Mở bộ chọn ảnh đại diện" trong `profi
 
 ## Requirements
 
-- [ ] Xóa bỏ khối nút `Mở bộ chọn ảnh đại diện` ở dòng ~260-270 của `profile-screen.tsx`.
-- [ ] Đảm bảo nút Camera overlay với `aria-label="Đổi ảnh đại diện"` tiếp tục mở `AvatarModal`.
-- [ ] Thêm `w-full min-w-0` vào container flex của input ngày thi và `min-w-0 flex-1` cho wrapper input.
-- [ ] Thêm `min-w-0 max-w-full` vào thẻ `<input id="user-exam-date" type="date">`.
-- [ ] Thêm `shrink-0` vào nút "Xóa ngày" để tránh co méo.
-- [ ] Thêm rule `input[type="date"] { min-width: 0; max-width: 100%; }` vào `prototype-theme.css`.
-- [ ] Cập nhật unit test trong `profile-screen.test.tsx` tương thích với thay đổi và bổ sung assertion kiểm tra nút cũ đã biến mất.
+- [x] Xóa bỏ khối nút `Mở bộ chọn ảnh đại diện` ở dòng ~260-270 của `profile-screen.tsx`.
+- [x] Đảm bảo nút Camera overlay với `aria-label="Đổi ảnh đại diện"` tiếp tục mở `AvatarModal`.
+- [x] Thêm `w-full min-w-0` vào container flex của input ngày thi và `min-w-0 flex-1` cho wrapper input.
+- [x] Thêm `min-w-0 max-w-full` vào thẻ `<input id="user-exam-date" type="date">`.
+- [x] Thêm `shrink-0` vào nút "Xóa ngày" để tránh co méo.
+- [x] Thêm rule `input[type="date"] { min-width: 0; max-width: 100%; }` vào `prototype-theme.css`.
+- [x] Cập nhật unit test trong `profile-screen.test.tsx` tương thích với thay đổi và bổ sung assertion kiểm tra nút cũ đã biến mất.
 
 ## Implementation Steps
 
@@ -34,13 +34,13 @@ Loại bỏ phần tử nút "Mở bộ chọn ảnh đại diện" trong `profi
 
 ## Todo
 
-- [ ] Gỡ bỏ nút "Mở bộ chọn ảnh đại diện" trong `profile-screen.tsx`
-- [ ] Sửa CSS flexbox và input `type="date"` chống tràn màn hình
-- [ ] Cập nhật và bổ sung test cases trong `profile-screen.test.tsx`
-- [ ] Chạy và xác thực toàn bộ test cùng `pnpm check-types`
+- [x] Gỡ bỏ nút "Mở bộ chọn ảnh đại diện" trong `profile-screen.tsx`
+- [x] Sửa CSS flexbox và input `type="date"` chống tràn màn hình
+- [x] Cập nhật và bổ sung test cases trong `profile-screen.test.tsx`
+- [x] Chạy và xác thực toàn bộ test cùng `pnpm check-types`
 
 ## Success Criteria
 
-- [ ] Test suite `profile-screen.test.tsx` pass 100%.
-- [ ] `pnpm check-types` pass không có lỗi.
-- [ ] Giao diện profile sạch sẽ, không còn nút thừa, input ngày thi không tràn trên mobile.
+- [x] Test suite `profile-screen.test.tsx` pass 100%.
+- [x] `pnpm check-types` pass không có lỗi.
+- [x] Giao diện profile sạch sẽ, không còn nút thừa, input ngày thi không tràn trên mobile.

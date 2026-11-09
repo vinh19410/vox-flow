@@ -1,7 +1,7 @@
 ---
 title: "Bỏ nút Mở bộ ảnh đại diện và sửa lỗi UI input ngày thi dự kiến"
 description: "Loại bỏ nút dư thừa 'Mở bộ chọn ảnh đại diện' trên trang Profile và khắc phục lỗi tràn chiều ngang (overflow) của input type='date' trên mobile Safari"
-status: pending
+status: completed
 priority: P1
 effort: "S"
 tags: [profile, ui, fix, mobile, ios-safari]
@@ -28,14 +28,14 @@ Trang hồ sơ cá nhân (`/app/profile`) hiện có hai điểm cần tinh ch�
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Loại bỏ nút avatar và sửa lỗi CSS date input](./phase-01-cleanup-and-ui-fix.md) | Pending |
+| 1 | [Phase 1: Loại bỏ nút avatar và sửa lỗi CSS date input](./phase-01-cleanup-and-ui-fix.md) | Completed |
 
 ## Success Criteria
 
-- [ ] Nút "Mở bộ chọn ảnh đại diện" không còn hiển thị trên trang `/app/profile`.
-- [ ] Nút Camera overlay trên avatar (`aria-label="Đổi ảnh đại diện"`) vẫn hoạt động bình thường để mở AvatarModal.
-- [ ] Khung input ngày thi dự kiến nằm gọn hoàn toàn trong Card trên mọi kích thước màn hình (mobile 390px, tablet, desktop) và không bị tràn sang phải.
-- [ ] Toàn bộ unit test liên quan pass (`pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx`).
-- [ ] `pnpm check-types` pass không có lỗi.
+- [x] Nút "Mở bộ chọn ảnh đại diện" không còn hiển thị trên trang `/app/profile`.
+- [x] Nút Camera overlay trên avatar (`aria-label="Đổi ảnh đại diện"`) vẫn hoạt động bình thường để mở AvatarModal.
+- [x] Khung input ngày thi dự kiến nằm gọn hoàn toàn trong Card trên mọi kích thước màn hình (mobile 390px, tablet, desktop) và không bị tràn sang phải.
+- [x] Toàn bộ unit test liên quan pass (`pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx`).
+- [x] `pnpm check-types` pass không có lỗi.
 
 <!-- slug: profile-date-input-and-avatar-cleanup -->

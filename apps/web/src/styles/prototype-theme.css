@@ -85,6 +85,14 @@
   }
 }
 
+.proto-root input[type="date"],
+.proto-root input[type="time"],
+.proto-root input[type="month"] {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .tnum {
   font-variant-numeric: tabular-nums;
 }
