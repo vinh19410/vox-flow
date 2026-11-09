@@ -34,6 +34,21 @@ Dùng `pnpm`, không dùng `npm` hay `yarn`. Xem cài đặt và các script kh�
 
 - Mọi GitHub issue tạo mới phải được thêm vào project https://github.com/users/vinh19410/projects/15 ngay khi tạo. Dùng `gh issue create --project "<tên project>"` hoặc `gh project item-add 15 --owner vinh19410 --url <url-issue>`. Lệnh sau cần quyền `project` (`gh auth refresh -s project`) nếu chưa có.
 
+### POT (Proof of Test) sau `ak-vibe` / `ak-atoz`
+
+- Sau khi `ak-vibe` hoặc `ak-atoz` chạy xong cho một issue, **bắt buộc** đăng một comment lên issue đó chứa POT. Không có POT thì chưa được coi là xong. Comment POT nêu từng acceptance criteria / Done-means và bằng chứng tương ứng.
+- POT không bắt buộc là hình ảnh, nhưng phải đủ để người đọc tự tin công việc đúng yêu cầu mà không phải chạy lại. Chọn dạng hợp với loại việc:
+  - **Thay đổi UI:** screenshot (3 viewport, light/dark theo `REVIEW.md`) đính kèm dạng ảnh.
+  - **Logic/API/data:** tên lệnh + đoạn output kết quả (test pass, `curl` response, query result) trong khối code.
+  - **CI/deploy/infra:** link run, SHA, kết quả smoke check.
+  - Luôn kèm: PR/commit SHA và các gate đã chạy (`pnpm check`, `pnpm check-types`, test liên quan, e2e nếu có).
+- **Đính kèm ảnh bằng** `gh`**:** `gh` (đang dùng 2.45) không có cờ upload ảnh cho `gh issue comment` (chỉ có `--body`/`--body-file`), và `gh issue comment` không nhận file đính kèm. Quy trình thay thế:
+  1. Lưu ảnh vào `plans/reports/` (ví dụ `plans/reports/<issue>-<slug>-<viewport>.png`, theo precedent `542-select-chevron-*.png`), commit + push lên branch.
+  2. Nhúng ảnh bằng permalink theo SHA (không dùng tên branch để ảnh không vỡ khi branch bị xoá/squash): `![mô tả](https://github.com/vinh19410/teacher-os/blob/<commit-sha>/plans/reports/<file>.png?raw=true)`. Repo private nên ảnh chỉ hiển thị với người đã đăng nhập có quyền — đủ cho nội bộ.
+  3. Đăng comment: `gh issue comment <N> --body-file <file.md>` (dùng `--body-file` để giữ nguyên markdown nhiều dòng).
+  4. Mở lại comment (`gh issue view <N> --comments`) kiểm tra link đã đúng SHA và đường dẫn; ảnh phải tồn tại trong commit đó trước khi đăng.
+- Không dán secret/token/dữ liệu cá nhân vào ảnh hay log của POT; che hoặc chụp lại bằng dữ liệu seed/e2e.
+
 ## Tài liệu sản phẩm
 
 - Tài liệu sản phẩm chính thức: PRD tại `docs/_product/prd.md` và roadmap tại `docs/_product/roadmap.md` (dựng lại từ trích dẫn và Feature Map, các nội dung chưa có nguồn ghi rõ `[chưa có]`). 12 quyết định thống nhất ghi tại `docs/product-decisions.md`.
