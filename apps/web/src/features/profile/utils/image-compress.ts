@@ -1,6 +1,7 @@
 /**
  * Kiểm tra và nén hình ảnh đại diện người dùng tải lên dạng Data URL (WebP/JPEG).
  * Tự động cắt vuông phần giữa ảnh và giới hạn độ phân giải (mặc định 180x180 px).
+ * Luôn trả về ảnh đã nén — không bao giờ trả về dữ liệu gốc chưa xử lý.
  */
 export async function compressImageFile(
   file: File,
@@ -30,9 +31,10 @@ export async function compressImageFile(
       return;
     }
 
-    // Trong môi trường không hỗ trợ Image/Canvas (ví dụ SSR hoặc test mock thiếu canvas), trả về reader.result trực tiếp
+    // Trong môi trường không hỗ trợ Image/Canvas (SSR hoặc test mock), không có
+    // đường nén nào khả dụng → từ chối thay vì lưu ảnh gốc chưa nén.
     if (typeof window === "undefined" || typeof Image === "undefined") {
-      resolve(result);
+      reject(new Error("Trình duyệt không hỗ trợ xử lý ảnh. Vui lòng dùng trình duyệt khác."));
       return;
     }
 
@@ -43,43 +45,44 @@ export async function compressImageFile(
     };
 
     img.onload = () => {
+      const width = img.naturalWidth || img.width;
+      const height = img.naturalHeight || img.height;
+      const size = Math.min(width, height);
+      if (size <= 0) {
+        reject(new Error("Hình ảnh không hợp lệ hoặc rỗng."));
+        return;
+      }
+
       try {
         const canvas = document.createElement("canvas");
-        const size = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height);
-        if (size <= 0) {
-          resolve(result);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Trình duyệt không hỗ trợ xử lý ảnh. Vui lòng dùng trình duyệt khác."));
           return;
         }
 
-        const sx = ((img.naturalWidth || img.width) - size) / 2;
-        const sy = ((img.naturalHeight || img.height) - size) / 2;
+        const sx = (width - size) / 2;
+        const sy = (height - size) / 2;
 
         canvas.width = maxDimension;
         canvas.height = maxDimension;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          resolve(result);
-          return;
-        }
 
         // Cắt vuông tâm ảnh và vẽ vào canvas
         ctx.drawImage(img, sx, sy, size, size, 0, 0, maxDimension, maxDimension);
 
         // Thử xuất WebP, fallback JPEG
-        let dataUrl = "";
-        try {
-          dataUrl = canvas.toDataURL("image/webp", quality);
-          if (!dataUrl.startsWith("data:image/webp")) {
-            dataUrl = canvas.toDataURL("image/jpeg", quality);
-          }
-        } catch {
+        let dataUrl = canvas.toDataURL("image/webp", quality);
+        if (!dataUrl.startsWith("data:image/webp")) {
           dataUrl = canvas.toDataURL("image/jpeg", quality);
+        }
+        if (!dataUrl.startsWith("data:image/webp") && !dataUrl.startsWith("data:image/jpeg")) {
+          reject(new Error("Trình duyệt không hỗ trợ nén ảnh."));
+          return;
         }
 
         resolve(dataUrl);
       } catch {
-        resolve(result);
+        reject(new Error("Không thể nén hình ảnh này. Vui lòng chọn ảnh khác."));
       }
     };
 

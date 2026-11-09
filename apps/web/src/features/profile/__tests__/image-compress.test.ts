@@ -106,4 +106,55 @@ describe("compressImageFile", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("rejects instead of returning the uncompressed original when canvas is unavailable", async () => {
+    const originalImage = globalThis.Image;
+    // Simulate an environment without Image support (e.g. SSR) — the caller
+    // must get an error, never the raw original data URL.
+    // @ts-expect-error deliberately removing Image
+    delete globalThis.Image;
+
+    try {
+      const pngContent = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const imageFile = new File([pngContent], "avatar.png", {
+        type: "image/png",
+      });
+
+      await expect(compressImageFile(imageFile)).rejects.toThrow(
+        "Trình duyệt không hỗ trợ xử lý ảnh",
+      );
+    } finally {
+      globalThis.Image = originalImage;
+    }
+  });
+
+  it("rejects when the decoded image has zero dimensions", async () => {
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 0;
+        naturalHeight = 0;
+        width = 0;
+        height = 0;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+
+    try {
+      const pngContent = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const imageFile = new File([pngContent], "empty.png", {
+        type: "image/png",
+      });
+
+      await expect(compressImageFile(imageFile)).rejects.toThrow(
+        "Hình ảnh không hợp lệ hoặc rỗng.",
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
