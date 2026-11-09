@@ -147,4 +147,32 @@ describe("UserCard component", () => {
       expect(navigateMock).toHaveBeenCalledWith({ to: "/auth" });
     });
   });
+
+  it("navigates to profile when clicking user card profile area", () => {
+    const { go } = renderUserCard();
+    const profileBtn = screen.getByRole("button", { name: "Xem hồ sơ cá nhân" });
+    fireEvent.click(profileBtn);
+    expect(go).toHaveBeenCalledWith("profile");
+  });
+
+  it("renders image avatar when session user has image URL", () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-img",
+          email: "img@example.com",
+          name: "Ảnh Đại Diện",
+          image: "https://example.com/avatar.png",
+        },
+        session: { id: "s-img", userId: "u-img" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderUserCard();
+    const img = screen.getByRole("img", { name: "Ảnh Đại Diện" });
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe("https://example.com/avatar.png");
+  });
 });
