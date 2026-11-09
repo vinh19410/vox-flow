@@ -136,7 +136,7 @@ export function useExamSession(): ExamSessionValue {
     return () => {
       active = false;
     };
-  }, [s.mode, s.practice]);
+  }, [s.mode, s.practice?.topicId, s.practice?.singleQuestionId]);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];

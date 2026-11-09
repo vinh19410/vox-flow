@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Check, Loader2, Mic, RotateCcw, Shuffle, Sparkles, Users } from "lucide-react";
-import { useMemo, useState } from "react";
-
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
 import { useApp } from "@/features/app-state/types";
@@ -37,6 +36,14 @@ export function ForecastScreen() {
     [apiTopics],
   );
 
+  useEffect(() => {
+    if (s.lastPracticeSession?.topicId && !open && topics.length > 0) {
+      const match = topics.find((t) => t.id === s.lastPracticeSession?.topicId);
+      if (match) {
+        setOpen(match);
+      }
+    }
+  }, [s.lastPracticeSession?.topicId, topics, open]);
   const counts = useMemo(
     () => ({
       p1: topics.filter((t) => t.kind === "p1").length,
@@ -240,7 +247,13 @@ export function ForecastScreen() {
         practicedBand={open ? s.practiced[open.id] : undefined}
         practicedQuestions={s.practicedQuestions}
         saved={open ? s.saved.includes(open.id) : false}
-        onClose={() => setOpen(null)}
+        target={s.target}
+        onClose={() => {
+          setOpen(null);
+          if (s.lastPracticeSession) {
+            set({ lastPracticeSession: null });
+          }
+        }}
         onToggleSave={() => open && toggleSave(open.id)}
         onStart={() => open && start(open)}
         onStartQuestion={(item, allItems) => open && startQuestion(open, item, allItems)}

@@ -62,8 +62,9 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
   const lastSession = s.lastPracticeSession;
   const isViewingCurrentPracticeAttempt = Boolean(
     lastSession?.singleQuestionId &&
+      lastSession.attemptId &&
       ((attempt && lastSession.attemptId === attempt.id) ||
-        (isDefaultLatest && (!lastSession.attemptId || lastSession.attemptId === s.attempts[s.attempts.length - 1]?.id))),
+        (isDefaultLatest && lastSession.attemptId === s.attempts[s.attempts.length - 1]?.id)),
   );
   const isSinglePractice = isViewingCurrentPracticeAttempt;
   const topicItems = lastSession?.topicItems ?? [];
@@ -146,7 +147,6 @@ export function ResultsScreen({ attemptId }: { attemptId: string }) {
               variant="outline"
               size="sm"
               onClick={() => {
-                set({ lastPracticeSession: null });
                 go("forecast");
               }}
               data-testid="back-to-topic-btn"

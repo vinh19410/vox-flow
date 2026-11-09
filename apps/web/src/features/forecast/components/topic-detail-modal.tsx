@@ -11,6 +11,7 @@ export interface TopicDetailModalProps {
   topic: ForecastTopic | null;
   practicedBand: number | undefined;
   saved: boolean;
+  target?: number;
   practicedQuestions?: Record<string, QuestionPracticeRecord>;
   onClose: () => void;
   onToggleSave: () => void;
@@ -22,6 +23,7 @@ export function TopicDetailModal({
   topic: open,
   practicedBand,
   saved,
+  target,
   practicedQuestions,
   onClose,
   onToggleSave,
@@ -48,7 +50,7 @@ export function TopicDetailModal({
               <Users size={13} /> {open.reports} thí sinh báo gặp
             </span>
             <span>Gặp gần nhất: {open.lastSeen}</span>
-            {typeof practicedBand === "number" && <span className="font-semibold text-good">Lần luyện trước: band {practicedBand.toFixed(1)}</span>}
+            {practicedBand !== undefined && <span className="font-semibold text-good">Lần luyện trước: band {practicedBand.toFixed(1)}</span>}
           </div>
 
           <div className="mt-6 space-y-2">
@@ -69,9 +71,9 @@ export function TopicDetailModal({
                       </span>
                       <div className="space-y-1 min-w-0">
                         <span className="text-sm font-medium leading-snug">{it.text}</span>
-                        {qHistory && typeof qHistory.band === "number" && (
+                        {qHistory && (
                           <div className="flex items-center gap-2 text-xs">
-                            <Badge tone={qHistory.band >= 6.5 ? "good" : "accent"}>
+                            <Badge tone={target !== undefined && qHistory.band >= target ? "good" : "accent"}>
                               Band {qHistory.band.toFixed(1)}
                             </Badge>
                             <span className="font-mono text-[11px] text-subtle">

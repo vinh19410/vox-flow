@@ -390,4 +390,21 @@ describe("Forecast practice flow", () => {
 
     expect(screen.queryByTestId("next-question-btn")).toBeNull();
   });
+
+  it("reopens topic modal automatically when returning from ResultsScreen via lastPracticeSession", () => {
+    const { set } = renderWithApp(<ForecastScreen />, {
+      lastPracticeSession: {
+        topicId: "p1-tidiness",
+        title: "Tidiness",
+        kind: "p1",
+        items: [{ id: "p1-tidiness-0", part: 1, text: "Were you a tidy person?" }],
+        singleQuestionId: "p1-tidiness-0",
+        attemptId: "attempt-1",
+      },
+    });
+
+    // Modal opens automatically and shows topic details
+    expect(screen.getByText("Were you a tidy person when you were a child?")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Luyện chủ đề này/ })).toBeTruthy();
+  });
 });
