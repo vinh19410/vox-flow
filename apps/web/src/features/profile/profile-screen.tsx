@@ -78,14 +78,15 @@ export function ProfileScreen() {
 
     setIsSavingIdentity(true);
     try {
-      if (typeof authClient?.updateUser === "function") {
-        const res = await authClient.updateUser({
-          name: trimmed,
-          image: avatar || undefined,
-        });
-        if (res?.error) {
-          throw new Error(res.error.message || "UPDATE_USER_FAILED");
-        }
+      if (typeof authClient?.updateUser !== "function") {
+        throw new Error("UPDATE_USER_UNAVAILABLE");
+      }
+      const res = await authClient.updateUser({
+        name: trimmed,
+        image: avatar || undefined,
+      });
+      if (res?.error) {
+        throw new Error(res.error.message || "UPDATE_USER_FAILED");
       }
       set({ name: trimmed });
       setIdentitySaved(true);
@@ -101,13 +102,16 @@ export function ProfileScreen() {
   // Chọn avatar mới từ modal
   const handleSelectAvatar = async (newAvatarUrl: string) => {
     setAvatar(newAvatarUrl);
-    // Tự động lưu avatar mới
+    // Tự động lưu avatar mới; chỉ gửi image — tuyệt đối không ghi đè tên
+    // bằng chuỗi rỗng khi ô tên đang trống
     try {
       if (typeof authClient?.updateUser === "function") {
-        const res = await authClient.updateUser({
-          name: name.trim(),
+        const trimmedName = name.trim();
+        const payload = {
+          ...(trimmedName ? { name: trimmedName } : {}),
           image: newAvatarUrl,
-        });
+        };
+        const res = await authClient.updateUser(payload);
         if (res?.error) {
           throw new Error(res.error.message || "UPDATE_AVATAR_FAILED");
         }
