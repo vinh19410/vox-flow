@@ -53,7 +53,7 @@ export function Logo({ dark = false }: LogoProps) {
           dark ? "text-paper" : "text-ink",
         )}
       >
-        Chấm<span className="text-brand">Rõ</span>
+        Vox <span className="text-brand">Flow</span>
       </span>
     </div>
   );

@@ -16,7 +16,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
       {
-        title: "ChấmRõ — Thi thử IELTS Speaking AI",
+        title: "Vox Flow — Thi thử IELTS Speaking AI",
       },
       {
         name: "description",
