@@ -49,7 +49,7 @@ export function Logo({ dark = false }: LogoProps) {
       </div>
       <span
         className={cx(
-          "text-[17px] font-bold tracking-tight",
+          "whitespace-nowrap text-[17px] font-bold tracking-tight",
           dark ? "text-paper" : "text-ink",
         )}
       >
