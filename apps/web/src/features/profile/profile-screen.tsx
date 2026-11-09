@@ -9,7 +9,6 @@ import {
   LogOut,
   Mail,
   ShieldCheck,
-  Sparkles,
   Target,
   User,
 } from "lucide-react";
@@ -64,7 +63,7 @@ export function ProfileScreen() {
 
   useEffect(() => {
     if (s.target) setTargetBand(s.target);
-    if (s.examDate) setExamDate(s.examDate);
+    setExamDate(s.examDate ?? "");
   }, [s.target, s.examDate]);
 
   // Lưu thông tin định danh (Tên và Avatar)
@@ -257,17 +256,6 @@ export function ProfileScreen() {
                   </div>
                 </div>
 
-                <div className="pt-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAvatarModalOpen(true)}
-                    className="gap-2"
-                  >
-                    <Sparkles size={14} className="text-brand" />
-                    <span>Mở bộ chọn ảnh đại diện</span>
-                  </Button>
-                </div>
               </div>
             </div>
           </Card>
@@ -328,18 +316,18 @@ export function ProfileScreen() {
                 <label htmlFor="user-exam-date" className="text-xs font-semibold text-ink-2">
                   Ngày thi dự kiến (tuỳ chọn)
                 </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <div className="relative flex-1">
+                <div className="mt-1 flex w-full min-w-0 items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
                     <Calendar
                       size={16}
-                      className="absolute top-1/2 left-3.5 -translate-y-1/2 text-subtle"
+                      className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-subtle"
                     />
                     <input
                       id="user-exam-date"
                       type="date"
                       value={examDate}
                       onChange={(e) => setExamDate(e.target.value)}
-                      className="w-full rounded-xl border border-line bg-white py-2.5 pr-3 pl-10 text-sm font-medium focus:border-brand focus:outline-none"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-line bg-white py-2.5 pr-3 pl-10 text-sm font-medium focus:border-brand focus:outline-none"
                     />
                   </div>
                   {examDate && (
@@ -347,7 +335,7 @@ export function ProfileScreen() {
                       variant="outline"
                       size="sm"
                       onClick={() => setExamDate("")}
-                      className="text-xs"
+                      className="shrink-0 text-xs"
                     >
                       Xóa ngày
                     </Button>
