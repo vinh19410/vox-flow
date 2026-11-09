@@ -53,8 +53,8 @@ export function AvatarModal({
       setError("Vui lòng nhập đường dẫn URL ảnh hợp lệ.");
       return;
     }
-    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("data:image/")) {
-      setError("URL phải bắt đầu bằng https:// hoặc http://.");
+    if (!trimmed.startsWith("https://")) {
+      setError("URL phải bắt đầu bằng https:// (hoặc dùng tab Tải ảnh lên).");
       return;
     }
     setError(null);
@@ -246,7 +246,7 @@ export function AvatarModal({
               </Button>
             </div>
             <p className="text-[11px] text-subtle">
-              Dán đường dẫn ảnh công khai từ internet (URL kết thúc bằng .png, .jpg, .webp).
+              Dán đường dẫn ảnh công khai bắt đầu bằng https:// (URL kết thúc bằng .png, .jpg, .webp).
             </p>
           </div>
         )}

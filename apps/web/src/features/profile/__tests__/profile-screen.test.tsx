@@ -133,6 +133,47 @@ describe("ProfileScreen component", () => {
     });
   });
 
+  it("shows failure toast and does not sync state when updateUser returns { error }", async () => {
+    vi.mocked(authClient.updateUser).mockResolvedValueOnce({
+      error: { status: 400, code: "INVALID_IMAGE", message: "INVALID_IMAGE" },
+    } as never);
+
+    const { toast, set } = renderProfile();
+
+    const nameInput = screen.getByDisplayValue("Lan Nguyễn");
+    fireEvent.change(nameInput, { target: { value: "Tên Mới Không Được Lưu" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Lưu tên" }));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith(
+        "Có lỗi xảy ra khi cập nhật thông tin. Vui lòng thử lại.",
+      );
+    });
+    // Không sync state khi lỗi
+    expect(set).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Tên Mới Không Được Lưu" }),
+    );
+  });
+
+  it("shows goal error banner when trpc profile.upsert rejects", async () => {
+    vi.mocked(trpcClient.profile.upsert.mutate).mockRejectedValueOnce(
+      new Error("network down"),
+    );
+
+    renderProfile({ target: 7.0, examDate: null });
+
+    fireEvent.click(screen.getByRole("button", { name: "Lưu mục tiêu" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Không thể lưu mục tiêu. Vui lòng kiểm tra lại kết nối.",
+        ),
+      ).toBeTruthy();
+    });
+  });
+
   it("shows validation error when exam date is in the past", async () => {
     renderProfile({ target: 7.0, examDate: null });
 

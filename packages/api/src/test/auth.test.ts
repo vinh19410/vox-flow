@@ -130,6 +130,68 @@ describe("Better Auth with Google provider (WI-07)", () => {
     ).rejects.toThrow("INVALID_IMAGE");
   });
 
+  it("updateUser accepts /avatars/ static path and compressed data URL, rejects javascript: scheme", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+    const signUp = await auth.api.signUpEmail({
+      body: {
+        email: "update-image@example.com",
+        password: "Password123!",
+        name: "Update Image",
+      },
+    });
+    expect(signUp.user.id).toBeTruthy();
+
+    // Đăng nhập qua handler thật để nhận Set-Cookie đã ký, tái dùng cho updateUser
+    const signInRes = await auth.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "update-image@example.com",
+          password: "Password123!",
+        }),
+      }),
+    );
+    expect(signInRes.status).toBe(200);
+    const cookieHeader = signInRes.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .join("; ");
+    expect(cookieHeader).toContain("session_token=");
+    const headers = new Headers({ cookie: cookieHeader });
+
+    // Preset tĩnh /avatars/ được chấp nhận (updateUser trả {status:true},
+    // kiểm chứng qua getSession)
+    await auth.api.updateUser({
+      body: { image: "/avatars/owl-scholar.svg" },
+      headers,
+    });
+    const afterPreset = await auth.api.getSession({ headers });
+    expect(afterPreset?.user.image).toBe("/avatars/owl-scholar.svg");
+
+    // Data URL webp đã nén được chấp nhận
+    const dataUrl =
+      "data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAYAAAAvAAAAAAfQ//73v/+BiOh/AAA=";
+    await auth.api.updateUser({ body: { image: dataUrl }, headers });
+    const afterDataUrl = await auth.api.getSession({ headers });
+    expect(afterDataUrl?.user.image).toBe(dataUrl);
+
+    // Xóa avatar (null) được chấp nhận
+    await auth.api.updateUser({ body: { image: null }, headers });
+    const afterNull = await auth.api.getSession({ headers });
+    expect(afterNull?.user.image).toBeNull();
+
+    // javascript: bị từ chối, user giữ nguyên ảnh
+    await expect(
+      auth.api.updateUser({
+        body: { image: "javascript:alert(1)" },
+        headers,
+      }),
+    ).rejects.toThrow("INVALID_IMAGE");
+    const afterReject = await auth.api.getSession({ headers });
+    expect(afterReject?.user.image).toBeNull();
+  });
+
   it("rejects sign-in with a wrong password with INVALID_EMAIL_OR_PASSWORD", async () => {
     const auth = createAuth(authConfig, testCtx.db);
     await auth.api.signUpEmail({
