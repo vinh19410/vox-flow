@@ -42,12 +42,12 @@ export function DashboardScreen() {
         }
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <ReadinessCard estBand={estBand} target={s.target} />
         <CountdownCard examDate={s.examDate} />
       </div>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
         <TodayTasks />
         <RecentAttemptCard attempts={s.attempts} />
       </div>

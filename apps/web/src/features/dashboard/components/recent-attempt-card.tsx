@@ -10,7 +10,7 @@ export function RecentAttemptCard({ attempts }: { attempts: Attempt[] }) {
   const { go, goResult } = useApp();
   const last = attempts[attempts.length - 1];
   return (
-    <Card className="p-7">
+    <Card className="min-w-0 p-5 sm:p-7">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Bài gần nhất</h2>
         <button onClick={() => go("history")} className="text-xs font-semibold text-subtle hover:text-ink">

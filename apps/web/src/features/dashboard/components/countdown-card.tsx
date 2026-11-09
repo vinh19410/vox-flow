@@ -9,7 +9,7 @@ export function CountdownCard({ examDate }: { examDate: string | null }) {
   const { set } = useApp();
   const days = daysUntil(examDate);
   return (
-    <Card className="flex flex-col p-7">
+    <Card className="flex min-w-0 flex-col p-5 sm:p-7">
       <div className="flex items-center gap-2 text-xs font-medium text-subtle">
         <CalendarDays size={14} /> Ngày thi
       </div>

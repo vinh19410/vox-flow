@@ -14,8 +14,8 @@ const tasks = [
 export function TodayTasks() {
   const { go } = useApp();
   return (
-    <Card className="p-7 lg:col-span-2">
-      <div className="flex items-center justify-between">
+    <Card className="min-w-0 p-5 sm:p-7 lg:col-span-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold">Việc hôm nay</h2>
         <Badge tone="neutral">Dựa trên bài 23/04</Badge>
       </div>
@@ -24,7 +24,7 @@ export function TodayTasks() {
           <button
             key={k}
             onClick={() => !t.done && go(t.to)}
-            className={cx("group flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-colors", t.done ? "border-transparent bg-paper" : "border-line hover:border-ink/30")}
+            className={cx("group flex w-full min-w-0 items-center gap-3 rounded-2xl border p-3.5 text-left transition-colors sm:gap-4 sm:p-4", t.done ? "border-transparent bg-paper" : "border-line hover:border-ink/30")}
           >
             <div className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-xl", t.done ? "bg-good text-white" : "bg-paper-2 text-ink")}>
               {t.done ? <Check size={18} /> : <t.i size={18} />}
