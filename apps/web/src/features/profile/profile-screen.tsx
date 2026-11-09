@@ -105,16 +105,17 @@ export function ProfileScreen() {
     // Tự động lưu avatar mới; chỉ gửi image — tuyệt đối không ghi đè tên
     // bằng chuỗi rỗng khi ô tên đang trống
     try {
-      if (typeof authClient?.updateUser === "function") {
-        const trimmedName = name.trim();
-        const payload = {
-          ...(trimmedName ? { name: trimmedName } : {}),
-          image: newAvatarUrl,
-        };
-        const res = await authClient.updateUser(payload);
-        if (res?.error) {
-          throw new Error(res.error.message || "UPDATE_AVATAR_FAILED");
-        }
+      if (typeof authClient?.updateUser !== "function") {
+        throw new Error("UPDATE_USER_UNAVAILABLE");
+      }
+      const trimmedName = name.trim();
+      const payload = {
+        ...(trimmedName ? { name: trimmedName } : {}),
+        image: newAvatarUrl,
+      };
+      const res = await authClient.updateUser(payload);
+      if (res?.error) {
+        throw new Error(res.error.message || "UPDATE_AVATAR_FAILED");
       }
       toast("Đã cập nhật ảnh đại diện mới!");
     } catch {
