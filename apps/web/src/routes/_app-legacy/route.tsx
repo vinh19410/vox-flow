@@ -1,5 +1,4 @@
 import { Outlet, createFileRoute } from "@tanstack/react-router";
-import { Toaster } from "@vox-flow/ui/components/sonner";
 
 import Header from "@/components/header";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -20,7 +19,6 @@ function AppLegacyLayout() {
         <Header />
         <Outlet />
       </div>
-      <Toaster richColors />
     </ThemeProvider>
   );
 }

@@ -2,6 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { HeadContent, Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { Toaster } from "@vox-flow/ui/components/sonner";
 import type { trpc } from "@/utils/trpc";
 
 import "../index.css";
@@ -37,6 +38,7 @@ function RootComponent() {
     <>
       <HeadContent />
       <Outlet />
+      <Toaster richColors />
       <TanStackRouterDevtools position="bottom-left" />
       <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />
     </>

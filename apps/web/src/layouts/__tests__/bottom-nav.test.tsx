@@ -10,9 +10,12 @@ import { authClient } from "@/lib/auth-client";
 
 import { BottomNav } from "../bottom-nav";
 
+const navigateMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
 vi.mock("@tanstack/react-router", () => ({
   useRouterState: (opts: { select: (st: { location: { pathname: string } }) => string }) =>
     opts.select({ location: { pathname: "/app/dashboard" } }),
+  useNavigate: () => navigateMock,
 }));
 
 vi.mock("@/lib/auth-client", () => ({
@@ -130,8 +133,8 @@ describe("BottomNav component", () => {
     expect(go).toHaveBeenCalledWith("billing");
   });
 
-  it("calls authClient.signOut and navigates to landing on 'Đăng xuất' click", async () => {
-    const { go } = renderBottomNav();
+  it("calls authClient.signOut and navigates to /auth on 'Đăng xuất' click", async () => {
+    renderBottomNav();
 
     fireEvent.click(screen.getByRole("button", { name: "Tài khoản người dùng" }));
 
@@ -140,7 +143,7 @@ describe("BottomNav component", () => {
 
     await waitFor(() => {
       expect(authClient.signOut).toHaveBeenCalledTimes(1);
-      expect(go).toHaveBeenCalledWith("landing");
+      expect(navigateMock).toHaveBeenCalledWith({ to: "/auth" });
     });
   });
 
