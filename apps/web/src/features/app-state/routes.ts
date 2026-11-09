@@ -16,6 +16,7 @@ export const SCREEN_ROUTES: Record<ProtoScreen, RouteTarget> = {
   history: "/app/history",
   results: { to: "/app/history/$attemptId", params: {} },
   billing: "/app/billing",
+  profile: "/app/profile",
   terms: "/terms",
 };
 
