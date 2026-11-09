@@ -96,7 +96,8 @@ describe("design-system primitives", () => {
       </Card>,
     );
 
-    expect(screen.getByText("Rõ").className).toContain("text-brand");
+    expect(screen.getByText("Flow").className).toContain("text-brand");
+    expect(screen.getByText("Flow").parentElement?.textContent).toBe("Vox Flow");
     expect(screen.getByText("S06 · Tổng quan").className).toContain(
       "text-subtle",
     );
