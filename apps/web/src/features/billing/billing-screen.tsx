@@ -26,7 +26,7 @@ export function BillingScreen() {
         sub="Trả theo ngày thi hoặc theo lượt. Không tự gia hạn ngầm, không cần nhắn tin xác nhận chuyển khoản."
       />
 
-      <Card className="mb-8 flex flex-wrap items-center gap-6 p-6">
+      <Card className="mb-8 flex min-w-0 flex-wrap items-center gap-6 p-5 sm:p-6">
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium text-subtle">Gói hiện tại</div>
           <div className="mt-1 flex items-center gap-2 text-xl font-bold">
@@ -55,21 +55,25 @@ export function BillingScreen() {
       <PlanGrid onPick={setPlan} />
 
       <h2 className="mt-10 mb-4 text-lg font-bold">Hóa đơn</h2>
-      <Card className="divide-y divide-line overflow-hidden">
+      <Card className="min-w-0 divide-y divide-line overflow-hidden">
         {(s.plan
           ? [{ d: new Date().toLocaleDateString("vi-VN"), n: s.plan.name, a: PLANS.find((p) => p.id === s.plan!.id)!.price }]
           : []
         )
           .concat([{ d: "02/04/2025", n: "Theo lượt", a: 49000 }])
           .map((iv, k) => (
-            <div key={k} className="flex items-center gap-4 px-6 py-4 text-sm">
-              <span className="w-24 text-subtle">{iv.d}</span>
-              <span className="flex-1 font-medium">Gói {iv.n}</span>
-              <span className="tnum font-semibold">{vnd(iv.a)}</span>
-              <Badge tone="good">Đã thanh toán</Badge>
-              <button className="text-subtle hover:text-ink" aria-label="Tải hóa đơn" onClick={() => toast("Đã tải hóa đơn PDF")}>
-                <Download size={16} />
-              </button>
+            <div key={k} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm sm:px-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:gap-4">
+                <span className="font-medium text-ink">Gói {iv.n}</span>
+                <span className="text-xs text-subtle">{iv.d}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="tnum font-semibold">{vnd(iv.a)}</span>
+                <Badge tone="good">Đã thanh toán</Badge>
+                <button className="text-subtle hover:text-ink" aria-label="Tải hóa đơn" onClick={() => toast("Đã tải hóa đơn PDF")}>
+                  <Download size={16} />
+                </button>
+              </div>
             </div>
           ))}
       </Card>

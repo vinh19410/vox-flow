@@ -9,7 +9,7 @@ import { RESULT } from "@/features/results/data";
 export function Hero() {
   const { go } = useApp();
   return (
-    <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pt-10 pb-20 sm:px-8 lg:grid-cols-[1.1fr_1fr] lg:pt-16">
+    <section className="mx-auto grid grid-cols-1 max-w-6xl items-center gap-12 overflow-x-clip px-5 pt-10 pb-20 sm:px-8 lg:grid-cols-[1.1fr_1fr] lg:pt-16">
       <div className="animate-rise">
         <Badge tone="accent">
           <Sparkles size={12} /> Giám khảo AI cho IELTS Speaking
@@ -44,7 +44,7 @@ export function Hero() {
 
       {/* Product preview */}
       <div className="relative animate-rise [animation-delay:120ms]">
-        <div className="absolute -inset-6 -z-10 rounded-[40px] bg-[radial-gradient(circle_at_70%_20%,#ffd8c8,transparent_60%)]" />
+        <div className="absolute inset-0 -z-10 rounded-[40px] bg-[radial-gradient(circle_at_70%_20%,#ffd8c8,transparent_60%)] sm:-inset-6" />
         <div className="rounded-[28px] bg-ink p-6 text-paper shadow-2xl sm:p-7">
           <div className="flex items-center justify-between text-xs text-white/50">
             <span>Full Test · 23/04</span>

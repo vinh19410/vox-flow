@@ -17,7 +17,7 @@ export function PlanGrid({ onPick, compact }: PlanGridProps) {
   const { s } = useApp();
   const days = daysUntil(s.examDate);
   return (
-    <div className={cx("grid gap-3", compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-4")}>
+    <div className={cx("grid grid-cols-1 gap-3", compact ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-4")}>
       {PLANS.map((p) => (
         <button
           key={p.id}
