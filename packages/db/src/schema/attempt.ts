@@ -19,10 +19,13 @@ export const attempt = sqliteTable(
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
     submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+    topicId: text("topic_id"),
+    questionKey: text("question_key"),
   },
   (table) => [
     index("attempt_userId_idx").on(table.userId),
     index("attempt_status_idx").on(table.status),
+    index("attempt_topicId_idx").on(table.topicId),
   ],
 );
 

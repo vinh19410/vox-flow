@@ -239,6 +239,29 @@ describe("useAppStateStore & ProtoToast", () => {
     expect(remounted.result.current.s.target).toBe(7.5);
     expect(remounted.result.current.s.voice).toBe("au-f");
   });
+  it("persists practicedQuestions and rehydrates correctly", () => {
+    const { result, unmount } = renderHook(() => useAppStateStore());
+    act(() => {
+      result.current.set({
+        practicedQuestions: {
+          "p1-tidiness-0": { band: 6.5, count: 2, lastPracticedAt: "2026-11-09" },
+        },
+      });
+    });
+    expect(result.current.s.practicedQuestions["p1-tidiness-0"]).toEqual({
+      band: 6.5,
+      count: 2,
+      lastPracticedAt: "2026-11-09",
+    });
+    unmount();
+
+    const remounted = renderHook(() => useAppStateStore());
+    expect(remounted.result.current.s.practicedQuestions["p1-tidiness-0"]).toEqual({
+      band: 6.5,
+      count: 2,
+      lastPracticedAt: "2026-11-09",
+    });
+  });
 
   it("falls back safely to initial state when sessionStorage has malformed JSON", () => {
     sessionStorage.setItem(PROTO_STORAGE_KEY, "{corrupt-json");

@@ -14,8 +14,11 @@ export function createInitialState(): AppState {
     voice: "uk-f",
     attempts: [...HISTORY],
     practice: null,
+    lastPracticeSession: null,
     practiced: { "f-helped": 6.0, "f-weather": 6.5 },
+    practicedQuestions: {},
     saved: ["f-ai"],
+    reopenTopicId: null,
   };
 }
 

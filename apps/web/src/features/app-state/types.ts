@@ -18,11 +18,23 @@ export type ProtoScreen =
   | "billing"
   | "terms";
 
+export interface QuestionPracticeRecord {
+  band: number;
+  count: number;
+  lastPracticedAt: string;
+}
+
 export interface PracticeSession {
   topicId: string;
   title: string;
   kind: ForecastKind;
   items: ExamItem[];
+  /** When practicing a single question from a forecast topic */
+  singleQuestionId?: string;
+  /** Full list of topic items to resolve next question on Results screen */
+  topicItems?: ExamItem[];
+  /** Attempt ID associated with this practice run */
+  attemptId?: string;
 }
 
 export interface ActivePlan {
@@ -49,8 +61,12 @@ export interface AppState {
   attempts: Attempt[];
   /** Active forecast-topic practice session; null for a regular mock test. */
   practice: PracticeSession | null;
+  lastPracticeSession?: PracticeSession | null;
   practiced: Record<string, number>;
+  practicedQuestions: Record<string, QuestionPracticeRecord>;
   saved: string[];
+  /** Target forecast topic to reopen upon returning from practice results */
+  reopenTopicId?: string | null;
 }
 
 export type AppStateUpdater = Partial<AppState> | ((prev: AppState) => Partial<AppState>);

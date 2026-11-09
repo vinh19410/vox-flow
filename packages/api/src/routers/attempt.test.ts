@@ -238,4 +238,133 @@ describe("attemptRouter", () => {
       await dispose();
     }
   });
+
+  it("records topicId and questionKey when starting a single-question practice attempt", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({
+        id: "user-single",
+        name: "Single Question Learner",
+        email: "learner@voxflow.vn",
+        emailVerified: true,
+      });
+
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: {
+            id: "user-single",
+            email: "learner@voxflow.vn",
+            name: "Single Question Learner",
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          session: {
+            id: "session-single",
+            userId: "user-single",
+            token: "tok-single",
+            expiresAt: new Date(Date.now() + 3600000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+        env: {
+          LAUNCH_OPEN: "true",
+        },
+      });
+
+      const res = await caller.attempt.start({
+        mode: "part1",
+        topicId: "p1-tidiness",
+        questionKey: "p1-tidiness-0",
+      });
+
+      expect(res.attemptId).toBeDefined();
+      expect(res.mode).toBe("part1");
+      expect(res.topicId).toBe("p1-tidiness");
+      expect(res.questionKey).toBe("p1-tidiness-0");
+      expect(res.inHistory).toBe(true);
+
+      const active = await caller.attempt.getActive();
+      expect(active).not.toBeNull();
+      expect(active?.attempt.topicId).toBe("p1-tidiness");
+      expect(active?.attempt.questionKey).toBe("p1-tidiness-0");
+      expect(active?.attempt.inHistory).toBe(true);
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("validates topicId and questionKey: rejects single field or invalid questionKey", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({
+        id: "user-val",
+        name: "Validation User",
+        email: "val@voxflow.vn",
+        emailVerified: true,
+      });
+
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: {
+            id: "user-val",
+            email: "val@voxflow.vn",
+            name: "Validation User",
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          session: {
+            id: "session-val",
+            userId: "user-val",
+            token: "tok-val",
+            expiresAt: new Date(Date.now() + 3600000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+        env: {
+          LAUNCH_OPEN: "true",
+        },
+      });
+      // Whole-topic practice (only topicId) -> succeeds!
+      const topicOnly = await caller.attempt.start({
+        mode: "part1",
+        topicId: "p1-tidiness",
+      });
+      expect(topicOnly.attemptId).toBeDefined();
+      expect(topicOnly.topicId).toBe("p1-tidiness");
+      expect(topicOnly.questionKey).toBeUndefined();
+
+      // Only questionKey without topicId -> should reject
+      await expect(
+        caller.attempt.start({
+          mode: "part1",
+          questionKey: "p1-tidiness-0",
+        }),
+      ).rejects.toThrow();
+
+      // Invalid topicId format (special chars) -> should reject
+      await expect(
+        caller.attempt.start({
+          mode: "part1",
+          topicId: "invalid/topic!",
+        }),
+      ).rejects.toThrow();
+
+      // Invalid questionKey format (special chars) -> should reject
+      await expect(
+        caller.attempt.start({
+          mode: "part1",
+          topicId: "p1-tidiness",
+          questionKey: "invalid/key!",
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await dispose();
+    }
+  });
 });

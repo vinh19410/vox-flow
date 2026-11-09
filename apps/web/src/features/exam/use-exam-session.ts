@@ -71,17 +71,46 @@ export function useExamSession(): ExamSessionValue {
   );
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const recorder = useRecorder();
+  const startParamsRef = useRef({
+    examMode: s.practice
+      ? s.practice.singleQuestionId
+        ? s.practice.items[0]?.part === 3
+          ? ("part3" as const)
+          : ("part1" as const)
+        : s.practice.kind === "p1"
+          ? ("part1" as const)
+          : ("part2" as const)
+      : s.mode === "p1"
+        ? ("part1" as const)
+        : s.mode === "p2"
+          ? ("part2" as const)
+          : s.mode === "p3"
+            ? ("part3" as const)
+            : ("full" as const),
+    topicId: s.practice?.topicId,
+    questionKey: s.practice?.singleQuestionId,
+    isPractice: Boolean(s.practice),
+  });
 
   useEffect(() => {
     let active = true;
-    const examMode = (s.mode as "full" | "part1" | "part2" | "part3") ?? "full";
+    const { examMode, topicId, questionKey, isPractice } = startParamsRef.current;
 
     trpcClient.attempt.getActive
       .query()
       .then((activeAttempt) => {
         if (!active) return;
-        if (activeAttempt?.attempt) {
-          setAttemptId(activeAttempt.attempt.id);
+        const att = activeAttempt?.attempt;
+        const isPracticeMatch = Boolean(
+          isPractice &&
+            att &&
+            att.topicId === topicId &&
+            att.questionKey === (questionKey ?? null),
+        );
+        const isMockMatch = Boolean(!isPractice && att && !att.topicId && !att.questionKey && att.mode === examMode);
+
+        if (att && (isPracticeMatch || isMockMatch)) {
+          setAttemptId(att.id);
           if (activeAttempt.answers && activeAttempt.answers.length > 0) {
             const rehydrated: Record<string, ExamAnswer> = {};
             for (const a of activeAttempt.answers) {
@@ -96,7 +125,11 @@ export function useExamSession(): ExamSessionValue {
           }
         } else {
           return trpcClient.attempt.start
-            .mutate({ mode: examMode })
+            .mutate({
+              mode: examMode,
+              topicId,
+              questionKey,
+            })
             .then((res) => {
               if (active) setAttemptId(res.attemptId);
             });
@@ -109,7 +142,7 @@ export function useExamSession(): ExamSessionValue {
     return () => {
       active = false;
     };
-  }, [s.mode]);
+  }, []);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];
