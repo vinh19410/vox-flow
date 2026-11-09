@@ -21,6 +21,7 @@ vi.mock("@/utils/trpc", () => ({
   },
 }));
 
+import { createInitialState } from "@/features/app-state/initial-state";
 import { useProfileHydration } from "@/features/app-state/use-profile-hydration";
 import { Route as OnboardingRoute } from "@/routes/_proto/onboarding";
 
@@ -164,18 +165,6 @@ describe("useProfileHydration hook", () => {
     // Now log out
     setSpy.mockClear();
     rerender({ user: null });
-    expect(setSpy).toHaveBeenCalledWith({
-      name: "",
-      email: "",
-      target: 7.0,
-      examDate: null,
-      plan: null,
-      attempts: [],
-      practice: null,
-      lastPracticeSession: null,
-      practiced: {},
-      practicedQuestions: {},
-      saved: [],
-    });
+    expect(setSpy).toHaveBeenCalledWith(createInitialState());
   });
 });

@@ -13,7 +13,7 @@
 | **1. Loại bỏ toàn bộ "Minh Anh" / "minhanh@" khỏi code source web** | ✅ Đạt | `rg -n "Minh Anh\|minhanh@" apps/web/src --glob '!**/*.test.*'` trả về đúng **0 dòng**. |
 | **2. Component `EmptyState` chuẩn trong Design System** | ✅ Đạt | File `apps/web/src/components/ds/empty-state.tsx` hỗ trợ 3 kích thước (`sm`, `md`, `lg`), bordered, icon, primary action, secondary action. File test `empty-state.test.tsx` (5/5 tests pass). |
 | **3. Trạng thái khởi tạo trung tính & sessionStorage an toàn** | ✅ Đạt | `createInitialState()` trả về `name: ""`, `email: ""`, `attempts: []`, `practiced: {}`, `saved: []`, `examDate: null`. Key lưu trữ đổi thành `vox-flow-proto-state-v2` và chỉ lưu trữ các tùy chọn UI (`mode`, `voice`, `practice`), không lưu thông tin người dùng hay lịch sử bài thi. |
-| **4. Đồng bộ dữ liệu người dùng thật từ Better Auth & API** | ✅ Đạt | `useProfileHydration` nạp `name`, `email` từ `authClient.useSession()`, nạp `targetBand`, `examDate` từ `profile.get`, nạp `consent` từ `privacy.getConsent`. Reset toàn bộ state khi đăng xuất. |
+| **4. Đồng bộ dữ liệu người dùng thật từ Better Auth & API** | ✅ Đạt | `useProfileHydration` nạp `name`, `email` từ `authClient.useSession()`, nạp `targetBand`, `examDate` từ `profile.get`, nạp `consent` từ `privacy.getConsent`. Reset toàn bộ state về `createInitialState()` khi đăng xuất (bao gồm cả `consent`, `plan`, `attempts`, `practiced`, `saved`...). |
 | **5. EmptyState cho các section Dashboard, Lịch sử, Forecast** | ✅ Đạt | `DashboardScreen` (empty state khi chưa có bài thi), `TodayTasks` (empty state khi chưa có bài tập cá nhân), `RecentAttemptCard` (empty state khi `attempts` rỗng), `ReadinessCard` (bỏ chip điểm giả), `CountdownCard` (bỏ chuỗi 4 ngày giả), `HistoryScreen` (empty state cho bộ lọc và lịch sử trống), `ForecastScreen` (empty state khi danh sách lưu/tìm kiếm trống). |
 | **6. Beta Guard cho Chấm điểm và Thanh toán** | ✅ Đạt | Gated sau module cờ `FEATURES` (`lib/feature-flags.ts`, mặc định `false`). `ResultsScreen` hiển thị trạng thái "Tính năng chấm điểm AI sắp ra mắt", `ScoringScreen` hiển thị "Bài thi đã được ghi nhận!" mà không thêm điểm giả. `PaymentPanel` ẩn `FakeQR` và hiện "Cổng thanh toán sắp ra mắt". |
 | **7. Kiểm tra cơ học bản build production không chứa mock markers** | ✅ Đạt | `pnpm --filter web check:no-mock` chạy script `scripts/check-no-mock-in-dist.mjs` quét toàn bộ dist và báo `OK: no mock markers in dist` với các marker `Minh Anh`, `minhanh@gmail.com`, `Chuỗi 4 ngày`, `Phát âm 7.0`, `Trả lời trôi chảy, có mở rộng ý`, `128 từ/phút`. |
@@ -23,8 +23,8 @@
 
 ## 2. Bằng chứng trực quan (Screenshots)
 
-> Chụp trên bản build production thực tế (`vite preview`), hiển thị đúng tên người dùng thật (**"Trần Thị Lan"** -> "Chào Lan!") và các component `EmptyState` theo các kích thước viewport chuẩn.
-
+> Chụp trên bản build production thực tế (`vite preview`) phục vụ qua static harness có giả lập `get-session` (user **"Trần Thị Lan"**, avatar mẫu cú) và `profile.get` (targetBand 7.0, examDate 2026-12-15) — đúng pattern POT #73 và POT #76. Route `/app` cố định light theme theo thiết kế nguyên mẫu → **dark mode N/A** (precedent POT #65, #66, #71, #73, #76).
+> Lưu ý: Không có ảnh chụp trực quan cho các màn hình Results, Scoring và Billing gate screens; các màn hình này được bảo đảm bằng unit/gate tests (`results-gate.test.tsx`, `billing-gate.test.tsx`).
 ### Dashboard — Empty State (Màn hình chính khi chưa có bài thi)
 
 - **Viewport 1280px (Desktop):**
@@ -104,6 +104,7 @@ Test Files  16 passed (16)
 
 ## 5. Các mục chưa làm trong phạm vi này (Known Scope Boundaries)
 
+- **Regression liên quan Issue #62 (Luyện từng câu lẻ)**: Khi `FEATURES.scoring = false` trên bản Beta, `ScoringScreen` không còn ghi đè `practicedQuestions[q].count/lastPracticedAt` hay `lastPracticeSession`, và người dùng không vào được nút "Luyện câu kế tiếp" trên màn hình kết quả (màn hình kết quả hiển thị thông báo Beta "Tính năng chấm điểm AI sắp ra mắt"). Test `forecast-flow.test.tsx` đã được cập nhật để chỉ khẳng định `practice` được dọn dẹp an toàn mà không sinh attempt giả.
 - **Ngân hàng câu hỏi `ITEMS` (`District 3`)**: Dữ liệu câu hỏi thi thử và transcript mẫu thuộc sở hữu của Phase 2 (G1: Ngân hàng câu hỏi thi, Issue #49).
 - **Lưu lịch sử bài thi lên backend & API lịch sử (`attempt.list`)**: Thuộc sở hữu của WI18 (#22: Tiến độ band).
 - **Chấm điểm ASR/LLM thật**: Thuộc sở hữu của WI13 (#17: Chấm điểm & kết quả) chờ kết quả đánh giá WI03.

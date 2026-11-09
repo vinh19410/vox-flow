@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import { trpcClient } from "@/utils/trpc";
 
+import { createInitialState } from "./initial-state";
 import type { AppState } from "./types";
 
 export interface UserHydrationProfile {
@@ -28,19 +29,7 @@ export function useProfileHydration(
   useEffect(() => {
     if (!uid) {
       hydratedUserRef.current = null;
-      set({
-        name: "",
-        email: "",
-        target: 7.0,
-        examDate: null,
-        plan: null,
-        attempts: [],
-        practice: null,
-        lastPracticeSession: null,
-        practiced: {},
-        practicedQuestions: {},
-        saved: [],
-      });
+      set(createInitialState());
       return;
     }
 
