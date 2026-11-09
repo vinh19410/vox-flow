@@ -3,7 +3,7 @@
 - **Nhánh:** `vinh19410/fix-web-dashboardscreen-hi-n-th-l-i-ch-o-ch-o-an`
 - **Commit SHA (code):** `5eec75c2dd3659b8eb5e15b1199bf0f473703f8b`
 - **Commit SHA (ảnh POT):** `9d457b8c80196163c18b183a4dfc72334a2e9691`
-- **PR:** _điền sau khi mở PR_
+- **PR:** [#75](https://github.com/vinh19410/vox-flow/pull/75)
 
 ## 1. Đối chiếu Done-means
 
