@@ -12,7 +12,7 @@ export interface UserHydrationProfile {
   image?: string | null;
 }
 
-export type UserHydrationInput = string | UserHydrationProfile | null;
+export type UserHydrationInput = string | UserHydrationProfile | null | undefined;
 
 export function useProfileHydration(
   userInput: UserHydrationInput,
@@ -27,9 +27,17 @@ export function useProfileHydration(
   const userEmail = isObject ? userInput.email : undefined;
 
   useEffect(() => {
+    // Session is pending/loading: do not touch state
+    if (userInput === undefined) return;
+
     if (!uid) {
       hydratedUserRef.current = null;
-      set(createInitialState());
+      // Real logout: reset server/user-owned fields but preserve UI preferences (mode, voice)
+      set((prev) => ({
+        ...createInitialState(),
+        mode: prev.mode,
+        voice: prev.voice,
+      }));
       return;
     }
 
@@ -94,5 +102,5 @@ export function useProfileHydration(
     return () => {
       cancelled = true;
     };
-  }, [uid, userName, userEmail, set]);
+  }, [uid, userName, userEmail, userInput, set]);
 }

@@ -29,7 +29,8 @@ function ProtoLayout() {
 function ProtoShell() {
   const { set, paywallOpen, closePaywall } = useApp();
   const sessionResult = authClient.useSession?.();
-  const sessionUser = sessionResult?.data?.user ?? null;
+  const isPending = sessionResult?.isPending ?? false;
+  const sessionUser = isPending ? undefined : (sessionResult?.data?.user ?? null);
 
   useProfileHydration(sessionUser, set);
 

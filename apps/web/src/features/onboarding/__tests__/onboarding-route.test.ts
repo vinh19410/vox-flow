@@ -162,9 +162,32 @@ describe("useProfileHydration hook", () => {
       expect(updated.email).toBe("charlie@example.com");
     }
 
-    // Now log out
+    // Now log out: preserves UI mode/voice while clearing user-owned data
     setSpy.mockClear();
     rerender({ user: null });
-    expect(setSpy).toHaveBeenCalledWith(createInitialState());
+    const logoutUpdater = setSpy.mock.calls.find(
+      (c) => typeof c[0] === "function",
+    );
+    expect(logoutUpdater).toBeDefined();
+    if (typeof logoutUpdater?.[0] === "function") {
+      const reset = logoutUpdater[0]({
+        ...createInitialState(),
+        mode: "p2",
+        voice: "au-f",
+        attempts: [{ id: "temp", date: "2026-11-09", mode: "full", band: 6.0, range: [5.5, 6.5], topic: "Topic" }],
+      });
+      expect(reset.mode).toBe("p2");
+      expect(reset.voice).toBe("au-f");
+      expect(reset.attempts).toHaveLength(0);
+      expect(reset.name).toBe("");
+    }
+  });
+
+  it("does not touch state when session is pending (undefined)", () => {
+    const setSpy = vi.fn();
+    profileGetSpy.mockClear();
+    renderHook(() => useProfileHydration(undefined, setSpy));
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(profileGetSpy).not.toHaveBeenCalled();
   });
 });
