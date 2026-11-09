@@ -9,7 +9,7 @@
 | Done-means | Trạng thái | Bằng chứng |
 | :--- | :---: | :--- |
 | Avatar mobile header trở thành `DropdownMenuTrigger` | ✅ Đạt | `apps/web/src/layouts/bottom-nav.tsx` — trigger button `aria-label="Tài khoản người dùng"` thay cho `div` tĩnh. |
-| Menu hiển thị Tên, Email, Gói tài khoản | ✅ Đạt | Playwright trên production build: menu text = `Minh Anh \| minhanh@voxflow.vn \| Gói Miễn phí \| Gói & thanh toán \| Đăng xuất`. |
+| Menu hiển thị Tên, Email, Gói tài khoản | ✅ Đạt | Playwright trên production build (session user "Lan Nguyễn" ≠ seed "Minh Anh"): menu text = `Lan Nguyễn \| lan@voxflow.vn \| Gói Miễn phí \| Gói & thanh toán \| Đăng xuất`, avatar initial `L`. **Tên/email lấy từ `authClient.useSession()`**, chỉ fallback về state seed khi chưa có session — `useProfileHydration` không bao giờ set `name`/`email` nên nếu dùng `s.name` thì mọi user thật sẽ thấy tên seed. |
 | Mục "Gói & thanh toán" điều hướng tới billing | ✅ Đạt | Unit test `navigates to billing when clicking 'Gói & thanh toán'` — `go` được gọi với `"billing"`. |
 | "Đăng xuất" gọi `authClient.signOut()` rồi về landing | ✅ Đạt | Unit test `calls authClient.signOut and navigates to landing on 'Đăng xuất' click`; computed color của item = `oklch(0.58 0.22 27)` (token `--destructive`). |
 | Đóng menu khi click outside / Escape | ✅ Đạt | Cơ chế mặc định của Base UI Menu primitive (`@vox-flow/ui/components/dropdown-menu`), verify trên production build. |
@@ -53,5 +53,5 @@
 
 ## 4. Quyết định & phát sinh
 
-- **Quyết định thay user (theo brief):** dùng DropdownMenu (không phải drawer/modal); email lấy từ `authClient.useSession()`, name/plan từ app state; fallback "Gói Miễn phí"; destructive item dùng token của primitive thay vì đỏ raw.
+- **Quyết định thay user (theo brief):** dùng DropdownMenu (không phải drawer/modal); **name/email lấy từ `authClient.useSession()`** (session thắng state seed, fallback seed khi chưa load — fix sau review adversarial: `useProfileHydration` chỉ set `target`/`examDate`, `s.name` luôn là seed "Minh Anh"); fallback "Gói Miễn phí"; destructive item dùng token của primitive thay vì đỏ raw.
 - **Follow-up đã tách issue:** #69 `refactor(web): tách useSignOut dùng chung` (3 bản copy `handleSignOut` lệch nhau về đích điều hướng).

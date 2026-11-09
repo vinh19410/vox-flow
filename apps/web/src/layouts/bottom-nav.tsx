@@ -21,6 +21,9 @@ export function BottomNav() {
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const active = resolveActiveNav(pathname);
   const { data: session } = authClient.useSession();
+  // Session user wins over the prototype state seed ("Minh Anh") so real
+  // accounts see their own name; seed only covers the not-yet-loaded window.
+  const displayName = session?.user?.name || s.name;
   const email = session?.user?.email;
 
   const handleSignOut = async () => {
@@ -37,7 +40,7 @@ export function BottomNav() {
             aria-label="Tài khoản người dùng"
             className="grid h-9 w-9 cursor-pointer place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           >
-            {s.name.charAt(0).toUpperCase()}
+            {displayName.charAt(0).toUpperCase()}
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
@@ -46,7 +49,7 @@ export function BottomNav() {
           >
             <DropdownMenuGroup>
               <DropdownMenuLabel className="px-3 py-2 text-left">
-                <div className="truncate text-sm font-semibold text-ink">{s.name}</div>
+                <div className="truncate text-sm font-semibold text-ink">{displayName}</div>
                 {email && <div className="truncate text-xs text-subtle">{email}</div>}
                 <div className="mt-0.5 inline-block text-[11px] font-medium text-brand">
                   {s.plan ? `Gói ${s.plan.name}` : "Gói Miễn phí"}

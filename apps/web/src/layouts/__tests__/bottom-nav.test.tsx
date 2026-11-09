@@ -69,8 +69,8 @@ describe("BottomNav component", () => {
       data: {
         user: {
           id: "u-123",
-          email: "minhanh@example.com",
-          name: "Minh Anh",
+          email: "lan@example.com",
+          name: "Lan Nguyễn",
         },
         session: { id: "s-123", userId: "u-123" },
       },
@@ -81,11 +81,12 @@ describe("BottomNav component", () => {
   });
 
   it("renders mobile header with logo, avatar trigger initial, and 5 nav items", () => {
-    renderBottomNav({ name: "Minh Anh" });
+    renderBottomNav();
 
     const avatarBtn = screen.getByRole("button", { name: "Tài khoản người dùng" });
     expect(avatarBtn).toBeTruthy();
-    expect(avatarBtn.textContent).toBe("M");
+    // Session name "Lan Nguyễn" wins over the state seed "Minh Anh"
+    expect(avatarBtn.textContent).toBe("L");
 
     // 5 bottom nav items
     expect(screen.getByText("Trang chủ")).toBeTruthy();
@@ -95,21 +96,23 @@ describe("BottomNav component", () => {
     expect(screen.getByText("Gói")).toBeTruthy();
   });
 
-  it("opens user menu on avatar click and displays user name, email, and plan", async () => {
+  it("opens user menu on avatar click and displays session name over state seed, with email and plan", async () => {
     renderBottomNav({
       name: "Bảo Châu",
       plan: { id: "starter", name: "Cơ bản", until: "2026-12-31" },
     });
 
     const avatarBtn = screen.getByRole("button", { name: "Tài khoản người dùng" });
-    expect(avatarBtn.textContent).toBe("B");
+    expect(avatarBtn.textContent).toBe("L");
 
     fireEvent.click(avatarBtn);
 
     await waitFor(() => {
-      expect(screen.getByText("Bảo Châu")).toBeTruthy();
-      expect(screen.getByText("minhanh@example.com")).toBeTruthy();
+      expect(screen.getByText("Lan Nguyễn")).toBeTruthy();
+      expect(screen.getByText("lan@example.com")).toBeTruthy();
       expect(screen.getByText("Gói Cơ bản")).toBeTruthy();
+      // Session identity wins over the prototype state seed
+      expect(screen.queryByText("Bảo Châu")).toBeNull();
     });
 
     expect(screen.getByRole("menuitem", { name: /Gói & thanh toán/i })).toBeTruthy();
@@ -153,9 +156,10 @@ describe("BottomNav component", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tài khoản người dùng" }));
 
     await waitFor(() => {
+      // No session data → falls back to the state seed name
       expect(screen.getByText("Tuấn Kiệt")).toBeTruthy();
       expect(screen.getByText("Gói Miễn phí")).toBeTruthy();
-      expect(screen.queryByText("minhanh@example.com")).toBeNull();
+      expect(screen.queryByText("lan@example.com")).toBeNull();
     });
   });
 });
