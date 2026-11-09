@@ -63,3 +63,4 @@ scripts/scoring-eval/results/
 scripts/scoring-eval/transcripts/
 .claude
 .agentkit
+actions-runner/
