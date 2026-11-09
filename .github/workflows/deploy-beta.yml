@@ -85,7 +85,7 @@ jobs:
           SCORE_DISPUTE_ENABLED: ${{ vars.SCORE_DISPUTE_ENABLED || 'false' }}
         run: pnpm --filter @vox-flow/infra run deploy --yes
 
-      - name: Seed forecast topics into D1
+      - name: Seed forecast topics into D1 (first time initialization only)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -93,8 +93,13 @@ jobs:
           set -euo pipefail
           DB_NAME=$(pnpm dlx --silent wrangler@4.158.0 d1 list --json | jq -r '.[]? | select(.name|startswith("vox-flow-database-prod-")) | .name' | head -n 1)
           if [ -n "$DB_NAME" ]; then
-            echo "Seeding D1 database: $DB_NAME"
-            pnpm dlx --silent wrangler@4.158.0 d1 execute "$DB_NAME" --remote --file=packages/db/scripts/seed-forecast-prod.sql
+            EXISTING_COUNT=$(pnpm dlx --silent wrangler@4.158.0 d1 execute "$DB_NAME" --remote --command "SELECT COUNT(*) AS count FROM forecast_topic WHERE quarter = '2026-Q3'" --json | jq -r '.[0].results[0].count // 0')
+            if [ "$EXISTING_COUNT" -eq 0 ]; then
+              echo "Seeding D1 database: $DB_NAME (currently 0 topics)"
+              pnpm dlx --silent wrangler@4.158.0 d1 execute "$DB_NAME" --remote --file=packages/db/scripts/seed-forecast-prod.sql
+            else
+              echo "D1 database already contains $EXISTING_COUNT topics for 2026-Q3, skipping seed."
+            fi
           fi
 
       - name: Smoke test deployed endpoints
