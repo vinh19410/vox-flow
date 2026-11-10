@@ -8,7 +8,7 @@
 
 ## Delegation subagent
 
-- 3× `kongming` (advisory): go backfill + thiết kế registry; go/no-go sau plan gates (tri-state bắt buộc, drain đồng bộ, delete-on-true, cleanup memory-only); go/no-go trước ship.
+- 4× `kongming` (advisory): go backfill + thiết kế registry; go/no-go sau plan gates (tri-state bắt buộc, drain đồng bộ, delete-on-true, cleanup memory-only); go/no-go trước ship; post-PR gate + chốt review body.
 - 2× `code-reviewer` red-team trên plan (Security Adversary + Assumption Destroyer): 10 findings, 6 accept.
 - 2× `code-reviewer` trên diff hoàn thành (bugs/regressions + spec-compliance): 0 Critical, 3 Important — đã vá hết (slice-c regression CI, test unmount AC8, assert thứ tự drain-trước-submit, unhandled rejection).
 - Không dùng tester/delegate chạy test — chạy trực tiếp (narrow gate).
