@@ -74,7 +74,9 @@ export function isAudioRejection(error: unknown): boolean {
   return (
     error.status >= 400 &&
     error.status < 500 &&
-    /audio|input_audio|format|modalit/i.test(error.message)
+    // Text-only models reject the input_audio block itself, e.g.
+    // "Content blocks are expected to be either text or image_url type".
+    /audio|input_audio|format|modalit|content blocks? (are|is) expected/i.test(error.message)
   );
 }
 

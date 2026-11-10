@@ -75,6 +75,23 @@ describe("isAudioRejection", () => {
   it("only matches client errors about audio/format or oversized payloads", () => {
     expect(isAudioRejection(new OpenAIRequestError(400, "This model does not support audio input"))).toBe(true);
     expect(isAudioRejection(new OpenAIRequestError(413, "Request too large"))).toBe(true);
+    // Real gpt-6-luna responses: unsupported container format, and a text-only model.
+    expect(
+      isAudioRejection(
+        new OpenAIRequestError(
+          400,
+          `OpenAI chat completion returned 400: {"error":{"message":"Invalid value: 'webm'. Supported values are: 'wav' and 'mp3'.","param":"messages[1].content[2].input_audio.format"}}`,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isAudioRejection(
+        new OpenAIRequestError(
+          400,
+          "Invalid 'messages[1]'. Content blocks are expected to be either text or image_url type.",
+        ),
+      ),
+    ).toBe(true);
     expect(isAudioRejection(new OpenAIRequestError(401, "Incorrect API key"))).toBe(false);
     expect(isAudioRejection(new OpenAIRequestError(500, "audio pipeline crashed"))).toBe(false);
     expect(isAudioRejection(new Error("audio"))).toBe(false);
