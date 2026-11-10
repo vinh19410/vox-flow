@@ -28,6 +28,13 @@ export const MAX_SCORING_TRIES = 3;
  */
 export const SCORING_LEASE_MS = 12 * 60 * 1000;
 
+/**
+ * Total recording size above which grading skips audio and sends transcripts
+ * only. Base64 plus JSON serialisation multiplies the footprint, so this keeps
+ * the worker well inside its memory limit.
+ */
+export const MAX_GRADING_AUDIO_BYTES = 8 * 1024 * 1024;
+
 /** An error retrying cannot fix (e.g. the attempt has no answers); fails the score immediately. */
 export class NonRetriableScoringError extends Error {
   constructor(message: string) {
@@ -227,24 +234,36 @@ async function runPipeline(
   );
 
   const needsTranscript = answerRows.filter((row) => row.transcript === null);
-  const needsAudio = missingRunIndexes.length > 0 ? answerRows : needsTranscript;
 
-  // 1. Load audio from R2 (once per answer; shared by transcription and grading).
-  const audio: GradingAudio = new Map();
-  if (needsAudio.length > 0) {
+  const loadAudio = async (row: (typeof answerRows)[number]): Promise<ArrayBuffer> => {
     if (!deps.audioBucket) {
       throw new Error("AUDIO_BUCKET binding unavailable");
     }
-    const bucket = deps.audioBucket;
-    await Promise.all(
-      needsAudio.map(async (row) => {
-        const object = await bucket.get(row.audioKey);
-        if (!object) {
-          throw new Error(`Audio not found for answer ${row.questionKey}`);
-        }
-        audio.set(row.questionKey, await object.arrayBuffer());
-      }),
-    );
+    const object = await deps.audioBucket.get(row.audioKey);
+    if (!object) {
+      throw new Error(`Audio not found for answer ${row.questionKey}`);
+    }
+    return object.arrayBuffer();
+  };
+
+  // 1. Load the recordings to attach to grading, one at a time within a byte
+  //    budget. Over budget, grading goes transcript-only and the buffers are
+  //    dropped at once, so memory stays bounded whatever the learner uploaded.
+  const audio: GradingAudio = new Map();
+  if (missingRunIndexes.length > 0) {
+    let totalBytes = 0;
+    for (const row of answerRows) {
+      const buffer = await loadAudio(row);
+      totalBytes += buffer.byteLength;
+      if (totalBytes > MAX_GRADING_AUDIO_BYTES) {
+        audio.clear();
+        console.warn(
+          `[scoring] Attempt ${attemptId} audio exceeds ${MAX_GRADING_AUDIO_BYTES} bytes; grading transcript-only`,
+        );
+        break;
+      }
+      audio.set(row.questionKey, buffer);
+    }
   }
 
   // 2. Transcribe answers without a transcript; persist each success so a retry skips it.
@@ -252,7 +271,7 @@ async function runPipeline(
   const transcription = await Promise.allSettled(
     needsTranscript.map(async (row) => {
       const text = await deps.client.transcribe({
-        audio: audio.get(row.questionKey)!,
+        audio: audio.get(row.questionKey) ?? (await loadAudio(row)),
         mimeType: row.mimeType,
       });
       await db.update(attemptAnswer).set({ transcript: text }).where(eq(attemptAnswer.id, row.id));
@@ -275,54 +294,66 @@ async function runPipeline(
     };
   });
 
-  // 3. Grade the missing runs in parallel. Every run sends the identical request,
-  //    so each body is serialised once and shared.
+  // 3. Grade the missing runs. Each body is serialised once and shared by
+  //    every run that sends it. The first run probes whether the model accepts
+  //    audio; once it is rejected the remaining runs go transcript-only without
+  //    ever building or sending the audio body again.
   if (missingRunIndexes.length > 0) {
-    let audioBody: string | undefined;
+    let audioBody: string | undefined =
+      audio.size > 0 ? buildGradingRequestBody({ model: config.model, answers, audio }) : undefined;
+    // The serialised body now holds the audio; the raw buffers are no longer needed.
+    audio.clear();
     let textBody: string | undefined;
-    const getAudioBody = () =>
-      (audioBody ??= buildGradingRequestBody({ model: config.model, answers, audio }));
     const getTextBody = () => (textBody ??= buildGradingRequestBody({ model: config.model, answers }));
 
-    const grading = await Promise.allSettled(
-      missingRunIndexes.map(async (runIndex) => {
-        let audioUsed = true;
-        let response;
+    const gradeRun = async (runIndex: number): Promise<void> => {
+      let audioUsed = false;
+      let response;
+      if (audioBody !== undefined) {
         try {
-          response = await deps.client.chatCompletion(getAudioBody());
+          response = await deps.client.chatCompletion(audioBody);
+          audioUsed = true;
         } catch (error) {
           if (!isAudioRejection(error)) throw error;
           console.warn(
-            `[scoring] Audio rejected for attempt ${attemptId} run ${runIndex}; retrying transcript-only:`,
+            `[scoring] Audio rejected for attempt ${attemptId} run ${runIndex}; grading transcript-only:`,
             describeScoringError(error),
           );
-          audioUsed = false;
-          response = await deps.client.chatCompletion(getTextBody());
+          // Stop sending audio for every run that has not started yet.
+          audioBody = undefined;
         }
+      }
+      response ??= await deps.client.chatCompletion(getTextBody());
 
-        const run = parseGradingContent(response.content, answers);
-        const bands = bandsOf(run);
-        await db
-          .insert(scoreRun)
-          .values({
-            attemptId,
-            runIndex,
-            fc: bands.FC,
-            lr: bands.LR,
-            gra: bands.GRA,
-            p: bands.P,
-            overall: overallFromCriteria(bands),
-            payloadJson: JSON.stringify(run),
-            model: config.model,
-            audioUsed,
-            inputTokens: response.inputTokens,
-            outputTokens: response.outputTokens,
-            costUsd: computeCostUsd(config, response.inputTokens, response.outputTokens),
-          })
-          .onConflictDoNothing({ target: [scoreRun.attemptId, scoreRun.runIndex] });
-      }),
-    );
-    throwFirstRejection(grading);
+      const run = parseGradingContent(response.content, answers);
+      const bands = bandsOf(run);
+      await db
+        .insert(scoreRun)
+        .values({
+          attemptId,
+          runIndex,
+          fc: bands.FC,
+          lr: bands.LR,
+          gra: bands.GRA,
+          p: bands.P,
+          overall: overallFromCriteria(bands),
+          payloadJson: JSON.stringify(run),
+          model: config.model,
+          audioUsed,
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+          costUsd: computeCostUsd(config, response.inputTokens, response.outputTokens),
+        })
+        .onConflictDoNothing({ target: [scoreRun.attemptId, scoreRun.runIndex] });
+    };
+
+    const [firstRun, ...otherRuns] = missingRunIndexes;
+    if (audioBody !== undefined && firstRun !== undefined) {
+      await gradeRun(firstRun);
+      throwFirstRejection(await Promise.allSettled(otherRuns.map(gradeRun)));
+    } else {
+      throwFirstRejection(await Promise.allSettled(missingRunIndexes.map(gradeRun)));
+    }
   }
 
   // 4. Aggregate the stored runs (including ones produced by an earlier call).

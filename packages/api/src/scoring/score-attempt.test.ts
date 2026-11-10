@@ -6,6 +6,7 @@ import { attempt, attemptAnswer, attemptScore, scoreRun, user } from "@vox-flow/
 import { createTestDb, type TestDbContext } from "../test/db";
 import { OpenAIRequestError, type ChatCompletionResult, type ScoringOpenAIClient } from "./openai-client";
 import {
+  MAX_GRADING_AUDIO_BYTES,
   MAX_SCORING_TRIES,
   SCORING_LEASE_MS,
   scoreAttempt,
@@ -287,8 +288,38 @@ describe("scoreAttempt", () => {
     const runs = await ctx.db.select().from(scoreRun).where(eq(scoreRun.attemptId, ATTEMPT_ID));
     expect(runs).toHaveLength(3);
     expect(runs.every((r) => r.audioUsed === false)).toBe(true);
-    // 3 audio attempts + 3 transcript-only retries.
-    expect(client.chatBodies).toHaveLength(6);
+    // Only the first run probes with audio; after the rejection every run is transcript-only.
+    expect(client.chatBodies).toHaveLength(4);
+    expect(client.chatBodies.map((b) => b.includes('"input_audio"'))).toEqual([true, false, false, false]);
+  });
+
+  it("records audio_used per run when a later run's audio is rejected", async () => {
+    await seed(ctx.db);
+    let audioCalls = 0;
+    client.chatImpl = async (body, i) => {
+      if (body.includes('"input_audio"') && ++audioCalls > 1) {
+        throw new OpenAIRequestError(413, "OpenAI chat completion returned 413: payload too large");
+      }
+      return { content: gradingContent(RUN_BANDS[i % 3]!), inputTokens: 10, outputTokens: 5 };
+    };
+
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+    const runs = await ctx.db.select().from(scoreRun).where(eq(scoreRun.attemptId, ATTEMPT_ID));
+    expect(Object.fromEntries(runs.map((r) => [r.runIndex, r.audioUsed]))).toEqual({ 0: true, 1: false, 2: false });
+  });
+
+  it("grades transcript-only without sending audio when the recordings exceed the byte budget", async () => {
+    await seed(ctx.db);
+    const half = Math.ceil(MAX_GRADING_AUDIO_BYTES / 2) + 1;
+    bucket.get = async () => ({ arrayBuffer: async () => new Uint8Array(half).buffer });
+
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+    // Transcription still receives each recording.
+    expect(client.transcribeCalls.map((c) => c.bytes)).toEqual([half, half]);
+    expect(client.chatBodies).toHaveLength(3);
+    expect(client.chatBodies.some((b) => b.includes('"input_audio"'))).toBe(false);
+    const runs = await ctx.db.select().from(scoreRun).where(eq(scoreRun.attemptId, ATTEMPT_ID));
+    expect(runs.every((r) => r.audioUsed === false)).toBe(true);
   });
 
   it("does not treat non-audio client errors as audio rejection", async () => {
@@ -297,7 +328,9 @@ describe("scoreAttempt", () => {
       throw new OpenAIRequestError(429, "OpenAI chat completion returned 429: rate limited");
     };
     await expect(scoreAttempt(deps, ATTEMPT_ID)).rejects.toThrow("429");
-    expect(client.chatBodies).toHaveLength(3);
+    // No transcript-only fallback, and the failed audio probe stops the other runs from being sent.
+    expect(client.chatBodies).toHaveLength(1);
+    expect(client.chatBodies[0]).toContain('"input_audio"');
   });
 
   it("propagates retriable errors, then fails with a sanitised error after the last try", async () => {
