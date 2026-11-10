@@ -47,6 +47,7 @@ import type { PracticeSession } from "@/features/app-state/types";
 import { renderWithApp } from "@/test/harness";
 
 import { ExamScreen } from "../exam-screen";
+import { useExamSession } from "../use-exam-session";
 
 const PRACTICE: PracticeSession = {
   topicId: "p1-tidiness",
@@ -359,7 +360,94 @@ describe("ExamScreen submit", () => {
     h.unmount();
     expect(deleteAudioSpy).not.toHaveBeenCalled();
   });
+
+  it("fails the attempt sync after ~15s when attempt.start never answers", async () => {
+    startSpy.mockReturnValue(Promise.withResolvers<{ attemptId: string }>().promise);
+    const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
+    await flush();
+
+    answerStep();
+    const lockButton = screen.getByText(/đang đồng bộ phiên thi/i);
+    expect(lockButton).toHaveProperty("disabled", true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    await flush();
+    const submitButton = screen.getByText(/nộp & chấm/i);
+    expect(submitButton).toHaveProperty("disabled", false);
+    fireEvent.click(submitButton);
+    expect(h.state().scoringAttempt).toBeNull();
+    expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
+    expect(submitSpy).not.toHaveBeenCalled();
+  });
+
+  it("applies a late attempt id after the sync timeout already failed", async () => {
+    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
+    startSpy.mockReturnValue(startPromise);
+    const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
+    await flush();
+
+    answerStep();
+    await flush();
+    expect(saveAudioSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    await flush();
+    // The unlock must land before the id does — this assertion is red until
+    // the timer exists (pre-fix the button is still locked here).
+    const submitButton = screen.getByText(/nộp & chấm/i);
+    expect(submitButton).toHaveProperty("disabled", false);
+
+    await act(async () => {
+      resolveStart({ attemptId: "att-late" });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    await flush();
+    expect(trackUploadSpy).toHaveBeenCalledTimes(1);
+    const [attemptId, recording] = trackUploadSpy.mock.calls[0]!;
+    expect(attemptId).toBe("att-late");
+    await expect(recording).resolves.toMatchObject({
+      attemptId: "att-late",
+      questionKey: "p1-tidiness-0",
+    });
+
+    const settledButton = screen.getByText(/nộp & chấm/i);
+    fireEvent.click(settledButton);
+    expect(h.state().scoringAttempt).toEqual({ attemptId: "att-late", submitted: false });
+  });
+
+  it("keeps attempt ready past the timeout once the bootstrap settled", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-fast" });
+    renderWithApp(<SessionProbe />);
+    await flush();
+    expect(screen.getByTestId("attempt-status").textContent).toBe("ready");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(screen.getByTestId("attempt-status").textContent).toBe("ready");
+  });
+
+  it("fails the attempt sync after ~15s when attempt.getActive never answers", async () => {
+    getActiveSpy.mockReturnValue(Promise.withResolvers<unknown>().promise);
+    renderWithApp(<SessionProbe />);
+    await flush();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(screen.getByTestId("attempt-status").textContent).toBe("failed");
+  });
 });
+
+function SessionProbe() {
+  const session = useExamSession();
+  return <span data-testid="attempt-status">{session.attemptStatus}</span>;
+}
 
 /** Answers the current step; the Part intro only appears on the first step of a part. */
 function answerStep() {

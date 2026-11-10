@@ -12,6 +12,7 @@ import { deleteAudioBlob, saveAudioBlob } from "./storage";
 import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./types";
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
+const ATTEMPT_SYNC_TIMEOUT_MS = 15_000; // hung attempt.start/getActive must not lock submit forever (#106)
 const WPS = 2.6; // simulated words-per-second for the live transcript
 
 export interface ExamSessionValue {
@@ -120,6 +121,14 @@ export function useExamSession(): ExamSessionValue {
     let active = true;
     const { examMode, topicId, questionKey, isPractice } = startParamsRef.current;
 
+    // attemptStatus only leaves "pending" when getActive/start settle. A hung
+    // request (httpBatchLink has no timeout) would lock submit forever, so fail
+    // the bootstrap after a grace period. The request keeps running: a late id
+    // still lands via applyAttemptId while this screen is mounted.
+    const syncTimer = setTimeout(() => {
+      if (active) setAttemptStatus((status) => (status === "pending" ? "failed" : status));
+    }, ATTEMPT_SYNC_TIMEOUT_MS);
+
     trpcClient.attempt.getActive
       .query()
       .then((activeAttempt) => {
@@ -162,10 +171,12 @@ export function useExamSession(): ExamSessionValue {
       .catch(() => {
         // Gracefully continue in offline / mock test mode
         setAttemptStatus("failed");
-      });
+      })
+      .finally(() => clearTimeout(syncTimer));
 
     return () => {
       active = false;
+      clearTimeout(syncTimer);
     };
   }, []);
   const step = steps[idx];
