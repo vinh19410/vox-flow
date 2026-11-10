@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const getActiveSpy = vi.fn();
 const startSpy = vi.fn();
 const submitSpy = vi.fn();
+const trackUploadSpy = vi.fn();
+const recordedBlob = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" });
 
 vi.mock("@/utils/trpc", () => ({
   trpcClient: {
@@ -13,6 +15,21 @@ vi.mock("@/utils/trpc", () => ({
       submit: { mutate: (...a: unknown[]) => submitSpy(...a) },
     },
   },
+}));
+
+vi.mock("../answer-uploads", () => ({
+  trackAnswerUpload: (...a: unknown[]) => trackUploadSpy(...a),
+}));
+
+vi.mock("@/hooks/use-recorder", () => ({
+  useRecorder: () => ({
+    status: "idle",
+    isRecording: false,
+    mimeType: "audio/webm",
+    start: async () => true,
+    stop: async () => ({ blob: recordedBlob, durationMs: 4000, mimeType: "audio/webm" }),
+    cancel: () => {},
+  }),
 }));
 
 import type { PracticeSession } from "@/features/app-state/types";
@@ -40,6 +57,7 @@ describe("ExamScreen submit", () => {
     getActiveSpy.mockReset().mockResolvedValue(null);
     startSpy.mockReset();
     submitSpy.mockReset().mockResolvedValue({ success: true });
+    trackUploadSpy.mockReset().mockResolvedValue(true);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -57,6 +75,26 @@ describe("ExamScreen submit", () => {
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(h.go).toHaveBeenCalledWith("scoring");
     expect(submitSpy).not.toHaveBeenCalled();
+  });
+
+  it("registers each recording's upload under the attempt as soon as recording stops", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-forecast" });
+    renderWithApp(<ExamScreen />, { practice: PRACTICE });
+    await flush();
+
+    answerStep();
+    expect(trackUploadSpy).toHaveBeenCalledTimes(1);
+    const [attemptId, recording] = trackUploadSpy.mock.calls[0]!;
+    expect(attemptId).toBe("att-forecast");
+    await expect(recording).resolves.toMatchObject({
+      attemptId: "att-forecast",
+      questionKey: "p1-tidiness-0",
+      blob: recordedBlob,
+      durationMs: 4000,
+      mimeType: "audio/webm",
+      part: 1,
+      order: 0,
+    });
   });
 
   it("keeps the background submit for a mock test and clears any stale scoring attempt", async () => {

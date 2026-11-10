@@ -52,6 +52,7 @@ export function ScoringScreen() {
         busy={scoring.busy}
         actionError={scoring.actionError}
         onResubmit={() => void scoring.resubmit()}
+        onSubmitWithoutMissing={() => void scoring.submitWithoutMissing()}
         onRetry={() => void scoring.retryScoring()}
         onResume={scoring.resumePolling}
         onHome={() => go("dashboard")}
@@ -91,12 +92,22 @@ interface ScoringJobStateProps {
   busy: boolean;
   actionError: string | null;
   onResubmit: () => void;
+  onSubmitWithoutMissing: () => void;
   onRetry: () => void;
   onResume: () => void;
   onHome: () => void;
 }
 
-function ScoringJobState({ view, busy, actionError, onResubmit, onRetry, onResume, onHome }: ScoringJobStateProps) {
+function ScoringJobState({
+  view,
+  busy,
+  actionError,
+  onResubmit,
+  onSubmitWithoutMissing,
+  onRetry,
+  onResume,
+  onHome,
+}: ScoringJobStateProps) {
   if (view.kind === "submitting" || view.kind === "in_progress" || view.kind === "done") {
     return <ScoringProgress view={view} />;
   }
@@ -121,6 +132,32 @@ function ScoringJobState({ view, busy, actionError, onResubmit, onRetry, onResum
           bordered
           className="bg-white p-8"
         />
+        {error}
+      </div>
+    );
+  }
+
+  if (view.kind === "upload_error") {
+    return (
+      <div data-testid="scoring-upload-error">
+        <EmptyState
+          size="lg"
+          icon={TriangleAlert}
+          title="Chưa tải lên đủ câu trả lời"
+          description={`${view.missing} câu trả lời chưa tải lên được nên bài chưa được nộp. Bản ghi âm vẫn được giữ trên thiết bị này, hãy kiểm tra kết nối rồi gửi lại.`}
+          action={{ label: busy ? "Đang gửi…" : "Gửi lại", onClick: onResubmit, disabled: busy }}
+          secondaryAction={home}
+          bordered
+          className="bg-white p-8"
+        />
+        <button
+          type="button"
+          onClick={onSubmitWithoutMissing}
+          disabled={busy}
+          className="mt-4 text-sm font-medium text-ink-2 underline underline-offset-4 hover:text-ink disabled:opacity-50"
+        >
+          Bỏ qua câu bị lỗi và nộp bài
+        </button>
         {error}
       </div>
     );

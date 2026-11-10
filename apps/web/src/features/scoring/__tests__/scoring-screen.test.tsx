@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const submitSpy = vi.fn();
 const statusSpy = vi.fn();
 const retrySpy = vi.fn();
+const flushSpy = vi.fn();
 
 vi.mock("@/utils/trpc", () => ({
   trpcClient: {
@@ -13,6 +14,10 @@ vi.mock("@/utils/trpc", () => ({
       retry: { mutate: (...a: unknown[]) => retrySpy(...a) },
     },
   },
+}));
+
+vi.mock("@/features/exam/answer-uploads", () => ({
+  flushAnswerUploads: (...a: unknown[]) => flushSpy(...a),
 }));
 
 import { renderWithApp } from "@/test/harness";
@@ -36,6 +41,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockReset();
     statusSpy.mockReset();
     retrySpy.mockReset();
+    flushSpy.mockReset().mockResolvedValue({ failedQuestionKeys: [] });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -74,6 +80,68 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
     await advance(POLL_INTERVAL_MS * 3);
     expect(statusSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("waits for answer uploads to finish before submitting", async () => {
+    let finish!: (r: { failedQuestionKeys: string[] }) => void;
+    flushSpy.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    submitSpy.mockResolvedValue({ success: true });
+    statusSpy.mockResolvedValue(st("queued"));
+
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    expect(flushSpy).toHaveBeenCalledWith(ATTEMPT);
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+
+    await act(async () => finish({ failedQuestionKeys: [] }));
+    await advance(0);
+    expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+  });
+
+  it("does not submit when a recording failed to upload, and resends it on demand", async () => {
+    flushSpy
+      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"] })
+      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"] })
+      .mockResolvedValueOnce({ failedQuestionKeys: [] });
+    submitSpy.mockResolvedValue({ success: true });
+    statusSpy.mockResolvedValue(st("queued"));
+
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    expect(screen.getByTestId("scoring-upload-error")).toBeTruthy();
+    expect(screen.getByText(/1 câu trả lời chưa tải lên được/)).toBeTruthy();
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
+
+    // Still failing: stays on the error with a message, nothing submitted.
+    fireEvent.click(screen.getByText("Gửi lại"));
+    await advance(0);
+    expect(screen.getByRole("alert").textContent).toContain("chưa tải lên được");
+    expect(submitSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Gửi lại"));
+    await advance(0);
+    expect(flushSpy).toHaveBeenCalledTimes(3);
+    expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+  });
+
+  it("lets the learner submit without the recordings that keep failing", async () => {
+    flushSpy.mockResolvedValue({ failedQuestionKeys: ["q1", "q2"] });
+    submitSpy.mockResolvedValue({ success: true });
+    statusSpy.mockResolvedValue(st("queued"));
+
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    expect(screen.getByText(/2 câu trả lời chưa tải lên được/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Bỏ qua câu bị lỗi và nộp bài"));
+    await advance(0);
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+    expect(screen.getByTestId("scoring-progress")).toBeTruthy();
   });
 
   it("never mentions multiple runs while scoring", async () => {

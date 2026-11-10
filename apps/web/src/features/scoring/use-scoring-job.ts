@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ScoringJob } from "@/features/app-state/types";
+import { flushAnswerUploads } from "@/features/exam/answer-uploads";
 import { trpcClient } from "@/utils/trpc";
 
 export const POLL_INTERVAL_MS = 2500;
@@ -12,6 +13,8 @@ export const MAX_NOT_SCORED_POLLS = 4;
 export type ScoringView =
   | { kind: "submitting" }
   | { kind: "submit_error" }
+  /** Some recordings never reached the server; they are still stored on this device. */
+  | { kind: "upload_error"; missing: number }
   | { kind: "in_progress"; status: "queued" | "processing" }
   | { kind: "failed" }
   | { kind: "connection_error" }
@@ -31,8 +34,13 @@ export interface ScoringJobValue {
   view: ScoringView;
   busy: boolean;
   actionError: string | null;
-  /** Re-submits after a failed submit (falls back to re-enqueueing if already submitted). */
+  /**
+   * Re-sends any recordings still on the device, then re-submits (falls back to
+   * re-enqueueing if already submitted).
+   */
   resubmit: () => Promise<void>;
+  /** Submits with only the recordings the server already has, after the learner chose to. */
+  submitWithoutMissing: () => Promise<void>;
   /** Asks the server to score a failed attempt again, then resumes polling. */
   retryScoring: () => Promise<void>;
   /** Resumes polling after repeated connection errors. */
@@ -78,12 +86,26 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
     handlersRef.current.onSubmitted(id);
   }, []);
 
+  /**
+   * Waits for (and retries) the attempt's answer uploads. Returns false and
+   * shows the upload error when some recording is still only on this device,
+   * so the attempt is never scored on a silently incomplete set of answers.
+   */
+  const ensureUploaded = useCallback(async (id: string): Promise<boolean> => {
+    const { failedQuestionKeys } = await flushAnswerUploads(id);
+    if (failedQuestionKeys.length === 0) return true;
+    if (mountedRef.current) setView({ kind: "upload_error", missing: failedQuestionKeys.length });
+    return false;
+  }, []);
+
   // Initial submit. The attempt stays saved server-side whatever happens here.
   useEffect(() => {
     if (!attemptId || job?.submitted || submitStartedRef.current) return;
     submitStartedRef.current = true;
 
     void (async () => {
+      if (!(await ensureUploaded(attemptId))) return;
+      if (!mountedRef.current) return;
       try {
         await trpcClient.attempt.submit.mutate({ attemptId });
         if (!mountedRef.current) return;
@@ -108,7 +130,7 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
         }
       }
     })();
-  }, [attemptId, job?.submitted, markSubmitted]);
+  }, [attemptId, job?.submitted, markSubmitted, ensureUploaded]);
 
   const polling = view.kind === "in_progress";
 
@@ -182,33 +204,45 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
     }
   }, [attemptId]);
 
-  const resubmit = useCallback(async () => {
-    if (!attemptId) return;
-    setBusy(true);
-    setActionError(null);
-    try {
+  const sendSubmit = useCallback(
+    async (checkUploads: boolean) => {
+      if (!attemptId) return;
+      setBusy(true);
+      setActionError(null);
       try {
-        await trpcClient.attempt.submit.mutate({ attemptId });
+        if (checkUploads && !(await ensureUploaded(attemptId))) {
+          if (mountedRef.current) {
+            setActionError("Vẫn chưa tải lên được một số câu trả lời. Kiểm tra kết nối mạng rồi thử lại.");
+          }
+          return;
+        }
+        try {
+          await trpcClient.attempt.submit.mutate({ attemptId });
+        } catch (err) {
+          if (!isAlreadySubmittedError(err)) throw err;
+          // Already submitted on the server but never queued: enqueue scoring instead.
+          await trpcClient.scoring.retry.mutate({ attemptId });
+        }
+        if (!mountedRef.current) return;
+        markSubmitted(attemptId);
+        setView(QUEUED);
       } catch (err) {
-        if (!isAlreadySubmittedError(err)) throw err;
-        // Already submitted on the server but never queued: enqueue scoring instead.
-        await trpcClient.scoring.retry.mutate({ attemptId });
+        console.warn("Attempt resubmit failed:", err);
+        if (mountedRef.current) setActionError("Vẫn chưa gửi được bài. Kiểm tra kết nối mạng rồi thử lại.");
+      } finally {
+        if (mountedRef.current) setBusy(false);
       }
-      if (!mountedRef.current) return;
-      markSubmitted(attemptId);
-      setView(QUEUED);
-    } catch (err) {
-      console.warn("Attempt resubmit failed:", err);
-      if (mountedRef.current) setActionError("Vẫn chưa gửi được bài. Kiểm tra kết nối mạng rồi thử lại.");
-    } finally {
-      if (mountedRef.current) setBusy(false);
-    }
-  }, [attemptId, markSubmitted]);
+    },
+    [attemptId, markSubmitted, ensureUploaded],
+  );
+
+  const resubmit = useCallback(() => sendSubmit(true), [sendSubmit]);
+  const submitWithoutMissing = useCallback(() => sendSubmit(false), [sendSubmit]);
 
   const resumePolling = useCallback(() => {
     setActionError(null);
     setView(QUEUED);
   }, []);
 
-  return { view, busy, actionError, resubmit, retryScoring, resumePolling };
+  return { view, busy, actionError, resubmit, submitWithoutMissing, retryScoring, resumePolling };
 }
