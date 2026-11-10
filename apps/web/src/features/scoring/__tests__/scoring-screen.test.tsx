@@ -71,7 +71,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       .mockResolvedValueOnce(st("processing"))
       .mockResolvedValueOnce(st("done"));
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
     expect(screen.getAllByTestId("scoring-step").map((n) => n.textContent)).toEqual([
       expect.stringContaining("Chuyển giọng nói thành chữ"),
@@ -81,7 +81,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
     await advance(0);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     expect(statusSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("scoring-status").textContent).toContain("chờ đến lượt");
 
@@ -105,7 +105,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(flushSpy).toHaveBeenCalledWith(ATTEMPT);
     expect(submitSpy).not.toHaveBeenCalled();
@@ -124,12 +124,12 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.getByTestId("scoring-upload-error")).toBeTruthy();
     expect(screen.getByText(/1 câu trả lời chưa tải lên được/)).toBeTruthy();
     expect(submitSpy).not.toHaveBeenCalled();
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: false });
 
     // Still failing: stays on the error with a message, nothing submitted.
     fireEvent.click(screen.getByText("Gửi lại"));
@@ -141,7 +141,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     await advance(0);
     expect(flushSpy).toHaveBeenCalledTimes(3);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
   });
 
@@ -150,7 +150,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.getByText(/2 câu trả lời chưa tải lên được/)).toBeTruthy();
 
@@ -165,12 +165,12 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     flushSpy.mockResolvedValue({ failedQuestionKeys: [], storageUnreadable: true });
     submitSpy.mockResolvedValue({ success: true });
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.getByTestId("scoring-upload-error")).toBeTruthy();
     expect(screen.getByText(/Chưa đọc được các bản ghi âm lưu trên thiết bị/)).toBeTruthy();
     expect(submitSpy).not.toHaveBeenCalled();
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: false });
   });
 
   it("offers a plain submit, not a skip, when it is unknown which recordings are missing", async () => {
@@ -178,7 +178,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.queryByText("Bỏ qua câu bị lỗi và nộp bài")).toBeNull();
 
@@ -190,14 +190,14 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("never mentions multiple runs while scoring", async () => {
     statusSpy.mockResolvedValue(st("processing"));
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(document.body.textContent).not.toMatch(/lần chấm|lượt chấm|3 lần/i);
   });
 
   it("stops polling on unmount", async () => {
     statusSpy.mockResolvedValue(st("processing"));
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(submitSpy).not.toHaveBeenCalled();
     expect(statusSpy).toHaveBeenCalledTimes(1);
@@ -210,7 +210,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     statusSpy.mockResolvedValueOnce(st("failed")).mockResolvedValueOnce(st("queued")).mockResolvedValueOnce(st("done"));
     retrySpy.mockResolvedValue(st("queued"));
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(screen.getByTestId("scoring-failed")).toBeTruthy();
     expect(screen.getByText("Chấm điểm chưa thành công")).toBeTruthy();
@@ -231,7 +231,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
   it("keeps the failed state and shows an error when retry itself fails", async () => {
     statusSpy.mockResolvedValue(st("failed"));
     retrySpy.mockRejectedValue(new Error("network"));
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     fireEvent.click(screen.getByText("Chấm lại"));
     await advance(0);
@@ -243,7 +243,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("disables Chấm lại and explains the exhausted per-attempt retry when canRetry is false", async () => {
     statusSpy.mockResolvedValue(st("failed", true, { manualRetries: 1, canRetry: false }));
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(screen.getByTestId("scoring-failed")).toBeTruthy();
     expect(
@@ -259,7 +259,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("disables Chấm lại and shows the daily-quota message when only the daily limit is exhausted", async () => {
     statusSpy.mockResolvedValue(st("failed", true, { manualRetries: 0, canRetry: false }));
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(screen.getByTestId("scoring-failed")).toBeTruthy();
     expect(
@@ -281,7 +281,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     retrySpy.mockRejectedValue(
       Object.assign(new Error(DAILY_RETRY_LIMIT_EXCEEDED), { data: { code: "TOO_MANY_REQUESTS" } }),
     );
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     fireEvent.click(screen.getByText("Chấm lại"));
     await advance(0);
@@ -294,7 +294,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     retrySpy.mockRejectedValue(
       Object.assign(new Error(RETRY_LIMIT_EXCEEDED), { data: { code: "BAD_REQUEST" } }),
     );
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     fireEvent.click(screen.getByText("Chấm lại"));
     await advance(0);
@@ -306,15 +306,15 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ success: true });
     statusSpy.mockResolvedValueOnce(st("not_scored")).mockResolvedValue(st("queued"));
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.getByTestId("scoring-submit-error")).toBeTruthy();
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: false });
 
     fireEvent.click(screen.getByText("Gửi lại"));
     await advance(0);
     expect(submitSpy).toHaveBeenCalledTimes(2);
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
   });
 
@@ -345,7 +345,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     }
 
     async function renderAndResend() {
-      const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+      const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
       await advance(0);
       expect(screen.getByTestId("scoring-submit-error")).toBeTruthy();
       fireEvent.click(screen.getByText("Gửi lại"));
@@ -359,7 +359,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       expect(retrySpy).not.toHaveBeenCalled();
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByTestId("scoring-progress")).toBeTruthy();
-      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+      expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     });
 
     it("opens the results when scoring already finished", async () => {
@@ -376,7 +376,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByTestId("scoring-progress")).toBeTruthy();
       expect(screen.getByTestId("scoring-status").textContent).toContain("chờ đến lượt");
-      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+      expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     });
 
     it("shows the failed state directly without spending a retry when scoring failed", async () => {
@@ -386,7 +386,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByTestId("scoring-failed")).toBeTruthy();
       expect(screen.getByText("Chấm điểm chưa thành công")).toBeTruthy();
-      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+      expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     });
   });
 
@@ -396,24 +396,25 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       .mockRejectedValueOnce(Object.assign(new Error("Attempt is abandoned"), { data: { code: "BAD_REQUEST" } }));
     statusSpy.mockResolvedValue(st("not_scored"));
 
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     fireEvent.click(screen.getByText("Gửi lại"));
     await advance(0);
     expect(retrySpy).not.toHaveBeenCalled();
     expect(screen.getByTestId("scoring-submit-error")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Vẫn chưa gửi được bài");
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: false });
   });
 
   it("continues polling when a submit error hides a submit that actually succeeded", async () => {
     submitSpy.mockRejectedValue(new Error("response lost"));
     statusSpy.mockResolvedValue(st("queued"));
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: false } });
     await advance(0);
     expect(screen.queryByTestId("scoring-submit-error")).toBeNull();
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
-    expect(h.state().scoringAttempt?.submitted).toBe(true);
+    const job = h.state().scoringAttempt;
+    expect(job?.kind === "attempt" && job.submitted).toBe(true);
   });
 
   it("backs off polling over time", () => {
@@ -426,7 +427,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("polls less often after the first minute and stops with a slow state after the limit", async () => {
     statusSpy.mockResolvedValue(st("processing"));
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     // First minute at the fast interval: the initial check plus one per interval.
     await advance(60_000);
@@ -456,7 +457,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("asks to retry after repeated status errors and resumes polling on demand", async () => {
     statusSpy.mockRejectedValue(new Error("offline"));
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     await advance(POLL_INTERVAL_MS * (MAX_POLL_ERRORS - 1));
     expect(screen.getByTestId("scoring-connection-error")).toBeTruthy();
@@ -470,7 +471,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
 
   it("falls back to the recorded state when the server says the attempt is not scorable", async () => {
     statusSpy.mockResolvedValue(st("not_scored", false));
-    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "attempt", attemptId: ATTEMPT, submitted: true } });
     await advance(0);
     expect(screen.getByText("Bài thi đã được ghi nhận!")).toBeTruthy();
     expect(h.state().scoringAttempt).toBeNull();
@@ -483,5 +484,19 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(screen.queryByTestId("scoring-progress")).toBeNull();
     expect(submitSpy).not.toHaveBeenCalled();
     expect(statusSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders an honest local-only state instead of the recorded copy when the exam was submitted without an attempt", async () => {
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { kind: "local_only" } });
+    await advance(0);
+    expect(screen.getByText("Chưa gửi được bài thi lên máy chủ")).toBeTruthy();
+    expect(screen.getByText(/lưu tạm trên thiết bị này/)).toBeTruthy();
+    expect(screen.queryByText("Bài thi đã được ghi nhận!")).toBeNull();
+    expect(screen.queryByText(/Gửi lại/)).toBeNull();
+    expect(screen.getByText("Về trang chủ")).toBeTruthy();
+    expect(screen.getByText("Luyện thêm đề khác")).toBeTruthy();
+    // Warning icon, not the success CheckCircle2 of RecordedState.
+    expect(document.querySelector(".lucide-triangle-alert")).toBeTruthy();
+    expect(document.querySelector(".lucide-check-circle-2")).toBeNull();
   });
 });

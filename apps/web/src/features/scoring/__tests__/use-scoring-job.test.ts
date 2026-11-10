@@ -46,7 +46,7 @@ describe("useScoringJob retry budget", () => {
     });
 
     const { result } = renderHook(
-      () => useScoringJob({ attemptId: ATTEMPT, submitted: false }, handlers),
+      () => useScoringJob({ kind: "attempt", attemptId: ATTEMPT, submitted: false }, handlers),
     );
 
     await waitFor(() => expect(result.current.view.kind).toBe("failed"));
@@ -67,7 +67,7 @@ describe("useScoringJob retry budget", () => {
     });
 
     const { result } = renderHook(
-      () => useScoringJob({ attemptId: ATTEMPT, submitted: true }, handlers),
+      () => useScoringJob({ kind: "attempt", attemptId: ATTEMPT, submitted: true }, handlers),
     );
 
     await waitFor(() => expect(result.current.view.kind).toBe("failed"));
@@ -88,7 +88,7 @@ describe("useScoringJob retry budget", () => {
     );
 
     const { result } = renderHook(
-      () => useScoringJob({ attemptId: ATTEMPT, submitted: true }, handlers),
+      () => useScoringJob({ kind: "attempt", attemptId: ATTEMPT, submitted: true }, handlers),
     );
     await waitFor(() => expect(result.current.view.kind).toBe("failed"));
 

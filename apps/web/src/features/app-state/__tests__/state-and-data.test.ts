@@ -260,12 +260,38 @@ describe("useAppStateStore & ProtoToast", () => {
   it("persists the pending scoring attempt so a refresh on the scoring screen keeps polling it", () => {
     const { result, unmount } = renderHook(() => useAppStateStore());
     act(() => {
-      result.current.set({ scoringAttempt: { attemptId: "att-forecast", submitted: true } });
+      result.current.set({ scoringAttempt: { kind: "attempt", attemptId: "att-forecast", submitted: true } });
     });
     unmount();
 
     const remounted = renderHook(() => useAppStateStore());
-    expect(remounted.result.current.s.scoringAttempt).toEqual({ attemptId: "att-forecast", submitted: true });
+    expect(remounted.result.current.s.scoringAttempt).toEqual({
+      kind: "attempt",
+      attemptId: "att-forecast",
+      submitted: true,
+    });
+  });
+  it("migrates a scoring attempt persisted before the kind field", () => {
+    sessionStorage.setItem(
+      PROTO_STORAGE_KEY,
+      JSON.stringify({
+        mode: "p1",
+        voice: "au-f",
+        scoringAttempt: { attemptId: "att-old", submitted: true },
+      }),
+    );
+    const { result } = renderHook(() => useAppStateStore());
+    expect(result.current.s.scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-old", submitted: true });
+  });
+  it("keeps a local-only scoring job across rehydration", () => {
+    const { result, unmount } = renderHook(() => useAppStateStore());
+    act(() => {
+      result.current.set({ scoringAttempt: { kind: "local_only" } });
+    });
+    unmount();
+
+    const remounted = renderHook(() => useAppStateStore());
+    expect(remounted.result.current.s.scoringAttempt).toEqual({ kind: "local_only" });
   });
   it("falls back safely to initial state when sessionStorage has malformed JSON", () => {
     sessionStorage.setItem(PROTO_STORAGE_KEY, "{corrupt-json");

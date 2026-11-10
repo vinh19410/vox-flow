@@ -1,7 +1,7 @@
 ---
 title: "ScoringScreen trung thực khi nộp không có attemptId — local_only hand-off"
 description: "Nộp bài khi attempt sync treo/fail hiện render RecordedState 'đã ghi nhận toàn bộ' dù 0 byte audio rời thiết bị. Thêm variant local_only vào ScoringJob, ScoringScreen render state trung thực, giữ nguyên RecordedState cho các path hợp lệ."
-status: in-progress
+status: completed
 priority: P1
 effort: 2h
 issue: 119

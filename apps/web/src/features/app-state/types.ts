@@ -39,12 +39,16 @@ export interface PracticeSession {
   attemptId?: string;
 }
 
-/** Forecast practice attempt handed from the exam to the scoring screen. */
-export interface ScoringJob {
+/** Scorable attempt handed from the exam to the scoring screen. */
+export type AttemptJob = {
+  kind: "attempt";
   attemptId: string;
   /** True once `attempt.submit` succeeded (or the server already shows the attempt as submitted). */
   submitted: boolean;
-}
+};
+/** Submit happened with no server attempt id: nothing was uploaded, honest state required (#119). */
+export type LocalOnlyJob = { kind: "local_only" };
+export type ScoringJob = AttemptJob | LocalOnlyJob;
 
 export interface ActivePlan {
   id: string;
@@ -76,7 +80,7 @@ export interface AppState {
   saved: string[];
   /** Target forecast topic to reopen upon returning from practice results */
   reopenTopicId?: string | null;
-  /** Scorable attempt the scoring screen should submit/poll; null for unscored modes. */
+  /** Attempt the scoring screen should submit/poll; local_only when submitted with no server attempt; null for unscored modes. */
   scoringAttempt: ScoringJob | null;
 }
 

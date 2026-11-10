@@ -130,15 +130,16 @@ export function ExamScreen() {
     if (s.practice && session.attemptId) {
       // Forecast practice is scored: the scoring screen submits the attempt itself so a
       // failed submit surfaces there with a retry instead of being swallowed here.
-      set({ scoringAttempt: { attemptId: session.attemptId, submitted: false } });
+      set({ scoringAttempt: { kind: "attempt", attemptId: session.attemptId, submitted: false } });
       setPendingSubmission(true);
       go("scoring");
       return;
     }
     if (s.scoringAttempt) set({ scoringAttempt: null });
     if (!session.attemptId) {
-      // Offline/mock fallback (#94): no server attempt exists, so there is
-      // nothing to flush or submit — keep the old direct hand-off.
+      // Attempt bootstrap failed or timed out (#106): nothing is on the server,
+      // so the scoring screen must say so instead of claiming success (#119).
+      set({ scoringAttempt: { kind: "local_only" } });
       setPendingSubmission(true);
       go("scoring");
       return;
