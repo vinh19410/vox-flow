@@ -25,16 +25,25 @@ import { renderWithApp } from "@/test/harness";
 import { ScoringScreen } from "../scoring-screen";
 import {
   ATTEMPT_ALREADY_SUBMITTED_MESSAGE,
+  DAILY_RETRY_LIMIT_EXCEEDED,
   MAX_POLL_ERRORS,
   POLL_BACKOFF_INTERVAL_MS,
   POLL_INTERVAL_MS,
   POLL_MAX_INTERVAL_MS,
   pollDelayMs,
+  RETRY_LIMIT_EXCEEDED,
   SLOW_SCORING_AFTER_MS,
 } from "../use-scoring-job";
 
 const ATTEMPT = "att-forecast-1";
-const st = (status: string, scorable = true) => ({ attemptId: ATTEMPT, status, scorable });
+const st = (status: string, scorable = true, extra: Record<string, unknown> = {}) => ({
+  attemptId: ATTEMPT,
+  status,
+  scorable,
+  manualRetries: 0,
+  canRetry: true,
+  ...extra,
+});
 
 /** Flushes pending promises, then advances the poll timer. */
 async function advance(ms: number) {
@@ -232,6 +241,67 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(h.go).toHaveBeenCalledWith("dashboard");
   });
 
+  it("disables Chấm lại and explains the exhausted per-attempt retry when canRetry is false", async () => {
+    statusSpy.mockResolvedValue(st("failed", true, { manualRetries: 1, canRetry: false }));
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    await advance(0);
+    expect(screen.getByTestId("scoring-failed")).toBeTruthy();
+    expect(
+      screen.getByText("Bài thi đã được thử lại tối đa 1 lần. Vui lòng tạo bài luyện tập mới."),
+    ).toBeTruthy();
+
+    const retryButton = screen.getByRole("button", { name: "Chấm lại" }) as HTMLButtonElement;
+    expect(retryButton.disabled).toBe(true);
+    fireEvent.click(retryButton);
+    await advance(0);
+    expect(retrySpy).not.toHaveBeenCalled();
+  });
+
+  it("disables Chấm lại and shows the daily-quota message when only the daily limit is exhausted", async () => {
+    statusSpy.mockResolvedValue(st("failed", true, { manualRetries: 0, canRetry: false }));
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    await advance(0);
+    expect(screen.getByTestId("scoring-failed")).toBeTruthy();
+    expect(
+      screen.getByText("Bạn đã đạt giới hạn 3 lần thử lại trong ngày. Vui lòng quay lại vào ngày mai."),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("Bài thi đã được thử lại tối đa 1 lần. Vui lòng tạo bài luyện tập mới."),
+    ).toBeNull();
+
+    const retryButton = screen.getByRole("button", { name: "Chấm lại" }) as HTMLButtonElement;
+    expect(retryButton.disabled).toBe(true);
+    fireEvent.click(retryButton);
+    await advance(0);
+    expect(retrySpy).not.toHaveBeenCalled();
+  });
+
+  it("maps the daily retry quota error to a clear daily message", async () => {
+    statusSpy.mockResolvedValue(st("failed"));
+    retrySpy.mockRejectedValue(
+      Object.assign(new Error(DAILY_RETRY_LIMIT_EXCEEDED), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    await advance(0);
+    fireEvent.click(screen.getByText("Chấm lại"));
+    await advance(0);
+    expect(screen.getByRole("alert").textContent).toContain("3 lần thử lại trong ngày");
+    expect(screen.getByTestId("scoring-failed")).toBeTruthy();
+  });
+
+  it("maps the per-attempt retry quota error to an out-of-retries message", async () => {
+    statusSpy.mockResolvedValue(st("failed"));
+    retrySpy.mockRejectedValue(
+      Object.assign(new Error(RETRY_LIMIT_EXCEEDED), { data: { code: "BAD_REQUEST" } }),
+    );
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    await advance(0);
+    fireEvent.click(screen.getByText("Chấm lại"));
+    await advance(0);
+    expect(screen.getByRole("alert").textContent).toContain("hết số lần thử lại cho phép");
+    expect(screen.getByTestId("scoring-failed")).toBeTruthy();
+  });
+
   it("surfaces a failed submit with a resend action instead of spinning", async () => {
     submitSpy.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ success: true });
     statusSpy.mockResolvedValueOnce(st("not_scored")).mockResolvedValue(st("queued"));
@@ -253,6 +323,8 @@ describe("ScoringScreen (forecast practice scoring)", () => {
      * Mirrors the server once the first submit committed: submit rejects as
      * already submitted, status reports the score row, and retry only accepts
      * a failed or unscored attempt (packages/api/src/routers/scoring.ts).
+     * The client only auto-retries the unscored rescue path; a failed attempt
+     * keeps its retry budget for an explicit "Chấm lại".
      */
     function serverAlreadySubmitted(initial: "queued" | "processing" | "done" | "failed" | "not_scored") {
       let score = initial;
@@ -297,13 +369,23 @@ describe("ScoringScreen (forecast practice scoring)", () => {
       expect(h.goResult).toHaveBeenCalledWith(ATTEMPT, { replace: true });
     });
 
-    it.each(["failed", "not_scored"] as const)("re-enqueues scoring when it is %s", async (status) => {
-      serverAlreadySubmitted(status);
+    it("re-enqueues scoring when it is not_scored", async () => {
+      serverAlreadySubmitted("not_scored");
       const h = await renderAndResend();
       expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.getByTestId("scoring-progress")).toBeTruthy();
       expect(screen.getByTestId("scoring-status").textContent).toContain("chờ đến lượt");
+      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    });
+
+    it("shows the failed state directly without spending a retry when scoring failed", async () => {
+      serverAlreadySubmitted("failed");
+      const h = await renderAndResend();
+      expect(retrySpy).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTestId("scoring-failed")).toBeTruthy();
+      expect(screen.getByText("Chấm điểm chưa thành công")).toBeTruthy();
       expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
     });
   });

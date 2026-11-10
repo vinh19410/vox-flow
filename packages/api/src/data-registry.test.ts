@@ -105,7 +105,12 @@ describe("Data registry for personal data discovery and erasure", () => {
     }
   });
 
-  it("exportUserData and eraseUserData correctly isolates and erases user data", async () => {
+  // ~70 sequential Miniflare D1 queries at ~80ms each locally exceed the 5s
+  // default (same rationale as the bind-limit test below, which uses 30s).
+  it(
+    "exportUserData and eraseUserData correctly isolates and erases user data",
+    { timeout: 30_000 },
+    async () => {
     const user1Id = "usr_reg_1";
     const user2Id = "usr_reg_2";
 

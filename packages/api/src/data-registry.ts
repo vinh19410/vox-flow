@@ -11,6 +11,7 @@ import {
   forecastReport,
   scoreDispute,
   scoreRun,
+  scoringRetryLog,
   session,
   user,
   userProfile,
@@ -205,6 +206,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(scoreDispute).where(eq(scoreDispute.userId, userId));
+    },
+  },
+  scoring_retry_log: {
+    tableName: "scoring_retry_log",
+    export: async (db, userId) => {
+      return db.select().from(scoringRetryLog).where(eq(scoringRetryLog.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(scoringRetryLog).where(eq(scoringRetryLog.userId, userId));
     },
   },
 };

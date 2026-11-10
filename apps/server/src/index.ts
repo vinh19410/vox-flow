@@ -1,5 +1,14 @@
 import { trpcServer } from "@hono/trpc-server";
-import { and, attempt, attemptAnswer, desc, eq, or, scoreDispute } from "@vox-flow/db";
+import {
+  and,
+  attempt,
+  attemptAnswer,
+  desc,
+  eq,
+  forecastTopic,
+  or,
+  scoreDispute,
+} from "@vox-flow/db";
 import {
   canAccessAudio,
   buildAudioKey,
@@ -7,6 +16,14 @@ import {
   resolveAudioStreamResponse,
 } from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
+import {
+  getValidQuestionKeysForTopic,
+  MAX_TOTAL_AUDIO_BYTES,
+} from "@vox-flow/api/scoring/forecast-keys";
+import {
+  maxAnswersForAttempt,
+  TOPIC_LESS_CAP,
+} from "@vox-flow/api/scoring/answer-limits";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -127,6 +144,49 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Cannot upload to finalized attempt" }, 400);
   }
 
+  // Load existing answers once: validates question keys against the topic,
+  // caps the answer count, and enables upsert-aware byte accounting.
+  const existingAnswers = await db
+    .select()
+    .from(attemptAnswer)
+    .where(eq(attemptAnswer.attemptId, attemptId));
+  const existingAnswer = existingAnswers.find((a) => a.questionKey === questionKey);
+
+  if (currentAttempt.topicId) {
+    const [topic] = await db
+      .select({
+        id: forecastTopic.id,
+        part: forecastTopic.part,
+        questions: forecastTopic.questions,
+      })
+      .from(forecastTopic)
+      .where(eq(forecastTopic.id, currentAttempt.topicId))
+      .limit(1);
+    if (topic) {
+      const validKeys = getValidQuestionKeysForTopic(topic, currentAttempt.questionKey);
+      if (!validKeys.has(questionKey)) {
+        return c.json({ error: "Invalid question key for this attempt" }, 400);
+      }
+    }
+    // A missing topic row must not shrink the limit to 0 and brick the
+    // attempt: fall back to the static cap (answer-limits.ts).
+    const maxCount = maxAnswersForAttempt(currentAttempt, topic ?? null);
+    if (!existingAnswer && existingAnswers.length >= maxCount) {
+      return c.json({ error: "Question limit reached for this attempt" }, 400);
+    }
+  } else if (!existingAnswer && existingAnswers.length >= TOPIC_LESS_CAP) {
+    return c.json({ error: "Question limit reached" }, 400);
+  }
+
+  // Upsert-aware accounting: re-recording replaces the previous size instead
+  // of accumulating it.
+  const currentTotalBytes = existingAnswers.reduce((sum, a) => sum + a.sizeBytes, 0);
+  const existingBytes = existingAnswer?.sizeBytes ?? 0;
+  const newTotalBytes = currentTotalBytes - existingBytes + contentLength;
+  if (newTotalBytes > MAX_TOTAL_AUDIO_BYTES) {
+    return c.json({ error: "Payload too large: total audio exceeds 35MB" }, 413);
+  }
+
   const audioKey = buildAudioKey(session.user.id, attemptId, questionKey, contentType);
 
   const bucket = "AUDIO_BUCKET" in ENV ? (ENV.AUDIO_BUCKET as R2Bucket) : undefined;
@@ -134,9 +194,18 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Storage unavailable" }, 503);
   }
 
-  await bucket.put(audioKey, c.req.raw.body, {
+  const putResult = await bucket.put(audioKey, c.req.raw.body, {
     httpMetadata: { contentType },
   });
+  // Fail closed: only the size R2 reports for the stored object may be
+  // recorded. A missing/zero size leaves an unverifiable object behind —
+  // remove it and reject instead of trusting the client-declared header.
+  const reportedSize = putResult?.size;
+  if (!reportedSize || reportedSize <= 0) {
+    await bucket.delete(audioKey).catch(() => {});
+    return c.json({ error: "Storage write failed: unverifiable object size" }, 503);
+  }
+  const actualSizeBytes = reportedSize;
   await db
     .insert(attemptAnswer)
     .values({
@@ -149,6 +218,7 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
       audioKey,
       durationMs,
       mimeType: contentType,
+      sizeBytes: actualSizeBytes,
     })
     .onConflictDoUpdate({
       target: [attemptAnswer.attemptId, attemptAnswer.questionKey],
@@ -159,6 +229,7 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
         audioKey,
         durationMs,
         mimeType: contentType,
+        sizeBytes: actualSizeBytes,
       },
     });
 
