@@ -252,20 +252,6 @@ async function runPipeline(
   // Canonical question source: the forecast bank, keyed by
   // (topicId, questionKey). The client-supplied questionText stored on the
   // answer row never enters the grading prompt.
-  let bankTopic: CanonicalQuestionTopic | null = null;
-  const [topicRow] = await db
-    .select()
-    .from(forecastTopic)
-    .where(eq(forecastTopic.id, attemptRow.topicId))
-    .limit(1);
-  if (topicRow) {
-    bankTopic = {
-      id: topicRow.id,
-      title: topicRow.title,
-      part: topicRow.part,
-      questions: parseForecastTopicQuestions(topicRow.questions).questions,
-    };
-  }
 
   const existingRuns = await db
     .select({ runIndex: scoreRun.runIndex })
@@ -292,8 +278,24 @@ async function runPipeline(
   // 1. Load the recordings to attach to grading, one at a time within a byte
   //    budget. Over budget, grading goes transcript-only and the buffers are
   //    dropped at once, so memory stays bounded whatever the learner uploaded.
+  //    The bank topic is loaded on the same path: aggregation-only resumes
+  //    (every run already stored) never build a prompt, so they skip the query.
   const audio: GradingAudio = new Map();
+  let bankTopic: CanonicalQuestionTopic | null = null;
   if (missingRunIndexes.length > 0) {
+    const [topicRow] = await db
+      .select()
+      .from(forecastTopic)
+      .where(eq(forecastTopic.id, attemptRow.topicId))
+      .limit(1);
+    if (topicRow) {
+      bankTopic = {
+        id: topicRow.id,
+        title: topicRow.title,
+        part: topicRow.part,
+        questions: parseForecastTopicQuestions(topicRow.questions).questions,
+      };
+    }
     let totalBytes = 0;
     for (const row of answerRows) {
       const buffer = await loadAudio(row);
