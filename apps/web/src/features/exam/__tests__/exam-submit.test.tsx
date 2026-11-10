@@ -46,6 +46,7 @@ vi.mock("@/hooks/use-recorder", () => ({
 }));
 
 import type { PracticeSession } from "@/features/app-state/types";
+import { promiseWithResolvers } from "@/lib/promise-with-resolvers";
 import { renderWithApp } from "@/test/harness";
 
 import { ExamScreen } from "../exam-screen";
@@ -124,12 +125,12 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+    const { promise: flushPromise, resolve: resolveFlush } = promiseWithResolvers<{
       failedQuestionKeys: string[];
       storageUnreadable: boolean;
     }>();
     flushSpy.mockReturnValue(flushPromise);
-    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    const { promise: submitPromise, resolve: resolveSubmit } = promiseWithResolvers<{ success: boolean }>();
     submitSpy.mockReturnValue(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
 
@@ -226,7 +227,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: submitPromise, reject: rejectSubmit } = Promise.withResolvers<{ success: boolean }>();
+    const { promise: submitPromise, reject: rejectSubmit } = promiseWithResolvers<{ success: boolean }>();
     submitSpy.mockReturnValueOnce(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
     await flush();
@@ -282,7 +283,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+    const { promise: flushPromise, resolve: resolveFlush } = promiseWithResolvers<{
       failedQuestionKeys: string[];
       storageUnreadable: boolean;
     }>();
@@ -305,7 +306,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+    const { promise: flushPromise, resolve: resolveFlush } = promiseWithResolvers<{
       failedQuestionKeys: string[];
       storageUnreadable: boolean;
     }>();
@@ -327,7 +328,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    const { promise: submitPromise, resolve: resolveSubmit } = promiseWithResolvers<{ success: boolean }>();
     submitSpy.mockReturnValue(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
     await flush();
@@ -351,7 +352,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: submitPromise, reject: rejectSubmit } = Promise.withResolvers<{ success: boolean }>();
+    const { promise: submitPromise, reject: rejectSubmit } = promiseWithResolvers<{ success: boolean }>();
     submitSpy.mockReturnValue(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
     await flush();
@@ -378,7 +379,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    const { promise: submitPromise, resolve: resolveSubmit } = promiseWithResolvers<{ success: boolean }>();
     submitSpy.mockReturnValue(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
     await flush();
@@ -405,7 +406,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+    const { promise: flushPromise, resolve: resolveFlush } = promiseWithResolvers<{
       failedQuestionKeys: string[];
       storageUnreadable: boolean;
     }>();
@@ -434,7 +435,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
-    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+    const { promise: flushPromise, resolve: resolveFlush } = promiseWithResolvers<{
       failedQuestionKeys: string[];
       storageUnreadable: boolean;
     }>();
@@ -465,7 +466,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("uploads a session-id recording under the real attempt once attempt.start answers", async () => {
-    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
+    const { promise: startPromise, resolve: resolveStart } = promiseWithResolvers<{ attemptId: string }>();
     startSpy.mockReturnValue(startPromise);
     renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
@@ -504,12 +505,12 @@ describe("ExamScreen submit", () => {
   });
 
   it("tracks a recording whose encode finishes after the attempt id arrived", async () => {
-    const { promise: stopPromise, resolve: resolveStop } = Promise.withResolvers<{
+    const { promise: stopPromise, resolve: resolveStop } = promiseWithResolvers<{
       blob: Blob;
       durationMs: number;
       mimeType: string;
     }>();
-    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
+    const { promise: startPromise, resolve: resolveStart } = promiseWithResolvers<{ attemptId: string }>();
     stopSpy.mockReturnValue(stopPromise);
     startSpy.mockReturnValue(startPromise);
     renderWithApp(<ExamScreen />, { practice: PRACTICE });
@@ -546,7 +547,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("keeps the recording device-only when attempt.start never answers", async () => {
-    startSpy.mockReturnValue(Promise.withResolvers<{ attemptId: string }>().promise);
+    startSpy.mockReturnValue(promiseWithResolvers<{ attemptId: string }>().promise);
     renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
 
@@ -557,7 +558,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("backfills from the resumed active attempt (attempt.getActive)", async () => {
-    const { promise: activePromise, resolve: resolveActive } = Promise.withResolvers<unknown>();
+    const { promise: activePromise, resolve: resolveActive } = promiseWithResolvers<unknown>();
     getActiveSpy.mockReturnValue(activePromise);
     renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
@@ -582,13 +583,13 @@ describe("ExamScreen submit", () => {
   });
 
   it("only tracks the newest take when two takes finish before the attempt id", async () => {
-    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
-    const { promise: stop1Promise, resolve: resolveStop1 } = Promise.withResolvers<{
+    const { promise: startPromise, resolve: resolveStart } = promiseWithResolvers<{ attemptId: string }>();
+    const { promise: stop1Promise, resolve: resolveStop1 } = promiseWithResolvers<{
       blob: Blob;
       durationMs: number;
       mimeType: string;
     }>();
-    const { promise: stop2Promise, resolve: resolveStop2 } = Promise.withResolvers<{
+    const { promise: stop2Promise, resolve: resolveStop2 } = promiseWithResolvers<{
       blob: Blob;
       durationMs: number;
       mimeType: string;
@@ -641,7 +642,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("blocks submit while the attempt is syncing", async () => {
-    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
+    const { promise: startPromise, resolve: resolveStart } = promiseWithResolvers<{ attemptId: string }>();
     startSpy.mockReturnValue(startPromise);
     const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
@@ -684,7 +685,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("forgets pending recordings in memory on unmount without deleting device copies", async () => {
-    startSpy.mockReturnValue(Promise.withResolvers<{ attemptId: string }>().promise);
+    startSpy.mockReturnValue(promiseWithResolvers<{ attemptId: string }>().promise);
     const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
 
@@ -697,7 +698,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("fails the attempt sync after ~15s when attempt.start never answers", async () => {
-    startSpy.mockReturnValue(Promise.withResolvers<{ attemptId: string }>().promise);
+    startSpy.mockReturnValue(promiseWithResolvers<{ attemptId: string }>().promise);
     const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
 
@@ -719,7 +720,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("applies a late attempt id after the sync timeout already failed", async () => {
-    const { promise: startPromise, resolve: resolveStart } = Promise.withResolvers<{ attemptId: string }>();
+    const { promise: startPromise, resolve: resolveStart } = promiseWithResolvers<{ attemptId: string }>();
     startSpy.mockReturnValue(startPromise);
     const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
@@ -768,7 +769,7 @@ describe("ExamScreen submit", () => {
   });
 
   it("fails the attempt sync after ~15s when attempt.getActive never answers", async () => {
-    getActiveSpy.mockReturnValue(Promise.withResolvers<unknown>().promise);
+    getActiveSpy.mockReturnValue(promiseWithResolvers<unknown>().promise);
     renderWithApp(<SessionProbe />);
     await flush();
 
