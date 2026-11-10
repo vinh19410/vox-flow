@@ -1,28 +1,35 @@
 /**
  * Shared parsing + canonical lookup for `forecast_topic.questions`.
  *
- * Used by `routers/forecast.ts` (listPublished) and the scoring pipeline.
- * `routers/forecast-admin.ts` intentionally keeps its own formatting: it maps
- * parsed questions back to legacy `[Cue] `/`[Part 3] ` strings for the admin
- * UI, a display shape this module must not know about.
+ * Canonical resolution (`resolveCanonicalQuestionText`) is built on
+ * `parseTopicQuestions` from `scoring/forecast-keys.ts` (#91) so the scoring
+ * pipeline resolves exactly the question keys the upload guard accepts — one
+ * parser contract across web, upload guard and grading.
+ *
+ * `parseForecastTopicQuestions` (below) intentionally keeps the historical
+ * `listPublished` response shape (embedded `isNew`, no legacy-marker
+ * sniffing); migrating the router onto the shared parser is a follow-up.
  */
 
-export type ForecastTopicQuestionsShape =
-  | string[]
-  | { cueCards: string[]; part3: string[]; isNew?: boolean };
+import { parseTopicQuestions } from "../scoring/forecast-keys";
 
 export type CanonicalQuestionTopic = {
   id: string;
   title: string;
   part: number;
-  questions: ForecastTopicQuestionsShape;
+  questions: unknown;
 };
+
+/** Historical `listPublished` question shape, `isNew` embedded by contract. */
+export type ForecastTopicQuestionsShape =
+  | string[]
+  | { cueCards: string[]; part3: string[]; isNew?: boolean };
 
 /**
  * Parses the `forecast_topic.questions` JSON column. Mirrors the historical
  * `listPublished` behavior exactly: no `[Cue] `/`[Part 3] ` marker sniffing
- * (that is a web-client display concern), and `isNew` is read from any object
- * payload, even one without `cueCards`/`part3`.
+ * (that is the web-client display concern), and `isNew` is read from any
+ * object payload, even one without `cueCards`/`part3`.
  */
 export function parseForecastTopicQuestions(rawJson: string): {
   questions: ForecastTopicQuestionsShape;
@@ -60,9 +67,12 @@ export function parseForecastTopicQuestions(rawJson: string): {
  *
  * Client keys are deterministic: part 1 is `${topicId}-${i}` (index into the
  * questions array), part 2 cue card is `${topicId}-c` (the topic title), and
- * part 3 is `${topicId}-p3-${i}` (index into `part3`). Keys that do not name a
- * real slot of this topic — junk keys, other topics' prefixes, follow-up
- * `-f` keys, out-of-range indexes, legacy plain arrays on part 2+ topics —
+ * part 3 is `${topicId}-p3-${i}` (index into `part3`). Resolution accepts
+ * exactly the key set the #91 upload guard accepts (`getValidQuestionKeysForTopic`)
+ * by using the same `parseTopicQuestions`: legacy `[Cue] `/`[Part 3] `
+ * arrays and plain arrays on part 2+ topics resolve like the guard does.
+ * Keys that do not name a real slot of this topic — junk keys, other topics'
+ * prefixes, follow-up `-f` keys, out-of-range indexes, blank entries —
  * return `null`. Callers must treat `null` as "no server-side text": use a
  * neutral placeholder, never the client-supplied `questionText`.
  */
@@ -76,30 +86,26 @@ export function resolveCanonicalQuestionText(
   }
   const suffix = key.slice(prefix.length);
 
-  if (Array.isArray(topic.questions)) {
-    if (topic.part !== 1) {
-      return null;
-    }
+  const parsed = parseTopicQuestions(topic.questions);
+  const resolveSlot = (text: unknown): string | null =>
+    // Blank bank entries are bad data, not a question: the caller's
+    // placeholder path is more honest than an empty <question_text> block.
+    typeof text === "string" && text.trim() ? text : null;
+
+  if (topic.part === 1) {
     const match = /^(\d+)$/.exec(suffix);
     if (!match) {
       return null;
     }
-    const text = topic.questions[Number(match[1])];
-    // Blank bank entries are bad data, not a question: the caller's
-    // placeholder path is more honest than an empty <question_text> block.
-    return typeof text === "string" && text.trim() ? text : null;
+    return resolveSlot(parsed.part1Questions?.[Number(match[1])]);
   }
 
-  if (topic.part < 2) {
-    return null;
-  }
   if (suffix === "c") {
-    return topic.title.trim() ? topic.title : null;
+    return resolveSlot(topic.title);
   }
   const match = /^p3-(\d+)$/.exec(suffix);
   if (!match) {
     return null;
   }
-  const text = topic.questions.part3[Number(match[1])];
-  return typeof text === "string" && text.trim() ? text : null;
+  return resolveSlot(parsed.part3Questions[Number(match[1])]);
 }
