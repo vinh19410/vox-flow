@@ -2,6 +2,8 @@
 import type { Session } from "@vox-flow/auth";
 import type { Database } from "@vox-flow/db";
 
+import type { ScoringQueue } from "./scoring/queue";
+
 export type ApiEnv = {
   AUDIO_BUCKET?: R2Bucket;
   ADMIN_EMAILS?: string;
@@ -12,6 +14,12 @@ export type ApiEnv = {
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
   SCORE_DISPUTE_ENABLED?: string;
+  /** Cloudflare Queue feeding the scoring consumer; absent in tests and local runs without it. */
+  SCORING_QUEUE?: ScoringQueue;
+  SCORING_MODEL?: string;
+  SCORING_RUNS?: string;
+  SCORING_PRICE_INPUT_PER_1M?: string;
+  SCORING_PRICE_OUTPUT_PER_1M?: string;
   [key: string]: unknown;
 };
 

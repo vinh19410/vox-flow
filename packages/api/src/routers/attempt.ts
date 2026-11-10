@@ -1,11 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { attempt, attemptAnswer } from "@vox-flow/db";
+import { attempt, attemptAnswer, attemptScore } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
 import { buildAudioKey, normalizeMimeType, QUESTION_KEY_RE } from "../audio";
+import { enqueueScoring } from "../scoring/queue";
 export const attemptRouter = router({
   start: protectedProcedure
     .input(
@@ -275,6 +276,19 @@ export const attemptRouter = router({
           submittedAt,
         })
         .where(eq(attempt.id, input.attemptId));
+
+      // Forecast practice attempts are scored asynchronously. The primary key on
+      // attempt_score makes this idempotent: only the call that creates the row enqueues.
+      if (currentAttempt.topicId) {
+        const inserted = await ctx.db
+          .insert(attemptScore)
+          .values({ attemptId: input.attemptId, userId: currentAttempt.userId, status: "queued" })
+          .onConflictDoNothing()
+          .returning({ attemptId: attemptScore.attemptId });
+        if (inserted.length > 0) {
+          await enqueueScoring(ctx.env?.SCORING_QUEUE, input.attemptId);
+        }
+      }
 
       return {
         success: true,

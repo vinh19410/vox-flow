@@ -1,8 +1,62 @@
+import { getAudioExtension, normalizeMimeType } from "../audio";
+
 export type TranscribeOptions = {
   audioBuffer: ArrayBuffer | Uint8Array;
   mimeType: string;
   apiKey?: string;
 };
+
+const WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions";
+
+export type TranscribeStrictOptions = {
+  audioBuffer: ArrayBuffer | Uint8Array;
+  mimeType: string;
+  apiKey: string;
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+};
+
+/**
+ * Whisper transcription that never invents text: a missing key, network error
+ * or non-OK response throws. Used where a transcript is graded, so fake or
+ * empty-on-error text would silently corrupt a score.
+ */
+export async function transcribeAudioStrict(options: TranscribeStrictOptions): Promise<string> {
+  const { audioBuffer, mimeType, apiKey, timeoutMs = 60_000, fetchImpl = fetch } = options;
+  if (!apiKey) {
+    throw new Error("Transcription unavailable: OPENAI_API_KEY is not configured");
+  }
+
+  const normalized = normalizeMimeType(mimeType);
+  if (!normalized) {
+    throw new Error(`Transcription unavailable: unsupported audio type "${mimeType}"`);
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([audioBuffer], { type: normalized }),
+    `audio.${getAudioExtension(normalized)}`,
+  );
+  formData.append("model", "whisper-1");
+  formData.append("language", "en");
+
+  const res = await fetchImpl(WHISPER_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: formData,
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 300);
+    throw new Error(`Transcription API returned ${res.status}: ${detail}`);
+  }
+  const data = (await res.json()) as { text?: unknown };
+  if (typeof data.text !== "string") {
+    throw new Error("Transcription API returned no text field");
+  }
+  return data.text.trim();
+}
 
 export async function transcribeAudio(options: TranscribeOptions): Promise<{ text: string }> {
   const { audioBuffer, mimeType, apiKey } = options;
