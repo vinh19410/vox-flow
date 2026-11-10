@@ -8,7 +8,28 @@ vi.mock("@/lib/feature-flags", () => ({
     billing: true,
   },
 }));
+
+// ExamScreen locks submit while the attempt is syncing; settle the attempt
+// chain deterministically instead of relying on a real fetch rejection.
+const attemptGetActiveSpy = vi.fn().mockResolvedValue(null);
+const attemptStartSpy = vi.fn().mockRejectedValue(new Error("unavailable"));
+
+vi.mock("@/utils/trpc", async (importOriginal) => {
+  const actual = await importOriginal<typeof TrpcModule>();
+  return {
+    ...actual,
+    trpcClient: {
+      ...actual.trpcClient,
+      attempt: {
+        getActive: { query: (...args: unknown[]) => attemptGetActiveSpy(...args) },
+        start: { mutate: (...args: unknown[]) => attemptStartSpy(...args) },
+        submit: { mutate: vi.fn() },
+      },
+    },
+  };
+});
 import { createInitialState } from "@/features/app-state/initial-state";
+import type * as TrpcModule from "@/utils/trpc";
 import { ProtoToast } from "@/features/app-state/toast";
 import { useApp, AppCtx, type AppCtxValue, type AppState, type PracticeSession } from "@/features/app-state/types";
 import { BillingScreen } from "@/features/billing/billing-screen";
@@ -231,8 +252,11 @@ describe("ExamScreen (mock test)", () => {
     expect(screen.getByText(/Part 1 vẫn hợp lệ nếu đủ ý/)).toBeTruthy();
   });
 
-  it("submits via the pre-submit modal with pendingSubmission then routes to scoring", () => {
+  it("submits via the pre-submit modal with pendingSubmission then routes to scoring", async () => {
     const h = renderWithApp(<ExamScreen />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
     for (let k = 0; k < 8; k += 1) answerCurrent();
     fireEvent.click(screen.getByText("Vẫn nộp & chấm"));
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
