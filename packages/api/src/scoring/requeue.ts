@@ -4,16 +4,21 @@ import type { Database } from "@vox-flow/db";
 import { attemptScore } from "@vox-flow/db/schema";
 
 import { enqueueScoring, type ScoringQueue } from "./queue";
-import { MAX_SCORING_TRIES } from "./score-attempt";
+import { MAX_SCORING_TRIES, SCORING_LEASE_MS } from "./score-attempt";
 
-/** A queued/processing score untouched for this long is assumed to have lost its message. */
-export const STALE_SCORE_AFTER_MS = 15 * 60 * 1000;
+/**
+ * A queued/processing score untouched for this long is assumed to have lost
+ * its message (or its worker). Equal to the claim lease, so a processing row is
+ * only re-sent once a new delivery is allowed to claim it.
+ */
+export const STALE_SCORE_AFTER_MS = SCORING_LEASE_MS;
 
 export type RequeueResult = { requeued: number; failed: number };
 
 /**
  * Safety net for lost queue messages: re-enqueues `queued`/`processing` scores
- * that have not been updated for 15 minutes and still have tries left, and
+ * that have not been updated within the lease and still have tries left
+ * (releasing an expired processing claim back to `queued`), and
  * fails the ones that already used every try (e.g. the worker died mid-run on
  * the last attempt), so no submission is stuck forever.
  */
@@ -46,8 +51,9 @@ export async function requeueStaleScores(
       continue;
     }
     if (await enqueueScoring(queue, row.attemptId)) {
-      // Touch the row so the next sweep waits another full window before re-sending.
-      await db.update(attemptScore).set({ updatedAt: now }).where(thisRow);
+      // Release an expired claim and touch the row so the next sweep waits
+      // another full window before re-sending.
+      await db.update(attemptScore).set({ status: "queued", updatedAt: now }).where(thisRow);
       result.requeued += 1;
     }
   }

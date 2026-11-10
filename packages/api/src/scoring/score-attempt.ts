@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "@vox-flow/db";
@@ -20,6 +20,13 @@ import { CRITERION_KEYS, scoredCriterionSchema, type ScoredCriterion } from "./t
 
 /** Processing attempts (queue deliveries or manual retries) before a score is marked failed. */
 export const MAX_SCORING_TRIES = 3;
+
+/**
+ * How long a claim stays exclusive. Longer than the slowest pipeline
+ * (transcription 60s, then up to three sequential 180s grading calls), so a
+ * live worker is never overtaken; after it, the row is assumed abandoned.
+ */
+export const SCORING_LEASE_MS = 12 * 60 * 1000;
 
 /** An error retrying cannot fix (e.g. the attempt has no answers); fails the score immediately. */
 export class NonRetriableScoringError extends Error {
@@ -111,17 +118,28 @@ export async function scoreAttempt(
   const { db } = deps;
   const now = deps.now ?? (() => new Date());
 
+  // Claim only a queued row, or a processing row whose lease expired (its
+  // worker presumably died). A live claim blocks duplicate deliveries.
+  const claimedAt = now();
+  const leaseCutoff = new Date(claimedAt.getTime() - SCORING_LEASE_MS);
   const [claimed] = await db
     .update(attemptScore)
     .set({
       status: "processing",
       tries: sql`${attemptScore.tries} + 1`,
-      updatedAt: now(),
+      updatedAt: claimedAt,
     })
     .where(
       and(
         eq(attemptScore.attemptId, attemptId),
-        inArray(attemptScore.status, ["queued", "processing"]),
+        lt(attemptScore.tries, MAX_SCORING_TRIES),
+        or(
+          eq(attemptScore.status, "queued"),
+          and(
+            eq(attemptScore.status, "processing"),
+            lt(sql`coalesce(${attemptScore.updatedAt}, ${attemptScore.createdAt})`, leaseCutoff.getTime()),
+          ),
+        ),
       ),
     )
     .returning({ tries: attemptScore.tries });
@@ -136,14 +154,32 @@ export async function scoreAttempt(
   } catch (error) {
     const terminal =
       error instanceof NonRetriableScoringError || claimed.tries >= MAX_SCORING_TRIES;
-    await db
+    // Only the current lease holder may record the outcome: a stale worker
+    // whose lease was taken over must not overwrite the newer claim. A
+    // retriable failure releases the lease (back to queued) so the queue's
+    // redelivery can claim it again.
+    const released = await db
       .update(attemptScore)
       .set({
+        status: terminal ? "failed" : "queued",
         lastError: describeScoringError(error),
         updatedAt: now(),
-        ...(terminal ? { status: "failed" as const } : {}),
       })
-      .where(and(eq(attemptScore.attemptId, attemptId), eq(attemptScore.status, "processing")));
+      .where(
+        and(
+          eq(attemptScore.attemptId, attemptId),
+          eq(attemptScore.status, "processing"),
+          eq(attemptScore.tries, claimed.tries),
+        ),
+      )
+      .returning({ attemptId: attemptScore.attemptId });
+    if (released.length === 0) {
+      console.warn(
+        `[scoring] Attempt ${attemptId} lost its lease before failing; leaving the newer claim in charge:`,
+        describeScoringError(error),
+      );
+      return "skipped";
+    }
     if (terminal) {
       console.error(`[scoring] Attempt ${attemptId} failed permanently:`, describeScoringError(error));
       return "failed";
@@ -336,7 +372,8 @@ async function runPipeline(
       scoredAt: finishedAt,
       updatedAt: finishedAt,
     })
-    .where(and(eq(attemptScore.attemptId, attemptId), eq(attemptScore.status, "processing")));
+    // A finished result wins over a failure recorded meanwhile by another worker.
+    .where(and(eq(attemptScore.attemptId, attemptId), ne(attemptScore.status, "done")));
 }
 
 function bandsOf(run: ProcessedRun): CriterionBands {

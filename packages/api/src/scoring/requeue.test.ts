@@ -46,6 +46,13 @@ describe("requeueStaleScores", () => {
       .where(eq(attemptScore.attemptId, "stale-exhausted"));
     expect(exhausted).toMatchObject({ status: "failed", lastError: "Scoring timed out" });
 
+    // An expired processing claim is released so the re-sent message can claim it.
+    const [released] = await ctx.db
+      .select()
+      .from(attemptScore)
+      .where(eq(attemptScore.attemptId, "stale-processing"));
+    expect(released).toMatchObject({ status: "queued", tries: 2, updatedAt: now });
+
     // Touched rows are not re-sent by an immediate second sweep.
     const again = await requeueStaleScores(ctx.db, { send: async (m) => void sent.push(m) }, now);
     expect(again).toEqual({ requeued: 0, failed: 0 });

@@ -5,7 +5,13 @@ import { attempt, attemptAnswer, attemptScore, scoreRun, user } from "@vox-flow/
 
 import { createTestDb, type TestDbContext } from "../test/db";
 import { OpenAIRequestError, type ChatCompletionResult, type ScoringOpenAIClient } from "./openai-client";
-import { MAX_SCORING_TRIES, scoreAttempt, type AudioReader, type ScoreAttemptDeps } from "./score-attempt";
+import {
+  MAX_SCORING_TRIES,
+  SCORING_LEASE_MS,
+  scoreAttempt,
+  type AudioReader,
+  type ScoreAttemptDeps,
+} from "./score-attempt";
 import { scoredCriterionSchema } from "./types";
 
 const USER_ID = "user-score";
@@ -303,7 +309,8 @@ describe("scoreAttempt", () => {
     for (let i = 1; i < MAX_SCORING_TRIES; i++) {
       await expect(scoreAttempt(deps, ATTEMPT_ID)).rejects.toThrow("upstream exploded");
       const score = await loadScore(ctx.db);
-      expect(score.status).toBe("processing");
+      // A retriable failure releases the claim so the redelivery can take it.
+      expect(score.status).toBe("queued");
       expect(score.tries).toBe(i);
       expect(score.lastError).toContain("upstream exploded");
     }
@@ -359,5 +366,107 @@ describe("scoreAttempt", () => {
     const runs = await ctx.db.select().from(scoreRun);
     expect(runs.every((r) => r.costUsd === null)).toBe(true);
     expect((await loadScore(ctx.db)).costUsd).toBeNull();
+  });
+  describe("claim lease and duplicate deliveries", () => {
+    const T0 = new Date("2026-11-10T10:00:00.000Z");
+    const afterLease = new Date(T0.getTime() + SCORING_LEASE_MS + 1000);
+
+    /** Makes every chat call wait until `release()` is called. */
+    function holdChat() {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started!: () => void;
+      const firstCall = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const original = client.chatImpl;
+      client.chatImpl = async (body, i) => {
+        started();
+        await gate;
+        return original(body, i);
+      };
+      return { release, firstCall };
+    }
+
+    it("skips a duplicate delivery while another worker holds the lease", async () => {
+      await seed(ctx.db);
+      const hold = holdChat();
+      const first = scoreAttempt({ ...deps, now: () => T0 }, ATTEMPT_ID);
+      await hold.firstCall;
+      const callsWhileHeld = client.chatBodies.length;
+
+      await expect(scoreAttempt({ ...deps, now: () => T0 }, ATTEMPT_ID)).resolves.toBe("skipped");
+      expect(client.chatBodies).toHaveLength(callsWhileHeld);
+      expect((await loadScore(ctx.db)).tries).toBe(1);
+
+      hold.release();
+      await expect(first).resolves.toBe("done");
+      const score = await loadScore(ctx.db);
+      expect(score).toMatchObject({ status: "done", tries: 1 });
+      expect(await ctx.db.select().from(scoreRun)).toHaveLength(3);
+    });
+
+    it("lets the finished result win over a failure recorded by a worker that took over an expired lease", async () => {
+      await seed(ctx.db);
+      await ctx.db.update(attemptScore).set({ tries: MAX_SCORING_TRIES - 2 }).where(eq(attemptScore.attemptId, ATTEMPT_ID));
+      const hold = holdChat();
+      const first = scoreAttempt({ ...deps, now: () => T0 }, ATTEMPT_ID);
+      await hold.firstCall;
+
+      // The lease looks expired to a second delivery; its run fails on the last try.
+      const failingClient = new FakeOpenAI();
+      failingClient.chatImpl = async () => {
+        throw new Error("upstream exploded");
+      };
+      await expect(
+        scoreAttempt({ ...deps, client: failingClient, now: () => afterLease }, ATTEMPT_ID),
+      ).resolves.toBe("failed");
+      expect((await loadScore(ctx.db)).status).toBe("failed");
+
+      hold.release();
+      await expect(first).resolves.toBe("done");
+      const score = await loadScore(ctx.db);
+      expect(score.status).toBe("done");
+      expect(score.overall).toBe(6.5);
+      expect(score.lastError).toBeNull();
+    });
+
+    it("does not let a worker that lost its lease overwrite the newer claim with an error", async () => {
+      await seed(ctx.db);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started!: () => void;
+      const firstCall = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const staleClient = new FakeOpenAI();
+      staleClient.chatImpl = async () => {
+        started();
+        await gate;
+        throw new Error("stale worker timed out");
+      };
+      const stale = scoreAttempt({ ...deps, client: staleClient, now: () => T0 }, ATTEMPT_ID);
+      await firstCall;
+
+      await expect(scoreAttempt({ ...deps, now: () => afterLease }, ATTEMPT_ID)).resolves.toBe("done");
+
+      release();
+      await expect(stale).resolves.toBe("skipped");
+      const score = await loadScore(ctx.db);
+      expect(score.status).toBe("done");
+      expect(score.lastError).toBeNull();
+    });
+
+    it("does not claim a row that already used every try", async () => {
+      await seed(ctx.db);
+      await ctx.db.update(attemptScore).set({ tries: MAX_SCORING_TRIES }).where(eq(attemptScore.attemptId, ATTEMPT_ID));
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("skipped");
+      expect(client.chatBodies).toHaveLength(0);
+      expect((await loadScore(ctx.db)).status).toBe("queued");
+    });
   });
 });
