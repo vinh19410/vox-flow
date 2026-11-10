@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { transcribeAudio, transcribeAudioStrict } from "../exam/transcribe";
 import { createOpenAIScoringClient, OpenAIRequestError } from "./openai-client";
-import { isAudioRejection } from "./score-attempt";
+import { isAudioRejection, isNonRetriableRequestError } from "./score-attempt";
 
 const audio = new Uint8Array([1, 2, 3]).buffer;
 
@@ -63,6 +63,15 @@ describe("createOpenAIScoringClient", () => {
     expect(isAudioRejection(error)).toBe(true);
   });
 
+  it("raises OpenAIRequestError with the Whisper status when transcription fails", async () => {
+    const fetchImpl = vi.fn(async () => new Response("Incorrect API key", { status: 401 }));
+    const client = createOpenAIScoringClient({ apiKey: "k", fetchImpl });
+    const error = await client.transcribe({ audio, mimeType: "audio/webm" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(OpenAIRequestError);
+    expect((error as OpenAIRequestError).status).toBe(401);
+    expect((error as Error).message).toContain("Transcription API returned 401");
+  });
+
   it("refuses to call the API without a key", async () => {
     const fetchImpl = vi.fn();
     const client = createOpenAIScoringClient({ apiKey: undefined, fetchImpl });
@@ -95,5 +104,17 @@ describe("isAudioRejection", () => {
     expect(isAudioRejection(new OpenAIRequestError(401, "Incorrect API key"))).toBe(false);
     expect(isAudioRejection(new OpenAIRequestError(500, "audio pipeline crashed"))).toBe(false);
     expect(isAudioRejection(new Error("audio"))).toBe(false);
+  });
+});
+
+describe("isNonRetriableRequestError", () => {
+  it("fails fast on 400/401/403/404 and keeps timeouts, rate limits and server errors retriable", () => {
+    for (const status of [400, 401, 403, 404]) {
+      expect(isNonRetriableRequestError(new OpenAIRequestError(status, "x"))).toBe(true);
+    }
+    for (const status of [408, 429, 500, 502, 503]) {
+      expect(isNonRetriableRequestError(new OpenAIRequestError(status, "x"))).toBe(false);
+    }
+    expect(isNonRetriableRequestError(new Error("network down"))).toBe(false);
   });
 });

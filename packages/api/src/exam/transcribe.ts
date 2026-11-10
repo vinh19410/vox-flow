@@ -8,6 +8,17 @@ export type TranscribeOptions = {
 
 const WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions";
 
+/** Non-OK HTTP response from the transcription API; `status` lets callers decide on retries. */
+export class TranscriptionApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "TranscriptionApiError";
+    this.status = status;
+  }
+}
+
 export type TranscribeStrictOptions = {
   audioBuffer: ArrayBuffer | Uint8Array;
   mimeType: string;
@@ -49,7 +60,7 @@ export async function transcribeAudioStrict(options: TranscribeStrictOptions): P
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => "")).slice(0, 300);
-    throw new Error(`Transcription API returned ${res.status}: ${detail}`);
+    throw new TranscriptionApiError(res.status, `Transcription API returned ${res.status}: ${detail}`);
   }
   const data = (await res.json()) as { text?: unknown };
   if (typeof data.text !== "string") {

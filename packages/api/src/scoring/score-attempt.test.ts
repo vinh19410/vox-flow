@@ -360,6 +360,36 @@ describe("scoreAttempt", () => {
     await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("skipped");
   });
 
+  it.each([400, 401, 403, 404])("fails on the first try when grading returns %i", async (status) => {
+    await seed(ctx.db);
+    client.chatImpl = async () => {
+      throw new OpenAIRequestError(status, `OpenAI chat completion returned ${status}: Incorrect API key`);
+    };
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
+    const score = await loadScore(ctx.db);
+    expect(score).toMatchObject({ status: "failed", tries: 1 });
+    expect(score.lastError).toContain(`returned ${status}`);
+  });
+
+  it("fails on the first try when Whisper cannot decode a recording", async () => {
+    await seed(ctx.db);
+    client.transcribeImpl = async () => {
+      throw new OpenAIRequestError(400, "Transcription API returned 400: Invalid file format");
+    };
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
+    expect(await loadScore(ctx.db)).toMatchObject({ status: "failed", tries: 1 });
+    expect(client.chatBodies).toHaveLength(0);
+  });
+
+  it("keeps rate limits and server errors retriable", async () => {
+    await seed(ctx.db);
+    client.chatImpl = async () => {
+      throw new OpenAIRequestError(503, "OpenAI chat completion returned 503: overloaded");
+    };
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).rejects.toThrow("503");
+    expect(await loadScore(ctx.db)).toMatchObject({ status: "queued", tries: 1 });
+  });
+
   it("never stores fake text when transcription fails", async () => {
     await seed(ctx.db);
     client.transcribeImpl = async (mimeType) => {

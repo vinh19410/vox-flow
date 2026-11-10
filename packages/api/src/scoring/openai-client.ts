@@ -1,4 +1,4 @@
-import { transcribeAudioStrict } from "../exam/transcribe";
+import { TranscriptionApiError, transcribeAudioStrict } from "../exam/transcribe";
 
 const CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
@@ -51,13 +51,21 @@ export function createOpenAIScoringClient(
 
   return {
     async transcribe({ audio, mimeType }) {
-      return transcribeAudioStrict({
-        audioBuffer: audio,
-        mimeType,
-        apiKey: requireKey(),
-        timeoutMs: transcribeTimeoutMs,
-        fetchImpl,
-      });
+      try {
+        return await transcribeAudioStrict({
+          audioBuffer: audio,
+          mimeType,
+          apiKey: requireKey(),
+          timeoutMs: transcribeTimeoutMs,
+          fetchImpl,
+        });
+      } catch (error) {
+        // Surface Whisper HTTP failures with their status, like chat completions.
+        if (error instanceof TranscriptionApiError) {
+          throw new OpenAIRequestError(error.status, error.message);
+        }
+        throw error;
+      }
     },
 
     async chatCompletion(requestBody) {

@@ -94,6 +94,20 @@ export function isAudioRejection(error: unknown): boolean {
   );
 }
 
+/**
+ * HTTP statuses retrying cannot fix: a malformed request or undecodable file
+ * (400), a bad or unauthorised key (401/403), or an unknown model (404).
+ * Timeouts (408), rate limits (429) and server errors (5xx) stay retriable.
+ * Audio rejections never reach this check: grading falls back to
+ * transcript-only first.
+ */
+const NON_RETRIABLE_HTTP_STATUSES: ReadonlySet<number> = new Set([400, 401, 403, 404]);
+
+/** True when an OpenAI/Whisper error will fail the same way on every retry. */
+export function isNonRetriableRequestError(error: unknown): boolean {
+  return error instanceof OpenAIRequestError && NON_RETRIABLE_HTTP_STATUSES.has(error.status);
+}
+
 /** Marks a non-terminal score as failed with a sanitised reason. */
 export async function markScoreFailed(
   db: Database,
@@ -160,7 +174,9 @@ export async function scoreAttempt(
     return "done";
   } catch (error) {
     const terminal =
-      error instanceof NonRetriableScoringError || claimed.tries >= MAX_SCORING_TRIES;
+      error instanceof NonRetriableScoringError ||
+      isNonRetriableRequestError(error) ||
+      claimed.tries >= MAX_SCORING_TRIES;
     // Only the current lease holder may record the outcome: a stale worker
     // whose lease was taken over must not overwrite the newer claim. A
     // retriable failure releases the lease (back to queued) so the queue's
