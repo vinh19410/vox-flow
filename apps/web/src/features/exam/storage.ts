@@ -1,3 +1,5 @@
+import { promiseWithResolvers } from "@/lib/promise-with-resolvers";
+
 export type AudioBlobRecord = {
   attemptId: string;
   questionKey: string;
@@ -24,7 +26,7 @@ function getKey(attemptId: string, questionKey: string): string {
 }
 
 function openDatabase(): Promise<IDBDatabase> {
-  const { promise, resolve, reject } = Promise.withResolvers<IDBDatabase>();
+  const { promise, resolve, reject } = promiseWithResolvers<IDBDatabase>();
 
   if (typeof window === "undefined" || !window.indexedDB) {
     reject(new Error("IndexedDB is not supported in this environment"));
@@ -53,7 +55,7 @@ function openDatabase(): Promise<IDBDatabase> {
  * QuotaExceededError is reported on the transaction, not on the request).
  */
 function transactionDone(tx: IDBTransaction): Promise<void> {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const { promise, resolve, reject } = promiseWithResolvers<void>();
   tx.oncomplete = () => resolve();
   tx.onabort = () => reject(tx.error ?? new Error("IndexedDB transaction aborted"));
   tx.onerror = () => reject(tx.error ?? new Error("IndexedDB transaction failed"));
@@ -94,7 +96,7 @@ export async function getAudioBlob(
   if (inMemory) return inMemory;
   try {
     const db = await openDatabase();
-    const { promise, resolve, reject } = Promise.withResolvers<AudioBlobRecord | null>();
+    const { promise, resolve, reject } = promiseWithResolvers<AudioBlobRecord | null>();
     const tx = db.transaction(STORE_NAME, "readonly");
     const store = tx.objectStore(STORE_NAME);
     const req = store.get([attemptId, questionKey]);
@@ -125,7 +127,7 @@ export async function listPendingUploads(attemptId: string): Promise<AudioBlobRe
     db = null;
   }
   if (db) {
-    const { promise, resolve, reject } = Promise.withResolvers<AudioBlobRecord[]>();
+    const { promise, resolve, reject } = promiseWithResolvers<AudioBlobRecord[]>();
     const tx = db.transaction(STORE_NAME, "readonly");
     const req = tx.objectStore(STORE_NAME).index("attemptId").getAll(attemptId);
     req.onsuccess = () => resolve((req.result as AudioBlobRecord[] | undefined) ?? []);

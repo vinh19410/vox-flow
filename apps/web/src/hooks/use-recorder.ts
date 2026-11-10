@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { promiseWithResolvers } from "@/lib/promise-with-resolvers";
+
 export type RecorderStatus =
   | "idle"
   | "requesting"
@@ -101,7 +103,7 @@ export function useRecorder(): UseRecorderResult {
       return null;
     }
 
-    const { promise, resolve } = Promise.withResolvers<RecordedAudio | null>();
+    const { promise, resolve } = promiseWithResolvers<RecordedAudio | null>();
     const durationMs = Math.round(performance.now() - startTimeRef.current);
     const mimeType = mimeTypeRef.current;
 
