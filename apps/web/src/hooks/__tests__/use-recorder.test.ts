@@ -1,6 +1,7 @@
 import { renderHook, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { detectSupportedMimeType, useRecorder, type RecordedAudio } from "../use-recorder";
+import { withoutPromiseWithResolvers } from "@/test/without-promise-with-resolvers";
 
 describe("useRecorder", () => {
   let originalMediaRecorder: typeof MediaRecorder;
@@ -110,5 +111,30 @@ describe("useRecorder", () => {
     expect(started).toBe(false);
     expect(result.current.status).toBe("denied");
     expect(result.current.isRecording).toBe(false);
+  });
+
+  it("stops and returns audio when Promise.withResolvers is unavailable (iOS Safari < 17.4)", async () => {
+    const restore = withoutPromiseWithResolvers();
+    try {
+      const { result } = renderHook(() => useRecorder());
+
+      let started = false;
+      await act(async () => {
+        started = await result.current.start();
+      });
+      expect(started).toBe(true);
+
+      let recorded: RecordedAudio | null = null;
+      await act(async () => {
+        recorded = await result.current.stop();
+      });
+
+      expect(recorded).toBeDefined();
+      const audio = recorded as unknown as RecordedAudio;
+      expect(audio.blob).toBeInstanceOf(Blob);
+      expect(audio.durationMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      restore();
+    }
   });
 });
