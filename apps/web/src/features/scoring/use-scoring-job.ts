@@ -27,7 +27,11 @@ export const MAX_NOT_SCORED_POLLS = 4;
 export type ScoringView =
   | { kind: "submitting" }
   | { kind: "submit_error" }
-  /** Some recordings never reached the server; they are still stored on this device. */
+  /**
+   * Some recordings never reached the server; they are still stored on this
+   * device. `missing` is 0 when the device copies could not be read, so it is
+   * unknown whether anything is missing.
+   */
   | { kind: "upload_error"; missing: number }
   | { kind: "in_progress"; status: "queued" | "processing" }
   | { kind: "failed" }
@@ -121,8 +125,8 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
    * so the attempt is never scored on a silently incomplete set of answers.
    */
   const ensureUploaded = useCallback(async (id: string): Promise<boolean> => {
-    const { failedQuestionKeys } = await flushAnswerUploads(id);
-    if (failedQuestionKeys.length === 0) return true;
+    const { failedQuestionKeys, storageUnreadable } = await flushAnswerUploads(id);
+    if (failedQuestionKeys.length === 0 && !storageUnreadable) return true;
     if (mountedRef.current) setView({ kind: "upload_error", missing: failedQuestionKeys.length });
     return false;
   }, []);

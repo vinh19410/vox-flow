@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { flushAnswerUploads, trackAnswerUpload, UPLOAD_RETRIES, type AnswerUpload } from "../answer-uploads";
-import { clearAttemptAudio, getAudioBlob, listPendingUploads, saveAudioBlob } from "../storage";
+import { deleteAudioBlob, getAudioBlob, listPendingUploads, saveAudioBlob } from "../storage";
+import { FakeIndexedDB } from "./fake-indexed-db";
 
-const ATTEMPT = "att-uploads";
+// Upload bookkeeping is module state, so every test gets its own attempt.
+let attemptSeq = 0;
+let ATTEMPT = "";
 
 function record(questionKey: string, order = 0): AnswerUpload {
   return {
@@ -27,7 +30,8 @@ describe("answer uploads", () => {
   beforeEach(async () => {
     fetchSpy.mockReset();
     vi.stubGlobal("fetch", fetchSpy);
-    await clearAttemptAudio(ATTEMPT);
+    attemptSeq += 1;
+    ATTEMPT = `att-uploads-${attemptSeq}`;
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -48,7 +52,7 @@ describe("answer uploads", () => {
     expect(flushed).toBe(false);
 
     finish(ok());
-    await expect(flush).resolves.toEqual({ failedQuestionKeys: [] });
+    await expect(flush).resolves.toEqual({ failedQuestionKeys: [], storageUnreadable: false });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(String(fetchSpy.mock.calls[0]![0])).toContain(`/api/attempts/${ATTEMPT}/answers/q1/audio?`);
     // The local copy is dropped once the server has it.
@@ -65,7 +69,7 @@ describe("answer uploads", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
 
     ready(record("q1"));
-    await expect(flush).resolves.toEqual({ failedQuestionKeys: [] });
+    await expect(flush).resolves.toEqual({ failedQuestionKeys: [], storageUnreadable: false });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -75,7 +79,7 @@ describe("answer uploads", () => {
     await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
     expect(await getAudioBlob(ATTEMPT, "q1")).not.toBeNull();
 
-    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({ failedQuestionKeys: [] });
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({ failedQuestionKeys: [], storageUnreadable: false });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(await listPendingUploads(ATTEMPT)).toHaveLength(0);
   });
@@ -89,7 +93,7 @@ describe("answer uploads", () => {
     fetchSpy.mockImplementation(async (input) => (String(input).includes("/q2/") ? ok() : fail()));
 
     const result = await flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 });
-    expect(result).toEqual({ failedQuestionKeys: ["q1"] });
+    expect(result).toEqual({ failedQuestionKeys: ["q1"], storageUnreadable: false });
     const q1Calls = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/q1/"));
     expect(q1Calls).toHaveLength(UPLOAD_RETRIES);
     expect(await getAudioBlob(ATTEMPT, "q1")).not.toBeNull();
@@ -100,7 +104,83 @@ describe("answer uploads", () => {
     fetchSpy.mockResolvedValue(ok());
     await saveAudioBlob(record("q1"));
 
-    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({ failedQuestionKeys: [] });
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({ failedQuestionKeys: [], storageUnreadable: false });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed upload from memory when its device copy is gone", async () => {
+    fetchSpy.mockRejectedValueOnce(new TypeError("network")).mockResolvedValueOnce(ok());
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
+    // The browser evicted the stored copy (or it never committed).
+    await deleteAudioBlob(ATTEMPT, "q1");
+    expect(await listPendingUploads(ATTEMPT)).toHaveLength(0);
+
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+      failedQuestionKeys: [],
+      storageUnreadable: false,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(String(fetchSpy.mock.calls[1]![0])).toContain("/answers/q1/audio?");
+  });
+
+  it("reports a failed upload whose device copy is gone instead of dropping it", async () => {
+    fetchSpy.mockImplementation(async () => fail());
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
+    await deleteAudioBlob(ATTEMPT, "q1");
+
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+      failedQuestionKeys: ["q1"],
+      storageUnreadable: false,
+    });
+  });
+
+  it("forgets a failed upload once a later upload of the same answer succeeds", async () => {
+    fetchSpy.mockResolvedValueOnce(fail()).mockResolvedValue(ok());
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(true);
+    fetchSpy.mockClear();
+
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+      failedQuestionKeys: [],
+      storageUnreadable: false,
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  describe("with IndexedDB", () => {
+    let idb: FakeIndexedDB;
+    let uninstall: () => void;
+    beforeEach(() => {
+      idb = new FakeIndexedDB();
+      uninstall = idb.install();
+    });
+    afterEach(() => uninstall());
+
+    it("retries a recording whose IndexedDB write was rolled back at commit", async () => {
+      idb.abortNextCommit = new DOMException("Quota exceeded", "QuotaExceededError");
+      fetchSpy.mockRejectedValueOnce(new TypeError("network")).mockResolvedValueOnce(ok());
+
+      await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
+      expect(idb.rows.size).toBe(0);
+
+      await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+        failedQuestionKeys: [],
+        storageUnreadable: false,
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not submit as complete when the device copies cannot be read", async () => {
+      fetchSpy.mockResolvedValue(ok());
+      // Left over from an earlier page load, so only the device knows about it.
+      await saveAudioBlob(record("q1"));
+      idb.failNextRead = new DOMException("Read failed", "UnknownError");
+
+      await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+        failedQuestionKeys: [],
+        storageUnreadable: true,
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 });

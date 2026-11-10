@@ -49,7 +49,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     submitSpy.mockReset();
     statusSpy.mockReset();
     retrySpy.mockReset();
-    flushSpy.mockReset().mockResolvedValue({ failedQuestionKeys: [] });
+    flushSpy.mockReset().mockResolvedValue({ failedQuestionKeys: [], storageUnreadable: false });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -91,7 +91,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
   });
 
   it("waits for answer uploads to finish before submitting", async () => {
-    let finish!: (r: { failedQuestionKeys: string[] }) => void;
+    let finish!: (r: { failedQuestionKeys: string[]; storageUnreadable: boolean }) => void;
     flushSpy.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
@@ -102,16 +102,16 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(submitSpy).not.toHaveBeenCalled();
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
 
-    await act(async () => finish({ failedQuestionKeys: [] }));
+    await act(async () => finish({ failedQuestionKeys: [], storageUnreadable: false }));
     await advance(0);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
   });
 
   it("does not submit when a recording failed to upload, and resends it on demand", async () => {
     flushSpy
-      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"] })
-      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"] })
-      .mockResolvedValueOnce({ failedQuestionKeys: [] });
+      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"], storageUnreadable: false })
+      .mockResolvedValueOnce({ failedQuestionKeys: ["q2"], storageUnreadable: false })
+      .mockResolvedValueOnce({ failedQuestionKeys: [], storageUnreadable: false });
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
@@ -137,7 +137,7 @@ describe("ScoringScreen (forecast practice scoring)", () => {
   });
 
   it("lets the learner submit without the recordings that keep failing", async () => {
-    flushSpy.mockResolvedValue({ failedQuestionKeys: ["q1", "q2"] });
+    flushSpy.mockResolvedValue({ failedQuestionKeys: ["q1", "q2"], storageUnreadable: false });
     submitSpy.mockResolvedValue({ success: true });
     statusSpy.mockResolvedValue(st("queued"));
 
@@ -150,6 +150,18 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(flushSpy).toHaveBeenCalledTimes(1);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+  });
+
+  it("does not submit when the recordings kept on the device could not be read", async () => {
+    flushSpy.mockResolvedValue({ failedQuestionKeys: [], storageUnreadable: true });
+    submitSpy.mockResolvedValue({ success: true });
+
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    expect(screen.getByTestId("scoring-upload-error")).toBeTruthy();
+    expect(screen.getByText(/Chưa đọc được các bản ghi âm lưu trên thiết bị/)).toBeTruthy();
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
   });
 
   it("never mentions multiple runs while scoring", async () => {

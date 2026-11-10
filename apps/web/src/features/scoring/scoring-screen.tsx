@@ -144,7 +144,11 @@ function ScoringJobState({
           size="lg"
           icon={TriangleAlert}
           title="Chưa tải lên đủ câu trả lời"
-          description={`${view.missing} câu trả lời chưa tải lên được nên bài chưa được nộp. Bản ghi âm vẫn được giữ trên thiết bị này, hãy kiểm tra kết nối rồi gửi lại.`}
+          description={
+            view.missing > 0
+              ? `${view.missing} câu trả lời chưa tải lên được nên bài chưa được nộp. Bản ghi âm vẫn được giữ trên thiết bị này, hãy kiểm tra kết nối rồi gửi lại.`
+              : "Chưa đọc được các bản ghi âm lưu trên thiết bị nên chưa chắc bài đã đủ câu trả lời. Bài chưa được nộp, hãy thử gửi lại."
+          }
           action={{ label: busy ? "Đang gửi…" : "Gửi lại", onClick: onResubmit, disabled: busy }}
           secondaryAction={home}
           bordered

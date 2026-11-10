@@ -12,14 +12,42 @@ const UPLOAD_TIMEOUT_MS = 120_000;
 export type AnswerUpload = Omit<AudioBlobRecord, "createdAt">;
 
 export type FlushResult = {
-  /** Question keys whose recording is still only on this device. */
+  /** Question keys whose recording is still only on this device (or only in this page's memory). */
   failedQuestionKeys: string[];
+  /**
+   * True when the recordings kept on this device could not be read, so it is
+   * unknown whether some answer from an earlier page load is still missing.
+   */
+  storageUnreadable: boolean;
 };
 
-/** Upload promises per attempt that have not settled yet; they never reject. */
-const inFlight = new Map<string, Set<Promise<boolean>>>();
+/** Outcome of one tracked upload; `record` is null when there was nothing to upload. */
+type UploadOutcome = { record: AnswerUpload | null; ok: boolean };
 
-function track(attemptId: string, upload: Promise<boolean>): void {
+/** Upload promises per attempt that have not settled yet; they never reject. */
+const inFlight = new Map<string, Set<Promise<UploadOutcome>>>();
+
+/**
+ * Recordings per attempt (by question) whose last upload failed, kept in memory
+ * so a flush can retry them even if the device copy never committed or was
+ * evicted. Cleared once the recording reaches the server.
+ */
+const failedUploads = new Map<string, Map<string, AnswerUpload>>();
+
+function rememberOutcome(outcome: UploadOutcome): void {
+  const { record, ok } = outcome;
+  if (!record) return;
+  const failed = failedUploads.get(record.attemptId);
+  if (ok) {
+    failed?.delete(record.questionKey);
+    if (failed?.size === 0) failedUploads.delete(record.attemptId);
+    return;
+  }
+  if (failed) failed.set(record.questionKey, record);
+  else failedUploads.set(record.attemptId, new Map([[record.questionKey, record]]));
+}
+
+function track(attemptId: string, upload: Promise<UploadOutcome>): void {
   let set = inFlight.get(attemptId);
   if (!set) {
     set = new Set();
@@ -79,17 +107,20 @@ export function trackAnswerUpload(
   attemptId: string,
   recording: Promise<AnswerUpload | null> | AnswerUpload,
 ): Promise<boolean> {
-  const upload = (async () => {
+  const upload = (async (): Promise<UploadOutcome> => {
     const record = await recording;
-    if (!record) return true;
+    if (!record) return { record: null, ok: true };
     await saveAudioBlob(record).catch(() => {});
-    return postAnswerAudio(record);
-  })().catch((err: unknown) => {
+    const outcome = { record, ok: await postAnswerAudio(record) };
+    rememberOutcome(outcome);
+    return outcome;
+  })().catch((err: unknown): UploadOutcome => {
+    // The recorder never produced a recording, so there is nothing to retry.
     console.warn("Answer upload could not start:", err);
-    return false;
+    return { record: null, ok: false };
   });
   track(attemptId, upload);
-  return upload;
+  return upload.then((outcome) => outcome.ok);
 }
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -97,8 +128,9 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 /**
  * Makes sure every recording of the attempt reached the server before it is
  * submitted: waits for uploads still in flight, then retries (a bounded number
- * of times) any recording that is still only stored on this device, including
- * ones left over from before a page reload.
+ * of times) every recording that has not reached the server, whether it is
+ * kept on this device (including ones left over from before a page reload) or
+ * only in this page's memory because the device copy was never stored.
  */
 export async function flushAnswerUploads(
   attemptId: string,
@@ -106,17 +138,34 @@ export async function flushAnswerUploads(
 ): Promise<FlushResult> {
   const { retries = UPLOAD_RETRIES, retryDelayMs = UPLOAD_RETRY_DELAY_MS } = options;
 
-  await Promise.allSettled([...(inFlight.get(attemptId) ?? [])]);
+  await Promise.all([...(inFlight.get(attemptId) ?? [])]);
 
-  const pending = await listPendingUploads(attemptId).catch(() => [] as AudioBlobRecord[]);
+  // Device copies first; a failed upload remembered in memory wins, since it is
+  // this page's most recent recording of that question.
+  const toRetry = new Map<string, AnswerUpload>();
+  let storageUnreadable = false;
+  try {
+    for (const record of await listPendingUploads(attemptId)) toRetry.set(record.questionKey, record);
+  } catch (err) {
+    console.warn("Could not read the recordings kept on this device:", err);
+    storageUnreadable = true;
+  }
+  for (const record of failedUploads.get(attemptId)?.values() ?? []) toRetry.set(record.questionKey, record);
+
   const outcomes = await Promise.all(
-    pending.map(async (record) => {
+    [...toRetry.values()].map(async (record) => {
       for (let attempt = 1; attempt <= retries; attempt += 1) {
         if (attempt > 1) await wait(retryDelayMs * (attempt - 1));
-        if (await postAnswerAudio(record)) return null;
+        if (await postAnswerAudio(record)) {
+          rememberOutcome({ record, ok: true });
+          return null;
+        }
       }
       return record.questionKey;
     }),
   );
-  return { failedQuestionKeys: outcomes.filter((key): key is string => key !== null) };
+  return {
+    failedQuestionKeys: outcomes.filter((key): key is string => key !== null),
+    storageUnreadable,
+  };
 }
