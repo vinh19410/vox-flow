@@ -1,7 +1,7 @@
 ---
 title: "Ẩn transcript giả lập khi ghi âm (issue #127)"
 description: "Thay chữ transcript giả lập từ đáp án mẫu bằng UI trung thực: label 'Đang ghi âm…', không chữ giả, sau ghi hiển thị thời lượng + ghi chú transcript ở màn kết quả."
-status: pending
+status: completed
 priority: P1
 effort: 2h
 issue: 127
