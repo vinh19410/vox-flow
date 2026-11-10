@@ -1,6 +1,6 @@
 ---
 title: "Scoring pipeline (beta) cho luyện forecast"
-status: in-progress
+status: done
 issue: 90
 branch: feat/scoring-pipeline-forecast
 related: [17, 24]
@@ -32,15 +32,15 @@ Lượt luyện forecast được chấm thật bằng `gpt-6-luna` (3 lần đ�
 ## Phases
 | # | Phase | Sở hữu file | Status |
 |---|-------|-------------|--------|
-| 1 | Backend: pipeline, queue, router | `packages/api/**`, `packages/infra/**`, `apps/server/**` | Pending |
-| 2 | Frontend: màn chấm và màn kết quả | `apps/web/**` | Pending |
-| 3 | Review độc lập, PR vào `dev`, merge, deploy | — | Pending |
-| 4 | POT trên beta | `plans/reports/**` | Pending |
+| 1 | Backend: pipeline, queue, router | `packages/api/**`, `packages/infra/**`, `apps/server/**` | Done |
+| 2 | Frontend: màn chấm và màn kết quả | `apps/web/**` | Done |
+| 3 | Review độc lập, PR vào `dev`, merge, deploy | — | Done |
+| 4 | POT trên beta | `plans/reports/**` | Done |
 
 ## Acceptance Criteria
-- [ ] Nộp lượt forecast tạo `attempt_score=queued`; queue chuyển giọng nói thành chữ, chấm 3 lần, lấy trung vị 4 tiêu chí và band tổng (bước 0.5), lưu `score_run` và chi phí; gọi trùng không tạo thêm kết quả; hết số lần thử thì `failed`.
-- [ ] Màn chấm theo dõi trạng thái thật; lỗi có nút chấm lại, không mất bài.
-- [ ] Màn kết quả đọc `scoring.getResult`; không hiện khoảng tin cậy; không paywall; chỉ chủ bài đọc được.
-- [ ] Mode khác giữ màn "đã ghi nhận".
-- [ ] Test liên quan và `pnpm check-types` pass; review độc lập sạch; deploy-beta xanh.
-- [ ] POT trên beta đăng lên #90.
+- [x] Nộp lượt forecast tạo `attempt_score=queued`; queue chuyển giọng nói thành chữ, chấm 3 lần, lấy trung vị 4 tiêu chí và band tổng (bước 0.5), lưu `score_run` và chi phí; gọi trùng không tạo thêm kết quả; hết số lần thử thì `failed`.
+- [x] Màn chấm theo dõi trạng thái thật; lỗi có nút chấm lại, không mất bài.
+- [x] Màn kết quả đọc `scoring.getResult`; không hiện khoảng tin cậy; không paywall; chỉ chủ bài đọc được.
+- [x] Mode khác giữ màn "đã ghi nhận".
+- [x] Test liên quan và `pnpm check-types` pass; review độc lập sạch; deploy-beta xanh.
+- [x] POT trên beta đăng lên #90.
