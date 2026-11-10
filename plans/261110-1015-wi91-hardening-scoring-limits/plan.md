@@ -1,7 +1,7 @@
 ---
 title: "Hardening Scoring Limits and Worker Memory"
 description: "Hardening scoring pipeline limits: topic-aware question count, upsert-aware audio byte accounting (35MB), sequential Cloudflare Worker transcription, and retry limits"
-status: pending
+status: completed
 priority: P1
 effort: 6h
 issue: 91
@@ -103,4 +103,6 @@ flowchart TD
 - Verified: 16 | Failed: 0 | Unverified: 0
 - Tier: Standard
 - All paths confirmed: `packages/db/src/schema/attempt.ts`, `packages/db/src/schema/score.ts`, `packages/api/src/data-registry.ts`, `packages/api/src/routers/attempt.ts`, `packages/api/src/scoring/score-attempt.ts`, `packages/api/src/routers/scoring.ts`, `apps/server/src/index.ts`, `apps/web/src/features/scoring/scoring-screen.tsx`, `apps/web/src/features/scoring/use-scoring-job.ts`.
+
+ultra: union=15/18 single_candidate_only=8 (5 candidates + Kongming verifier; 0 Critical / 0 High / 2 Medium / 13 Low; M1 consumer-side re-validation và M2 daily-limit copy đã fix trước ship; các Low còn lại ghi nhận làm follow-up trong PR)
 
