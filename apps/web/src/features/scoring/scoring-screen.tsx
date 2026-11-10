@@ -36,11 +36,11 @@ export function ScoringScreen() {
     }
   }, [set, setPendingSubmission]);
 
-  const scoring = useScoringJob(job, {
+  const scoring = useScoringJob(job?.kind === "attempt" ? job : null, {
     onSubmitted: (attemptId) =>
       set((prev) =>
-        prev.scoringAttempt?.attemptId === attemptId
-          ? { scoringAttempt: { attemptId, submitted: true } }
+        prev.scoringAttempt?.kind === "attempt" && prev.scoringAttempt.attemptId === attemptId
+          ? { scoringAttempt: { kind: "attempt", attemptId, submitted: true } }
           : {},
       ),
     onDone: (attemptId) => {
@@ -51,7 +51,9 @@ export function ScoringScreen() {
   });
 
   const content =
-    !job || scoring.view.kind === "not_scorable" ? (
+    job?.kind === "local_only" ? (
+      <LocalOnlyState onHome={() => go("dashboard")} onMore={() => go("forecast")} />
+    ) : !job || scoring.view.kind === "not_scorable" ? (
       <RecordedState onHome={() => go("dashboard")} onMore={() => go("forecast")} />
     ) : (
       <ScoringJobState
@@ -78,7 +80,7 @@ export function ScoringScreen() {
   );
 }
 
-/** Unscored modes: the attempt is saved, AI scoring is not offered for it. */
+/** Unscored modes and no-job entry: a saved unscored attempt on the server, or no attempt at all (e.g. deep link). */
 function RecordedState({ onHome, onMore }: { onHome: () => void; onMore: () => void }) {
   return (
     <EmptyState
@@ -86,6 +88,22 @@ function RecordedState({ onHome, onMore }: { onHome: () => void; onMore: () => v
       icon={CheckCircle2}
       title="Bài thi đã được ghi nhận!"
       description="Hệ thống đã lưu lại toàn bộ câu trả lời của bạn. Tính năng chấm điểm AI chi tiết đang trong giai đoạn thử nghiệm Beta."
+      action={{ label: "Về trang chủ", onClick: onHome }}
+      secondaryAction={{ label: "Luyện thêm đề khác", onClick: onMore, variant: "outline" }}
+      bordered
+      className="bg-white p-8"
+    />
+  );
+}
+
+/** Submitted with no server attempt: nothing was uploaded. Honest state — no success icon, no retry promise (#119). */
+function LocalOnlyState({ onHome, onMore }: { onHome: () => void; onMore: () => void }) {
+  return (
+    <EmptyState
+      size="lg"
+      icon={TriangleAlert}
+      title="Chưa gửi được bài thi lên máy chủ"
+      description="Phiên thi chưa đồng bộ được với máy chủ nên câu trả lời của bạn chưa được ghi nhận. Bản ghi âm có thể vẫn còn lưu tạm trên thiết bị này nhưng chưa thể chấm điểm hay khôi phục tự động."
       action={{ label: "Về trang chủ", onClick: onHome }}
       secondaryAction={{ label: "Luyện thêm đề khác", onClick: onMore, variant: "outline" }}
       bordered

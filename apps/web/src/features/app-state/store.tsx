@@ -4,7 +4,7 @@ import type { Attempt } from "../history/types";
 import { createInitialState } from "./initial-state";
 import type { AppState, AppStateUpdater, AppStoreValue } from "./types";
 
-export const PROTO_STORAGE_KEY = "vox-flow-proto-state-v2";
+export const PROTO_STORAGE_KEY = "vox-flow-proto-state-v3";
 
 const ModeSchema = z.enum(["full", "p1", "p2", "p3"]);
 const PartSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
@@ -41,10 +41,19 @@ const PracticeSessionSchema = z.object({
   attemptId: z.string().optional(),
 });
 
-const ScoringJobSchema = z.object({
-  attemptId: z.string().min(1),
-  submitted: z.boolean(),
-});
+const ScoringJobSchema = z.preprocess(
+  // Payloads persisted before #119 carry no `kind` — always the attempt variant.
+  // Belt-and-suspenders only: the v3 storage key below means pre-#119 payloads
+  // are never read at all; this guards future writers that forget `kind`.
+  (raw) =>
+    raw && typeof raw === "object" && !("kind" in raw)
+      ? { kind: "attempt", ...(raw as Record<string, unknown>) }
+      : raw,
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("attempt"), attemptId: z.string().min(1), submitted: z.boolean() }),
+    z.object({ kind: z.literal("local_only") }),
+  ]),
+);
 
 const PersistedAppStateSchema = z
   .object({

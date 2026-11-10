@@ -75,7 +75,7 @@ export function ResultsScreen({
   }, [loadDispute]);
 
   const openScoring = () => {
-    set({ scoringAttempt: { attemptId, submitted: true } });
+    set({ scoringAttempt: { kind: "attempt", attemptId, submitted: true } });
     go("scoring");
   };
   const retryScoring = async () => {

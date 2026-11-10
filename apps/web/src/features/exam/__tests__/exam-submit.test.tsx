@@ -90,7 +90,7 @@ describe("ExamScreen submit", () => {
     answerStep();
     fireEvent.click(screen.getByText(/nộp & chấm/i));
 
-    expect(h.state().scoringAttempt).toEqual({ attemptId: "att-forecast", submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-forecast", submitted: false });
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(h.go).toHaveBeenCalledWith("scoring");
     expect(submitSpy).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe("ExamScreen submit", () => {
     startSpy.mockResolvedValue({ attemptId: "att-mock" });
     const h = renderWithApp(<ExamScreen />, {
       mode: "p1",
-      scoringAttempt: { attemptId: "att-old", submitted: true },
+      scoringAttempt: { kind: "attempt", attemptId: "att-old", submitted: true },
     });
     await flush();
 
@@ -184,7 +184,7 @@ describe("ExamScreen submit", () => {
     const h = renderWithApp(<ExamScreen />, {
       mode: "p1",
       // A stale scoring job persists across reloads; the hand-off must not land on it.
-      scoringAttempt: { attemptId: "att-old", submitted: true },
+      scoringAttempt: { kind: "attempt", attemptId: "att-old", submitted: true },
     });
     await flush();
 
@@ -670,11 +670,11 @@ describe("ExamScreen submit", () => {
     const submitButton = screen.getByText(/nộp & chấm/i);
     expect(submitButton).toHaveProperty("disabled", false);
     fireEvent.click(submitButton);
-    expect(h.state().scoringAttempt).toEqual({ attemptId: "att-late", submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-late", submitted: false });
     expect(trackUploadSpy).toHaveBeenCalled();
   });
 
-  it("re-enables submit when attempt.start fails (offline/mock)", async () => {
+  it("hands a local-only job to the scoring screen when attempt.start fails", async () => {
     startSpy.mockRejectedValue(new Error("network down"));
     const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
     await flush();
@@ -683,7 +683,7 @@ describe("ExamScreen submit", () => {
     const submitButton = screen.getByText(/nộp & chấm/i);
     expect(submitButton).toHaveProperty("disabled", false);
     fireEvent.click(submitButton);
-    expect(h.state().scoringAttempt).toBeNull();
+    expect(h.state().scoringAttempt).toEqual({ kind: "local_only" });
     expect(h.go).toHaveBeenCalledWith("scoring");
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(submitSpy).not.toHaveBeenCalled();
@@ -718,7 +718,7 @@ describe("ExamScreen submit", () => {
     const submitButton = screen.getByText(/nộp & chấm/i);
     expect(submitButton).toHaveProperty("disabled", false);
     fireEvent.click(submitButton);
-    expect(h.state().scoringAttempt).toBeNull();
+    expect(h.state().scoringAttempt).toEqual({ kind: "local_only" });
     expect(h.go).toHaveBeenCalledWith("scoring");
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(submitSpy).not.toHaveBeenCalled();
@@ -758,7 +758,7 @@ describe("ExamScreen submit", () => {
 
     const settledButton = screen.getByText(/nộp & chấm/i);
     fireEvent.click(settledButton);
-    expect(h.state().scoringAttempt).toEqual({ attemptId: "att-late", submitted: false });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-late", submitted: false });
   });
 
   it("keeps attempt ready past the timeout once the bootstrap settled", async () => {

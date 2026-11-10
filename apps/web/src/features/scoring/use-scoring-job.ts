@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ScoringJob } from "@/features/app-state/types";
+import type { AttemptJob } from "@/features/app-state/types";
 import { flushAnswerUploads } from "@/features/exam/answer-uploads";
 import { trpcClient } from "@/utils/trpc";
 
@@ -126,7 +126,7 @@ function failedView(st: { manualRetries?: number; canRetry?: boolean }): Scoring
  * from POLL_INTERVAL_MS, until done/failed → hand off to the caller. Polling
  * pauses after SLOW_SCORING_AFTER_MS and stops on unmount.
  */
-export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandlers): ScoringJobValue {
+export function useScoringJob(job: AttemptJob | null, handlers: ScoringJobHandlers): ScoringJobValue {
   const attemptId = job?.attemptId ?? null;
   const [view, setView] = useState<ScoringView>(() => (job?.submitted ? QUEUED : { kind: "submitting" }));
   const [busy, setBusy] = useState(false);

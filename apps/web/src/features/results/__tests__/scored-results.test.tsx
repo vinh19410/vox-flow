@@ -141,7 +141,7 @@ describe("ResultsScreen with real scoring data", () => {
 
     expect(await screen.findByTestId("results-scoring")).toBeTruthy();
     fireEvent.click(screen.getByText("Xem tiến trình chấm"));
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
     expect(h.go).toHaveBeenCalledWith("scoring");
   });
 
@@ -155,7 +155,7 @@ describe("ResultsScreen with real scoring data", () => {
     fireEvent.click(screen.getByText("Chấm lại"));
     await waitFor(() => expect(h.go).toHaveBeenCalledWith("scoring"));
     expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
-    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
   });
 
   it("keeps the saved-attempt state for attempts that are not scored", async () => {
