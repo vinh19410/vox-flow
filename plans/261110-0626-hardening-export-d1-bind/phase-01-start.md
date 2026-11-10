@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Hardening data-registry export & D1 bind limit"
-status: pending
+status: completed
 priority: P1
 effort: 4h
 dependencies: []
@@ -51,9 +51,9 @@ Không file nào khác được sửa.
 - **Tạo `recordingD1`/`recordingDb` SAU khi seed xong** (hoặc reset mảng capture ngay trước mỗi sweep) — không bật đo trong lúc insert fixture (insert 50 rows nhân nhiều cột vượt 100 params, làm hỏng assertion).
 - Steps:
   1. Thêm test `"export and erase queries stay within D1 bind parameter limit"`:
-     - Fixture: chèn `user` rows cho `usr_scale_1`, `usr_scale_2` TRƯỚC (FK `attempt.userId` REFERENCES user.id, test db bật `PRAGMA foreign_keys = ON`), rồi **120 attempts** cho `usr_scale_1` (bulk insert, chunk ~50 values) + 1 `attempt_answer` cho mỗi attempt (120 answers) + 2 row `score_run` trên 2 attempt đầu. `usr_scale_2` với 1 attempt + 1 answer + 1 score_run làm control.
-     - Export sweep: gọi `exportUserData(recordingDb, usr_scale_1)`; assert captured select ≥ 3 và mọi captured select có `params.length <= 100`; ở RED phải có ít nhất 1 capture với `params.length > 100` (tripwire chống capture rỗng); assert kết quả trả về đúng số row (120 answer, đúng user).
-     - Erase sweep: gọi `eraseUserData({ db: recordingDb }, usr_scale_1)`; assert captured delete ≥ 2 và mọi captured delete có `params.length <= 100`; ở RED phải có ít nhất 1 capture với `params.length > 100`. Capture phải xảy ra SAU khi `.where()` được áp dụng (wrap method `.where` trên builder, capture `toSQL()` của builder đã mang WHERE — `where()` mutate builder và trả `this`, capture trước `.where` sẽ cho `params.length = 0` và pass trắng).
+     - Fixture: chèn `user` rows cho `usr_scale_1`, `usr_scale_2` TRƯỚC (FK `attempt.userId` REFERENCES user.id, test db bật `PRAGMA foreign_keys = ON`), rồi **120 attempts** cho `usr_scale_1` + 1 `attempt_answer` cho mỗi attempt (120 answers) + 2 row `score_run` trên 2 attempt đầu. `usr_scale_2` với 1 attempt + 1 answer + 1 score_run làm control. **Quy tắc chunk seed: rows × binds/hàng ≤ 100** (Miniflare enforce `SQLITE_MAX_VARIABLE_NUMBER=100` tầng SQLite C, ném `too many SQL variables` lúc execute; drizzle bind cả cột default): attempts 6 binds/hàng → 15/chunk (90 params), answers ~9-10 binds/hàng → 8/chunk (≤80). Mọi insert khác trong file test cũng phải ≤ 100 params.
+     - Export sweep: tạo `recordingD1` + `createDb({ DB: recording })` sau khi seed; gọi `const exportErr = await exportUserData(recordingDb, usr_scale_1).then(() => null, (e) => e)` (KHÔNG try/catch trần, KHÔNG dùng error message làm điều kiện pass — message chỉ là bằng chứng RED, có thể bị drizzle bọc trong `err.cause`); assert theo thứ tự: (a) `selectCaptures.length >= 3` (guard chống capture rỗng); (b) mọi capture `params.length <= 100` — ở RED fail đúng lý do với 120; (c) `expect(exportErr).toBeNull()` — GREEN không được còn lỗi runtime D1. Sau (c), chạy lại export trên `testCtx.db` thường để assert row count (120 attempt, 120 answer) mà không đếm capture.
+     - Erase sweep: `captured.length = 0`; `const eraseErr = await eraseUserData({ db: recordingDb }, usr_scale_1).then(() => null, (e) => e)`; assert (a) `deleteCaptures.length >= 2`, (b) mọi capture `params.length <= 100` — RED fail với delete score_run 120 params, (c) `expect(eraseErr).toBeNull()`. Capture xảy ra trong wrapper `bind()` nên vẫn ghi nhận trước khi D1 ném lúc execute. Lưu ý: RED để lại dữ liệu dở dang của `usr_scale_1` — không test nào khác được dùng lại user này.
   2. Thêm test `"export payload only contains learner-facing result fields"`: seed chuỗi `user → attempt → attempt_score (status done, overall, criteriaJson, oneLiner) + score_run`; gọi `exportUserData` cho user đó; assert:
      - `data.attempt_score[0]` có đúng tập key `{ attemptId, status, overall, criteriaJson, oneLiner, createdAt, scoredAt }` (không `userId`, `model`, `tries`, `lastError`, `costUsd`, `updatedAt`).
      - `data.score_run` rỗng `[]` dù DB có row score_run.
