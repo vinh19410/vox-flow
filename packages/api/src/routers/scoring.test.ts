@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { attempt, attemptAnswer, attemptScore, user } from "@vox-flow/db/schema";
 
-import type { ScoringQueue } from "../scoring/queue";
+import { SCORING_ENQUEUE_DELAY_SECONDS, type ScoringQueue } from "../scoring/queue";
 import type { ScoredCriterion, ScoringQueueMessage } from "../scoring/types";
 import { createTestDb, type TestDbContext } from "../test/db";
+import { ATTEMPT_ALREADY_SUBMITTED_MESSAGE } from "./attempt";
 import { appRouter } from "./index";
 
 function makeSession(userId: string) {
@@ -29,12 +30,18 @@ function makeSession(userId: string) {
   };
 }
 
-function makeQueue(): ScoringQueue & { sent: ScoringQueueMessage[] } {
+function makeQueue(): ScoringQueue & {
+  sent: ScoringQueueMessage[];
+  options: Array<{ delaySeconds?: number } | undefined>;
+} {
   const sent: ScoringQueueMessage[] = [];
+  const options: Array<{ delaySeconds?: number } | undefined> = [];
   return {
     sent,
-    async send(body) {
+    options,
+    async send(body, opts) {
       sent.push(body);
+      options.push(opts);
     },
   };
 }
@@ -119,6 +126,7 @@ describe("scoringRouter", () => {
       const res = await callerFor("owner").scoring.retry({ attemptId: "att-forecast" });
       expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true });
       expect(queue.sent).toEqual([{ attemptId: "att-forecast" }]);
+      expect(queue.options).toEqual([{ delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS }]);
 
       const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-forecast"));
       expect(row).toMatchObject({ status: "queued", tries: 0, lastError: null });
@@ -299,12 +307,41 @@ describe("attempt.submit scoring enqueue", () => {
 
     await caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" });
     expect(queue.sent).toEqual([{ attemptId: "att-f" }]);
+    // Delayed so answer uploads still in flight at submit time land first.
+    expect(queue.options).toEqual([{ delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS }]);
+    expect(SCORING_ENQUEUE_DELAY_SECONDS).toBeGreaterThan(0);
     const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-f"));
     expect(row).toMatchObject({ status: "queued", userId: "owner", tries: 0 });
 
-    // A repeated submit is rejected and does not enqueue again.
-    await expect(caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" })).rejects.toThrow();
+    // A repeated submit is rejected with the specific already-submitted message and does not enqueue again.
+    await expect(caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: ATTEMPT_ALREADY_SUBMITTED_MESSAGE,
+    });
     expect(queue.sent).toHaveLength(1);
+  });
+
+  it("reports an abandoned attempt differently from an already-submitted one", async () => {
+    await ctx.db
+      .insert(attempt)
+      .values({ id: "att-ab", userId: "owner", mode: "part1", topicId: "topic-1", status: "abandoned" });
+    const err = await caller({ SCORING_QUEUE: queue })
+      .attempt.submit({ attemptId: "att-ab" })
+      .catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "BAD_REQUEST" });
+    expect((err as Error).message).not.toBe(ATTEMPT_ALREADY_SUBMITTED_MESSAGE);
+    expect(queue.sent).toHaveLength(0);
+  });
+
+  it("leaves the attempt in progress when the score row cannot be written", async () => {
+    await ctx.db.insert(attempt).values({ id: "att-f", userId: "owner", mode: "part1", topicId: "topic-1" });
+    // Make the score insert fail inside the batch.
+    await ctx.d1.prepare("DROP TABLE attempt_score").run();
+
+    await expect(caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" })).rejects.toThrow();
+    const [row] = await ctx.db.select().from(attempt).where(eq(attempt.id, "att-f"));
+    expect(row).toMatchObject({ status: "in_progress", submittedAt: null });
+    expect(queue.sent).toHaveLength(0);
   });
 
   it("does not enqueue when a score row already exists", async () => {

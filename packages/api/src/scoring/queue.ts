@@ -4,8 +4,15 @@ import type { ScoringQueueMessage } from "./types";
 
 /** Producer side of the scoring Cloudflare Queue (structurally matches `Queue.send`). */
 export type ScoringQueue = {
-  send(body: ScoringQueueMessage): Promise<unknown>;
+  send(body: ScoringQueueMessage, options?: { delaySeconds?: number }): Promise<unknown>;
 };
+
+/**
+ * Delay applied when a learner submits or retries. Answer uploads that were
+ * still streaming when the attempt was submitted get time to land before the
+ * consumer reads the answers.
+ */
+export const SCORING_ENQUEUE_DELAY_SECONDS = 10;
 
 const scoringQueueMessageSchema = z.object({ attemptId: z.string().min(1) });
 
@@ -24,13 +31,14 @@ export function parseScoringQueueMessage(body: unknown): ScoringQueueMessage | n
 export async function enqueueScoring(
   queue: ScoringQueue | undefined,
   attemptId: string,
+  options?: { delaySeconds?: number },
 ): Promise<boolean> {
   if (!queue) {
     console.warn(`[scoring] SCORING_QUEUE binding unavailable; attempt ${attemptId} left queued`);
     return false;
   }
   try {
-    await queue.send({ attemptId });
+    await queue.send({ attemptId }, options);
     return true;
   } catch (error) {
     console.error(`[scoring] Failed to enqueue attempt ${attemptId}:`, error);

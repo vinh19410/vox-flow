@@ -6,7 +6,7 @@ import type { Database } from "@vox-flow/db";
 import { attempt, attemptAnswer, attemptScore } from "@vox-flow/db/schema";
 
 import { protectedProcedure, router } from "../index";
-import { enqueueScoring } from "../scoring/queue";
+import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
 import {
   scoredCriterionSchema,
   type ScoreStatusResult,
@@ -89,7 +89,9 @@ export const scoringRouter = router({
         });
       }
 
-      await enqueueScoring(ctx.env?.SCORING_QUEUE, input.attemptId);
+      await enqueueScoring(ctx.env?.SCORING_QUEUE, input.attemptId, {
+        delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS,
+      });
       return { attemptId: input.attemptId, status: "queued", scorable: owned.topicId !== null };
     }),
 
