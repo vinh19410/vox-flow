@@ -3,6 +3,7 @@ import { and, countDistinct, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { forecastReport, forecastTopic } from "@vox-flow/db/schema";
+import { parseForecastTopicQuestions } from "../forecast/questions";
 import { protectedProcedure, publicProcedure, router } from "../index";
 
 export type Part23Questions = {
@@ -68,29 +69,7 @@ export const forecastRouter = router({
       }
 
       return topics.map((t) => {
-        let parsedQuestions: ForecastTopicQuestions = [];
-        let isNew = false;
-        try {
-          const raw = JSON.parse(t.questions);
-          if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-            if ("isNew" in raw) {
-              isNew = Boolean(raw.isNew);
-            }
-            if ("cueCards" in raw && "part3" in raw) {
-              parsedQuestions = {
-                cueCards: Array.isArray(raw.cueCards) ? raw.cueCards.map(String) : [],
-                part3: Array.isArray(raw.part3) ? raw.part3.map(String) : [],
-                isNew,
-              };
-            }
-          } else if (Array.isArray(raw)) {
-            parsedQuestions = raw.map(String);
-          } else {
-            parsedQuestions = [];
-          }
-        } catch {
-          parsedQuestions = [];
-        }
+        const { questions: parsedQuestions, isNew } = parseForecastTopicQuestions(t.questions);
 
         return {
           id: t.id,

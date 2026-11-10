@@ -6,6 +6,7 @@ import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
 import { buildAudioKey, normalizeMimeType, QUESTION_KEY_RE } from "../audio";
+import { sanitizeDelimited } from "../scoring/prompt";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
 
 /**
@@ -215,9 +216,9 @@ export const attemptRouter = router({
     .input(
       z.object({
         attemptId: z.string(),
-        questionKey: z.string(),
-        part: z.number().default(1),
-        candidateTranscript: z.string().optional(),
+        questionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        part: z.number().int().min(1).max(3).default(1),
+        candidateTranscript: z.string().max(2000).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -241,6 +242,15 @@ export const attemptRouter = router({
         });
       }
 
+      // Guard before the LLM call: no generation cost after submit, and no
+      // follow-up text minted for an attempt that is already being scored.
+      if (currentAttempt.status !== "in_progress") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot generate a follow-up for a finalized attempt",
+        });
+      }
+
       const result = await generateFollowUp({
         candidateTranscript: input.candidateTranscript,
         part: input.part,
@@ -251,8 +261,12 @@ export const attemptRouter = router({
         followUpQuestion: {
           key: `${input.questionKey}-f`,
           part: input.part,
-          text: result.questionText,
-          trigger: result.triggerPhrase,
+          // Generated text is seeded by the client-controlled transcript, so
+          // strip delimiter tags and bound its length before it reaches the
+          // client. Not persisted: scoring never trusts it (see
+          // score-attempt.ts — non-bank keys grade with a placeholder).
+          text: sanitizeDelimited(result.questionText).slice(0, 300),
+          trigger: sanitizeDelimited(result.triggerPhrase),
         },
       };
     }),

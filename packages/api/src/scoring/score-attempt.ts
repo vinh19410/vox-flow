@@ -2,9 +2,14 @@ import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "@vox-flow/db";
-import { attempt, attemptAnswer, attemptScore, scoreRun } from "@vox-flow/db/schema";
+import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@vox-flow/db/schema";
 
 import { isValidAudioKey } from "../audio";
+import {
+  parseForecastTopicQuestions,
+  resolveCanonicalQuestionText,
+  type CanonicalQuestionTopic,
+} from "../forecast/questions";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { computeCostUsd, type ScoringConfig } from "./config";
 import { OpenAIRequestError, type ScoringOpenAIClient } from "./openai-client";
@@ -244,6 +249,24 @@ async function runPipeline(
     }
   }
 
+  // Canonical question source: the forecast bank, keyed by
+  // (topicId, questionKey). The client-supplied questionText stored on the
+  // answer row never enters the grading prompt.
+  let bankTopic: CanonicalQuestionTopic | null = null;
+  const [topicRow] = await db
+    .select()
+    .from(forecastTopic)
+    .where(eq(forecastTopic.id, attemptRow.topicId))
+    .limit(1);
+  if (topicRow) {
+    bankTopic = {
+      id: topicRow.id,
+      title: topicRow.title,
+      part: topicRow.part,
+      questions: parseForecastTopicQuestions(topicRow.questions).questions,
+    };
+  }
+
   const existingRuns = await db
     .select({ runIndex: scoreRun.runIndex })
     .from(scoreRun)
@@ -304,9 +327,16 @@ async function runPipeline(
   const answers: GradingAnswer[] = answerRows.map((row) => {
     const indexInPart = (partCounters.get(row.partNumber) ?? 0) + 1;
     partCounters.set(row.partNumber, indexInPart);
+    // Follow-up (-f) keys have no server-side source today: the web never
+    // calls getFollowUp. If that flow is wired in later, design a real
+    // persistence for generated questions — do NOT fall back to the
+    // client-supplied questionText here.
+    const questionText =
+      (bankTopic && resolveCanonicalQuestionText(bankTopic, row.questionKey)) ??
+      "(question unavailable)";
     return {
       questionKey: row.questionKey,
-      questionText: row.questionText,
+      questionText,
       partNumber: row.partNumber,
       indexInPart,
       transcript: transcripts.get(row.questionKey) ?? "",

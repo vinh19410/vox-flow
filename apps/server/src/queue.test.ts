@@ -6,7 +6,7 @@ const { scoreAttempt, markScoreFailed } = vi.hoisted(() => ({
 }));
 
 vi.mock("./env.server", () => ({
-  ENV: { OPENAI_API_KEY: "test-key", SCORING_RUNS: "3" },
+  ENV: { OPENAI_API_KEY: "test-key", SCORING_RUNS: "3", SCORING_QUEUE_MAX_RETRIES: "2" },
 }));
 
 vi.mock("./services", () => ({
@@ -19,7 +19,7 @@ vi.mock("@vox-flow/api/scoring/score-attempt", () => ({
   describeScoringError: (e: unknown) => (e instanceof Error ? e.message : String(e)),
 }));
 
-import { handleScoringQueue, SCORING_QUEUE_MAX_RETRIES } from "./queue";
+import { handleScoringQueue } from "./queue";
 
 function makeMessage(body: unknown, attempts = 1) {
   return { body, attempts, ack: vi.fn(), retry: vi.fn() };
@@ -55,7 +55,8 @@ describe("handleScoringQueue", () => {
   it("marks the score failed and acks on the last delivery", async () => {
     const error = new Error("upstream 500");
     scoreAttempt.mockRejectedValue(error);
-    const message = makeMessage({ attemptId: "att-1" }, SCORING_QUEUE_MAX_RETRIES + 1);
+    // attempts = 3 is the last delivery: env mock sets SCORING_QUEUE_MAX_RETRIES = "2".
+    const message = makeMessage({ attemptId: "att-1" }, 3);
 
     await handleScoringQueue({ messages: [message] });
 

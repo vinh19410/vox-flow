@@ -1,6 +1,30 @@
 export const DEFAULT_SCORING_MODEL = "gpt-6-luna";
 export const DEFAULT_SCORING_RUNS = 3;
 const MAX_SCORING_RUNS = 7;
+const DEFAULT_QUEUE_MAX_RETRIES = 3;
+
+/**
+ * Reads the scoring-queue retry budget from the worker env. The single source
+ * is `SCORING_QUEUE_MAX_RETRIES` in `packages/infra/alchemy.run.ts`, which
+ * also configures the consumer's `settings.maxRetries` via a non-overridable
+ * binding, so this value always matches the queue's actual retry count.
+ *
+ * Unset or empty falls back to the infra default without warning; a value that
+ * is set but invalid falls back with a warning instead of throwing — a
+ * misconfigured retry budget must not kill every queue delivery.
+ */
+export function readScoringQueueMaxRetries(env: Record<string, unknown>): number {
+  const raw = readString(env, "SCORING_QUEUE_MAX_RETRIES");
+  if (raw === undefined) return DEFAULT_QUEUE_MAX_RETRIES;
+  if (!/^\d+$/.test(raw) || Number(raw) > 100) {
+    // 100 is Cloudflare's own max_retries ceiling for queue consumers.
+    console.warn(
+      `SCORING_QUEUE_MAX_RETRIES "${raw}" is not an integer between 0 and 100; falling back to ${DEFAULT_QUEUE_MAX_RETRIES}`,
+    );
+    return DEFAULT_QUEUE_MAX_RETRIES;
+  }
+  return Number(raw);
+}
 
 export type ScoringConfig = {
   apiKey: string | undefined;
