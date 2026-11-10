@@ -164,6 +164,21 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
   });
 
+  it("offers a plain submit, not a skip, when it is unknown which recordings are missing", async () => {
+    flushSpy.mockResolvedValue({ failedQuestionKeys: [], storageUnreadable: true });
+    submitSpy.mockResolvedValue({ success: true });
+    statusSpy.mockResolvedValue(st("queued"));
+
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    expect(screen.queryByText("Bỏ qua câu bị lỗi và nộp bài")).toBeNull();
+
+    fireEvent.click(screen.getByText("Vẫn nộp bài"));
+    await advance(0);
+    expect(submitSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+    expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+  });
+
   it("never mentions multiple runs while scoring", async () => {
     statusSpy.mockResolvedValue(st("processing"));
     renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });

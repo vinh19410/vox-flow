@@ -160,7 +160,7 @@ function ScoringJobState({
           disabled={busy}
           className="mt-4 text-sm font-medium text-ink-2 underline underline-offset-4 hover:text-ink disabled:opacity-50"
         >
-          Bỏ qua câu bị lỗi và nộp bài
+          {view.missing > 0 ? "Bỏ qua câu bị lỗi và nộp bài" : "Vẫn nộp bài"}
         </button>
         {error}
       </div>
