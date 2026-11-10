@@ -56,15 +56,15 @@ Transcript thật chỉ tồn tại phía server (kênh chấm điểm, hiển t
 
 ## Acceptance Criteria
 
-- [ ] AC1: khi `phase === "recording"`, panel không render `<p>` body (assertion cấu trúc) và không render bất kỳ từ nào của `step.answer`. Bảo vệ chính là xoá prop `words` khỏi API component (type-level); assertion "quite tidy" giữ làm documentation — red-team F4: nó không thể fail vì không có kênh truyền text.
-- [ ] AC2: label khi ghi là "Đang ghi âm…" — không chứa "nhận dạng giọng nói"; caret nhấp nháy bị xoá (một phần của ảo giác transcript).
-- [ ] AC3: không còn bộ đếm "N từ" trong panel (kể cả sau ghi).
-- [ ] AC4: khi `phase === "answered"` và có `ans`, panel hiển thị "Đã ghi âm · {mmss}" với thời lượng từ `ans.durationMs ?? ans.secs*1000` (`mmss` từ `lib/format.ts`, format `"0:32"`) và câu TRUNG LẬP "(Transcript không hiển thị trong phòng thi.)" — đúng ở mọi nhánh kể cả `local_only`, scoring failed, flag scoring off (red-team F2/F3).
-- [ ] AC5: chuỗi "(Không nhận được giọng nói)" — điều kiện giả dựa trên số từ simulation — bị xoá khỏi LiveTranscript; assertion vô nghĩa tại `forecast-flow.test.tsx:238` bị thay bằng check thật `getByText(/Đã ghi âm/)`; comment/tên test không còn claim "valid transcript".
-- [ ] AC6: phase `examiner-thinking` không đổi ("Giám khảo AI đang phân tích câu trả lời…").
-- [ ] AC7: `ExamSessionValue` không còn export `words`/`spoken`; `exam-screen.tsx` không truyền chúng nữa; `pnpm check-types` xanh.
-- [ ] AC8: `pnpm --filter web test src/features` exit 0 — gồm canary scope `slice-c.test.tsx` ("Câu trả lời khá ngắn (2 từ)." + 8× `^\d+ từ$` trong pre-submit giữ nguyên), `pre-submit-modal`, `exam-submit`, `forecast-flow` và mọi test khác dưới `src/features`.
-- [ ] AC9: follow-up issue (label `ai-handle`, vào project vinh19410/projects/15) được tạo cho heuristic `ans.words` + bug `words: 20` (mục Known limitations).
+- [x] AC1: khi `phase === "recording"`, panel không render `<p>` body (assertion cấu trúc) và không render bất kỳ từ nào của `step.answer`. Bảo vệ chính là xoá prop `words` khỏi API component (type-level); assertion "quite tidy" giữ làm documentation — red-team F4: nó không thể fail vì không có kênh truyền text.
+- [x] AC2: label khi ghi là "Đang ghi âm…" — không chứa "nhận dạng giọng nói"; caret nhấp nháy bị xoá (một phần của ảo giác transcript).
+- [x] AC3: không còn bộ đếm "N từ" trong panel (kể cả sau ghi).
+- [x] AC4: khi `phase === "answered"` và có `ans`, panel hiển thị "Đã ghi âm · {mmss}" với thời lượng từ `ans.durationMs ?? ans.secs*1000` (`mmss` từ `lib/format.ts`, format `"0:32"`) và câu TRUNG LẬP "(Transcript không hiển thị trong phòng thi.)" — đúng ở mọi nhánh kể cả `local_only`, scoring failed, flag scoring off (red-team F2/F3).
+- [x] AC5: chuỗi "(Không nhận được giọng nói)" — điều kiện giả dựa trên số từ simulation — bị xoá khỏi LiveTranscript; assertion vô nghĩa tại `forecast-flow.test.tsx:238` bị thay bằng check thật `getByText(/Đã ghi âm/)`; comment/tên test không còn claim "valid transcript".
+- [x] AC6: phase `examiner-thinking` không đổi ("Giám khảo AI đang phân tích câu trả lời…").
+- [x] AC7: `ExamSessionValue` không còn export `words`/`spoken`; `exam-screen.tsx` không truyền chúng nữa; `pnpm check-types` xanh.
+- [x] AC8: `pnpm --filter web test src/features` exit 0 — gồm canary scope `slice-c.test.tsx` ("Câu trả lời khá ngắn (2 từ)." + 8× `^\d+ từ$` trong pre-submit giữ nguyên), `pre-submit-modal`, `exam-submit`, `forecast-flow` và mọi test khác dưới `src/features`.
+- [x] AC9: follow-up issue (label `ai-handle`, vào project vinh19410/projects/15) được tạo cho heuristic `ans.words` + bug `words: 20` (mục Known limitations).
 
 ## Validation Log
 
