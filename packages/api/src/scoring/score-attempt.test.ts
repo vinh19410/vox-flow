@@ -399,6 +399,49 @@ describe("scoreAttempt", () => {
     expect(client.chatBodies).toHaveLength(0);
   });
 
+  it("terminally rejects answers that exceed the shared count/bytes limits before transcribing", async () => {
+    await seed(ctx.db);
+    // Simulate uploads that raced past submit's snapshot: recorded sizes break
+    // the 35MB per-attempt budget. The consumer must re-run the shared guard
+    // and fail terminally without loading audio or paying for transcription.
+    await ctx.db.update(attemptAnswer).set({ sizeBytes: 20 * 1024 * 1024 }).where(eq(attemptAnswer.id, "ans-1"));
+    await ctx.db.update(attemptAnswer).set({ sizeBytes: 20 * 1024 * 1024 }).where(eq(attemptAnswer.id, "ans-2"));
+
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
+    const score = await loadScore(ctx.db);
+    expect(score.status).toBe("failed");
+    expect(score.tries).toBe(1);
+    expect(score.lastError).toContain("TOTAL_AUDIO_LIMIT_EXCEEDED");
+    expect(client.transcribeCalls).toHaveLength(0);
+    expect(client.chatBodies).toHaveLength(0);
+    expect(bucket.gets).toHaveLength(0);
+  });
+
+  it("terminally rejects an answer count above the per-attempt cap", async () => {
+    await seed(ctx.db);
+    // Chunk 8 hàng/lần: attempt_answer ~12 binds/hàng, trần D1 100 params (#92).
+    const extra = Array.from({ length: 20 }, (_, i) => ({
+      id: `ans-extra-${i}`,
+      attemptId: ATTEMPT_ID,
+      questionKey: `q-extra-${i}`,
+      questionText: `Extra question ${i}`,
+      partNumber: 1,
+      orderIndex: 10 + i,
+      audioKey: audioKey(`q-extra-${i}`),
+      durationMs: 5000,
+      mimeType: "audio/webm",
+    }));
+    for (let i = 0; i < extra.length; i += 8) {
+      await ctx.db.insert(attemptAnswer).values(extra.slice(i, i + 8));
+    }
+
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
+    const score = await loadScore(ctx.db);
+    expect(score.status).toBe("failed");
+    expect(score.lastError).toContain("ANSWER_COUNT_EXCEEDED");
+    expect(client.transcribeCalls).toHaveLength(0);
+  });
+
   it("keeps rate limits and server errors retriable", async () => {
     await seed(ctx.db);
     client.chatImpl = async () => {
