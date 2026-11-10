@@ -13,7 +13,7 @@ import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./typ
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
 const ATTEMPT_SYNC_TIMEOUT_MS = 15_000; // hung attempt.start/getActive must not lock submit forever (#106)
-const WPS = 2.6; // simulated words-per-second for the live transcript
+const WPS = 2.6; // simulated words-per-second; feeds only the min-words heuristic (#127 removed the live display)
 
 export interface ExamSessionValue {
   parts: Part[];
@@ -21,7 +21,7 @@ export interface ExamSessionValue {
   step: ExamStep;
   idx: number;
   phase: ExamPhase;
-  typed: number; recT: number; spoken: number; words: string[];
+  typed: number; recT: number;
   maxRec: number; prepT: number; partT: number;
   notes: string; setNotes: (v: string) => void;
   answers: Record<string, ExamAnswer>;
@@ -372,7 +372,7 @@ export function useExamSession(): ExamSessionValue {
   };
 
   return {
-    parts, steps, step, idx, phase, typed, recT, spoken, words, maxRec,
+    parts, steps, step, idx, phase, typed, recT, maxRec,
     prepT, partT, notes, setNotes, answers,
     voice, muted, toggleMuted, level,
     review, setReview, exitOpen, setExitOpen, returnToReview,

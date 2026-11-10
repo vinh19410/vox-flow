@@ -1,15 +1,13 @@
+import { mmss } from "@/lib/format";
+
 import type { ExamAnswer, ExamPhase } from "../use-exam-session";
 
 export interface LiveTranscriptProps {
   phase: Extract<ExamPhase, "recording" | "answered" | "examiner-thinking">;
-  words: string[];
-  spoken: number;
   ans?: ExamAnswer;
 }
 
-export function LiveTranscript({ phase, words, spoken, ans }: LiveTranscriptProps) {
-  const shown = phase === "answered" ? (ans?.words ?? 0) : spoken;
-
+export function LiveTranscript({ phase, ans }: LiveTranscriptProps) {
   if (phase === "examiner-thinking") {
     return (
       <div className="mt-8 animate-fade rounded-3xl border border-brand/20 bg-brand/[0.04] p-5">
@@ -24,28 +22,28 @@ export function LiveTranscript({ phase, words, spoken, ans }: LiveTranscriptProp
     );
   }
 
+  if (phase === "recording") {
+    return (
+      <div className="mt-8 animate-fade rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+        <div className="flex items-center gap-2 text-xs text-white/45">
+          <div className="flex items-center gap-0.5" aria-hidden="true">
+            <span className="inline-block h-3 w-1 animate-pulse rounded-full bg-brand" />
+            <span className="inline-block h-4 w-1 animate-pulse rounded-full bg-brand [animation-delay:150ms]" />
+            <span className="inline-block h-2 w-1 animate-pulse rounded-full bg-brand [animation-delay:300ms]" />
+          </div>
+          <span role="status">Đang ghi âm…</span>
+        </div>
+      </div>
+    );
+  }
+
+  const secs = ans ? Math.round((ans.durationMs ?? ans.secs * 1000) / 1000) : 0;
   return (
     <div className="mt-8 animate-fade rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-      <div className="flex items-center justify-between text-xs text-white/45">
-        <div className="flex items-center gap-2">
-          {phase === "recording" && (
-            <div className="flex items-center gap-0.5" aria-hidden="true">
-              <span className="inline-block h-3 w-1 animate-pulse rounded-full bg-brand" />
-              <span className="inline-block h-4 w-1 animate-pulse rounded-full bg-brand [animation-delay:150ms]" />
-              <span className="inline-block h-2 w-1 animate-pulse rounded-full bg-brand [animation-delay:300ms]" />
-            </div>
-          )}
-          <span>{phase === "recording" ? "Đang ghi âm & nhận dạng giọng nói…" : "Transcript"}</span>
-        </div>
-        <span className="tnum font-mono">{shown} từ</span>
+      <div className="text-xs text-white/45">
+        <span>Đã ghi âm{secs > 0 ? ` · ${mmss(secs)}` : ""}</span>
       </div>
-      <p className="mt-3 text-[17px] leading-relaxed text-white/85">
-        {words.slice(0, shown).join(" ")}
-        {phase === "recording" && (
-          <span className="ml-1 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-brand align-middle" />
-        )}
-        {phase === "answered" && !ans?.words && <span className="text-white/35 italic">(Không nhận được giọng nói)</span>}
-      </p>
+      <p className="mt-3 text-sm italic text-white/35">(Transcript không hiển thị trong phòng thi.)</p>
     </div>
   );
 }
