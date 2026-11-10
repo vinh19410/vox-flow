@@ -83,14 +83,43 @@
   .proto-root button:disabled {
     cursor: not-allowed;
   }
-}
+  .proto-root input[type="date"],
+  .proto-root input[type="time"],
+  .proto-root input[type="datetime-local"],
+  .proto-root input[type="month"],
+  .proto-root input[type="week"] {
+    -webkit-appearance: none;
+    appearance: none;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left;
+  }
 
-.proto-root input[type="date"],
-.proto-root input[type="time"],
-.proto-root input[type="month"] {
-  min-width: 0;
-  max-width: 100%;
-  box-sizing: border-box;
+  .proto-root input[type="date"]::-webkit-date-and-time-value,
+  .proto-root input[type="time"]::-webkit-date-and-time-value,
+  .proto-root input[type="datetime-local"]::-webkit-date-and-time-value,
+  .proto-root input[type="month"]::-webkit-date-and-time-value,
+  .proto-root input[type="week"]::-webkit-date-and-time-value {
+    margin: 0;
+    text-align: left;
+    min-height: 1.25em;
+    min-height: 1lh;
+  }
+
+  .proto-root input::-webkit-datetime-edit {
+    padding: 0;
+  }
+
+  .proto-root input::-webkit-datetime-edit-fields-wrapper {
+    padding: 0;
+  }
+
+  .proto-root input::-webkit-calendar-picker-indicator {
+    padding-block: 0;
+    margin-block: 0;
+    cursor: pointer;
+  }
 }
 
 .tnum {
