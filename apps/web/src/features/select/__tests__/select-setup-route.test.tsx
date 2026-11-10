@@ -38,12 +38,22 @@ vi.mock("@/features/app-state/use-profile-hydration", () => ({
   useProfileHydration: vi.fn(),
 }));
 
-function makeRouter(initialLocation: string) {
-  return createRouter({
+/**
+ * Renders the app router at `initialLocation` once its route is fully loaded.
+ * Route components are code-split, and the first test to reach a route pays
+ * for transforming and importing its chunk; on a busy machine that alone
+ * outlasts `findBy*`'s polling window. Loading first keeps those waits about
+ * rendering, not module loading.
+ */
+async function renderRouterAt(initialLocation: string) {
+  const router = createRouter({
     routeTree,
     context: { trpc, queryClient },
     history: createMemoryHistory({ initialEntries: [initialLocation] }),
   });
+  await router.load();
+  render(<RouterProvider router={router} />);
+  return router;
 }
 
 function mockMobileViewport(matches: boolean) {
@@ -73,8 +83,7 @@ afterEach(() => {
 
 describe("Select setup route (router integration)", () => {
   it("deep-link /app/select/setup renders the setup screen, not the select screen", async () => {
-    const router = makeRouter("/app/select/setup");
-    render(<RouterProvider router={router} />);
+    await renderRouterAt("/app/select/setup");
 
     // Setup screen header shows the selected mode; the select screen's h1 is "Chọn bài thi".
     const heading = await screen.findByRole("heading", { level: 1 });
@@ -85,8 +94,9 @@ describe("Select setup route (router integration)", () => {
 
   it("mobile: tapping a mode card navigates to /app/select/setup and shows the setup screen", async () => {
     mockMobileViewport(true);
-    const router = makeRouter("/app/select");
-    render(<RouterProvider router={router} />);
+    const router = await renderRouterAt("/app/select");
+    // Load the destination's code-split chunk up front, for the same reason as above.
+    await router.preloadRoute({ to: "/app/select/setup" });
 
     await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
 
@@ -99,8 +109,7 @@ describe("Select setup route (router integration)", () => {
 
   it("desktop: tapping a mode card keeps the user on /app/select", async () => {
     // Default matchMedia stub resolves matches: false (desktop).
-    const router = makeRouter("/app/select");
-    render(<RouterProvider router={router} />);
+    const router = await renderRouterAt("/app/select");
 
     await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
 
