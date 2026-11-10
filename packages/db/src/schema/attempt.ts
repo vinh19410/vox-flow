@@ -43,6 +43,8 @@ export const attemptAnswer = sqliteTable(
     audioKey: text("audio_key").notNull(),
     durationMs: integer("duration_ms").notNull(),
     mimeType: text("mime_type").notNull(),
+    /** Speech-to-text of this answer, filled by the scoring pipeline. */
+    transcript: text("transcript"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
