@@ -16,10 +16,12 @@ export interface PreSubmitModalProps {
   flaggedCount: number;
   onRetry: (k: number) => void;
   onSubmit: () => void;
+  /** True while the exam attempt is still syncing (no attempt id yet). */
+  submitLocked?: boolean;
 }
 
 /** S10 — pre-submit check listing every step with its word count. */
-export function PreSubmitModal({ open, onClose, steps, answers, short, flaggedCount, onRetry, onSubmit }: PreSubmitModalProps) {
+export function PreSubmitModal({ open, onClose, steps, answers, short, flaggedCount, onRetry, onSubmit, submitLocked = false }: PreSubmitModalProps) {
   return (
     <Modal open={open} onClose={onClose} width="max-w-xl">
       <div className="p-7 text-ink sm:p-8">
@@ -61,8 +63,8 @@ export function PreSubmitModal({ open, onClose, steps, answers, short, flaggedCo
           <Button variant="outline" onClick={onClose}>
             Quay lại
           </Button>
-          <Button variant="accent" onClick={onSubmit}>
-            {flaggedCount ? "Vẫn nộp & chấm" : "Nộp & chấm điểm"} <ArrowRight size={16} />
+          <Button variant="accent" onClick={onSubmit} disabled={submitLocked}>
+            {submitLocked ? "Đang đồng bộ phiên thi…" : flaggedCount ? "Vẫn nộp & chấm" : "Nộp & chấm điểm"} <ArrowRight size={16} />
           </Button>
         </div>
       </div>
