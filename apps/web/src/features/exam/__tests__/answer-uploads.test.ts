@@ -242,8 +242,8 @@ describe("answer uploads", () => {
     it("does not re-send anything when the server rejects the replaced recording as stale", async () => {
       // The server now owns ordering: a superseded recording landing late carries
       // a lower generation and is rejected, so the client has nothing to re-send.
-      const first = record("q1");
-      const second = record("q1");
+      const first = record("q1"); // generation 1000
+      const second: AnswerUpload = { ...record("q1"), generation: 2000 };
       const blocked = blockFirstRecording(first);
 
       const firstUpload = trackAnswerUpload(ATTEMPT, first);
@@ -253,7 +253,7 @@ describe("answer uploads", () => {
       // already received may still be stored after the newer one.
       expect(blocked.firstSignal()?.aborted).toBe(true);
       blocked.settle(
-        new Response(JSON.stringify({ error: "stale_generation", storedGeneration: (second as AnswerUpload & { generation: number }).generation }), {
+        new Response(JSON.stringify({ error: "stale_generation", storedGeneration: 2000 }), {
           status: 409,
         }),
       );

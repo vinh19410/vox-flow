@@ -250,14 +250,29 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "stale_generation", storedGeneration: winner?.generation ?? 0 }, 409);
   }
 
-  // This request won: drop every other blob of this question (previous
-  // generations and pre-migration bare keys). The "<questionKey>." prefix cannot
-  // match other questions' keys, and the winning key itself is kept. Listed, not
-  // taken from the pre-read: between the pre-read and this upsert another higher
-  // generation may have won and its blob must not be orphaned by us.
+  // This request won: drop every other blob of this question OLDER than the
+  // winning generation (previous generations and pre-migration bare keys). The
+  // "<questionKey>." prefix cannot match other questions' keys. A key carrying
+  // a generation >= ours belongs to an upload still in flight that may win the
+  // row right after us — deleting it would strand the winning row without a
+  // blob, so it is left for that winner's own cleanup (or erasure).
   try {
-    const listed = await bucket.list({ prefix: `users/${session.user.id}/attempts/${attemptId}/${questionKey}.` });
-    const staleKeys = listed.objects.map((obj) => obj.key).filter((key) => key !== updated[0]!.audioKey);
+    const prefix = `users/${session.user.id}/attempts/${attemptId}/${questionKey}.`;
+    const listed = await bucket.list({ prefix });
+    const fileRe = /^(\d+)\.(webm|mp4|ogg|wav|mp3)$/;
+    const bareRe = /^(webm|mp4|ogg|wav|mp3)$/;
+    const winningGeneration = updated[0]!.generation;
+    const winningKey = updated[0]!.audioKey;
+    const staleKeys = listed.objects
+      .map((obj) => obj.key)
+      .filter((key) => {
+        if (key === winningKey) return false;
+        const rest = key.slice(prefix.length);
+        const genMatch = fileRe.exec(rest);
+        if (genMatch) return Number(genMatch[1]) < winningGeneration;
+        // Pre-migration bare key: superseded by any generation-stamped winner.
+        return bareRe.test(rest) && winningGeneration > 0;
+      });
     await Promise.all(staleKeys.map((key) => bucket.delete(key).catch(() => {})));
   } catch {
     // Best-effort cleanup; erasure by prefix still reaches any missed blob.

@@ -704,17 +704,20 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.3.webm");
   });
 
-  it("deletes the superseded blobs of previous generations via prefix listing when a newer generation wins", async () => {
+  it("deletes only blobs older than the winning generation via prefix listing", async () => {
     mockState.existingAnswers = [
       { id: "ans-gen-5", questionKey: "p1_q1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm", generation: 5 },
     ];
-    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1_q1.6.webm" }];
-    // The prefix listing sees the previous generation's blob (and only this
-    // question's keys, thanks to the "<questionKey>." prefix).
+    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1_q1.6.webm", generation: 6 }];
+    // The listing sees a previous generation's blob, a legacy bare key, and a
+    // HIGHER generation's blob from an upload still in flight — only the first
+    // two may be deleted, never the in-flight newer one.
     mockList.mockResolvedValueOnce({
       objects: [
         { key: "users/user-1/attempts/att-123/p1_q1.5.webm" },
         { key: "users/user-1/attempts/att-123/p1_q1.6.webm" },
+        { key: "users/user-1/attempts/att-123/p1_q1.99.webm" },
+        { key: "users/user-1/attempts/att-123/p1_q1.webm" },
       ],
       truncated: false,
     });
@@ -728,8 +731,10 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     });
     expect(res.status).toBe(200);
     expect(mockList).toHaveBeenCalledWith({ prefix: "users/user-1/attempts/att-123/p1_q1." });
-    expect(mockDelete).toHaveBeenCalledTimes(1);
+    expect(mockDelete).toHaveBeenCalledTimes(2);
     expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.5.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.webm");
+    expect(mockDelete).not.toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.99.webm");
   });
 
   it("returns 403 when another user's attempt is targeted", async () => {
