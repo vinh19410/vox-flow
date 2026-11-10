@@ -8,7 +8,7 @@ import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
 import { trackAnswerUpload, type AnswerUpload } from "./answer-uploads";
-import { saveAudioBlob } from "./storage";
+import { deleteAudioBlob, saveAudioBlob } from "./storage";
 import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./types";
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
@@ -31,6 +31,7 @@ export interface ExamSessionValue {
   begin: () => void; startRec: () => void; stopRec: () => void;
   restart: () => void; next: () => void; retryStep: (k: number) => void;
   attemptId?: string | null;
+  attemptStatus: "pending" | "ready" | "failed";
 }
 
 const voiceLang = (id: string) => (id.startsWith("uk") ? "en-GB" : id.startsWith("au") ? "en-AU" : "en-US");
@@ -70,6 +71,12 @@ export function useExamSession(): ExamSessionValue {
     typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "session-local",
   );
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [attemptStatus, setAttemptStatus] = useState<"pending" | "ready" | "failed">("pending");
+  const attemptIdRef = useRef<string | null>(null);
+  // Recordings stopped before the attempt id arrived, keyed by question. The
+  // entry promise only settles once the device copy has been written, so the
+  // backfill can never delete a session copy mid-write.
+  const pendingSessionRef = useRef(new Map<string, Promise<AnswerUpload | null>>());
   const recorder = useRecorder();
   const startParamsRef = useRef({
     examMode: s.practice
@@ -92,6 +99,23 @@ export function useExamSession(): ExamSessionValue {
     isPractice: Boolean(s.practice),
   });
 
+  const applyAttemptId = (id: string) => {
+    attemptIdRef.current = id;
+    // Drain pending session recordings synchronously, before any state update
+    // lets the user record again or submit, so they get their upload tickets
+    // before anything newer can race them.
+    const pending = [...pendingSessionRef.current];
+    pendingSessionRef.current.clear();
+    for (const [questionKey, recording] of pending) {
+      void trackAnswerUpload(id, recording.then((r) => r && { ...r, attemptId: id })).then((ok) => {
+        // Drop the session copy only once the server confirmed the recording.
+        if (ok) void deleteAudioBlob(clientSessionIdRef.current, questionKey).catch(() => {});
+      });
+    }
+    setAttemptStatus("ready");
+    setAttemptId(id);
+  };
+
   useEffect(() => {
     let active = true;
     const { examMode, topicId, questionKey, isPractice } = startParamsRef.current;
@@ -110,7 +134,7 @@ export function useExamSession(): ExamSessionValue {
         const isMockMatch = Boolean(!isPractice && att && !att.topicId && !att.questionKey && att.mode === examMode);
 
         if (att && (isPracticeMatch || isMockMatch)) {
-          setAttemptId(att.id);
+          applyAttemptId(att.id);
           if (activeAttempt.answers && activeAttempt.answers.length > 0) {
             const rehydrated: Record<string, ExamAnswer> = {};
             for (const a of activeAttempt.answers) {
@@ -131,12 +155,13 @@ export function useExamSession(): ExamSessionValue {
               questionKey,
             })
             .then((res) => {
-              if (active) setAttemptId(res.attemptId);
+              if (active) applyAttemptId(res.attemptId);
             });
         }
       })
       .catch(() => {
         // Gracefully continue in offline / mock test mode
+        setAttemptStatus("failed");
       });
 
     return () => {
@@ -229,7 +254,7 @@ export function useExamSession(): ExamSessionValue {
 
       if (!audio.blob) return null;
       return {
-        attemptId: attemptId ?? clientSessionIdRef.current,
+        attemptId: attemptIdRef.current ?? clientSessionIdRef.current,
         questionKey: step.key,
         blob: audio.blob,
         durationMs,
@@ -245,10 +270,32 @@ export function useExamSession(): ExamSessionValue {
       // (and retries) this upload before submitting, even if the user submits
       // before the recorder has finished encoding.
       void trackAnswerUpload(attemptId, recorded);
-    } else {
-      void recorded.then((record) => (record ? saveAudioBlob(record) : undefined));
+      return;
     }
+    // attempt.start has not answered yet: keep the recording pending. The
+    // registry entry only settles once the device copy has been written, so the
+    // backfill can never delete it mid-write. If the id arrives while the
+    // encoder is still running, the decision below runs at resolve time against
+    // the ref — and drops any pending entry so an older take can never
+    // supersede the newer one.
+    void recorded.then((record) => {
+      if (!record) return;
+      const id = attemptIdRef.current;
+      if (id) {
+        pendingSessionRef.current.delete(step.key);
+        void trackAnswerUpload(id, record);
+        return;
+      }
+      pendingSessionRef.current.set(
+        step.key,
+        saveAudioBlob(record).catch(() => {}).then(() => record),
+      );
+    });
   }
+  // Leaving the exam with pending recordings: only forget them in memory. The
+  // session-id device copies stay — they may be the only remaining copy.
+  useEffect(() => () => pendingSessionRef.current.clear(), []);
+
   useEffect(() => {
     if (phase === "recording" && recT >= maxRec && !paused) stopRec();
   }, [recT, maxRec, phase, paused]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -318,5 +365,6 @@ export function useExamSession(): ExamSessionValue {
     review, setReview, exitOpen, setExitOpen, returnToReview,
     begin, startRec, stopRec, restart, next, retryStep,
     attemptId,
+    attemptStatus,
   };
 }

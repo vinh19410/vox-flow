@@ -25,6 +25,7 @@ export function ExamScreen() {
   const doneCount = Object.keys(answers).length;
 
   const submit = () => {
+    if (session.attemptStatus === "pending") return;
     if (s.practice && session.attemptId) {
       // Forecast practice is scored: the scoring screen submits the attempt itself so a
       // failed submit surfaces there with a retry instead of being swallowed here.
@@ -126,6 +127,7 @@ export function ExamScreen() {
         flaggedCount={flagged.length}
         onRetry={session.retryStep}
         onSubmit={submit}
+        submitLocked={session.attemptStatus === "pending"}
       />
       <ExitExamModal open={session.exitOpen} onClose={() => session.setExitOpen(false)} onExit={exitExam} />
     </div>
