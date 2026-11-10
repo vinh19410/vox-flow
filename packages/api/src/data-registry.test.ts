@@ -277,10 +277,21 @@ describe("Data registry for personal data discovery and erasure", () => {
 
     // Test erase with mock audioBucket
     const deletedAudioKeys: string[] = [];
+    const audioObjects = new Set<string>([
+      `users/${user1Id}/attempts/att_reg_1/p1-1.webm`,
+      `users/${user2Id}/attempts/att_reg_2/victim.webm`,
+    ]);
     const mockAudioBucket = {
       delete: vi.fn(async (key: string) => {
         deletedAudioKeys.push(key);
+        audioObjects.delete(key);
       }),
+      list: vi.fn(async (opts: { prefix: string; cursor?: string }) => ({
+        objects: [...audioObjects]
+          .filter((key) => key.startsWith(opts.prefix))
+          .map((key) => ({ key })),
+        truncated: false,
+      })),
     };
 
     await eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, user1Id);
@@ -452,7 +463,18 @@ describe("Data registry for personal data discovery and erasure", () => {
 
     // Erase sweep (reset trước khi đo) — cùng pattern .then(() => null, e => e)
     captured.length = 0;
-    const eraseErr = await eraseUserData({ db: recordingDb }, scaleUserId).then(
+    // audioBucket bắt buộc từ #96 (erasure theo prefix); list rỗng vì test này
+    // chỉ đo trần bind của các DELETE trong D1, không đo tương tác R2.
+    const eraseErr = await eraseUserData(
+      {
+        db: recordingDb,
+        audioBucket: {
+          delete: async () => {},
+          list: async () => ({ objects: [], truncated: false }),
+        },
+      },
+      scaleUserId,
+    ).then(
       () => null,
       (e: unknown) => e,
     );
@@ -556,5 +578,102 @@ describe("Data registry for personal data discovery and erasure", () => {
         "scoredAt",
       ].sort(),
     );
+  });
+
+  it("attempt.erase deletes every audio object under the attempt prefix, including orphaned generations, across truncated pages", async () => {
+    const user1Id = "usr_reg_orphan_1";
+    const user2Id = "usr_reg_orphan_2";
+    await testCtx.db.insert(user).values([
+      { id: user1Id, name: "Orphan 1", email: "orphan1@voxflow.vn", emailVerified: true },
+      { id: user2Id, name: "Orphan 2", email: "orphan2@voxflow.vn", emailVerified: true },
+    ]);
+    await testCtx.db.insert(attempt).values([
+      { id: "att_orphan_1", userId: user1Id, mode: "full", status: "in_progress" },
+      { id: "att_orphan_2", userId: user2Id, mode: "full", status: "in_progress" },
+    ]);
+    // Only the current row audioKey is known to the DB; the old-generation blob is an orphan on R2.
+    await testCtx.db.insert(attemptAnswer).values([
+      {
+        id: "ans_orphan_1",
+        attemptId: "att_orphan_1",
+        questionKey: "p1-1",
+        questionText: "Orphan Q",
+        partNumber: 1,
+        orderIndex: 0,
+        audioKey: `users/${user1Id}/attempts/att_orphan_1/p1-1.500.webm`,
+        durationMs: 9000,
+        mimeType: "audio/webm",
+      },
+    ]);
+
+    const objects = new Set<string>([
+      `users/${user1Id}/attempts/att_orphan_1/p1-1.500.webm`,
+      `users/${user1Id}/attempts/att_orphan_1/p1-1.100.webm`, // orphaned older generation
+      `users/${user2Id}/attempts/att_orphan_2/p1-1.900.webm`, // another user's voice
+    ]);
+    const deleted: string[] = [];
+    const listCalls: { prefix: string; cursor?: string }[] = [];
+    const keysFor = (prefix: string) => [...objects].filter((k) => k.startsWith(prefix));
+    const mockAudioBucket = {
+      delete: vi.fn(async (key: string) => {
+        deleted.push(key);
+        objects.delete(key);
+      }),
+      list: vi.fn(async (opts: { prefix: string; cursor?: string }) => {
+        listCalls.push(opts);
+        const all = keysFor(opts.prefix);
+        // First page returns one object and claims truncation to force the cursor loop.
+        if (!opts.cursor && all.length > 1) {
+          return { objects: all.slice(0, 1).map((key) => ({ key })), truncated: true, cursor: "page-2" };
+        }
+        return { objects: all.map((key) => ({ key })), truncated: false };
+      }),
+    };
+
+    await eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, user1Id);
+
+    // Every object under user1's attempt prefix is gone — including the orphan the row no longer points to.
+    expect(deleted).toContain(`users/${user1Id}/attempts/att_orphan_1/p1-1.500.webm`);
+    expect(deleted).toContain(`users/${user1Id}/attempts/att_orphan_1/p1-1.100.webm`);
+    expect(deleted).not.toContain(`users/${user2Id}/attempts/att_orphan_2/p1-1.900.webm`);
+    // Pagination: the truncated first page is followed with the returned cursor.
+    expect(listCalls).toHaveLength(2);
+    expect(listCalls[1]?.cursor).toBe("page-2");
+    expect(objects.has(`users/${user1Id}/attempts/att_orphan_1/p1-1.100.webm`)).toBe(false);
+  });
+
+  it("attempt.erase refuses to report success when a truncated page has no cursor", async () => {
+    const userId = "usr_reg_nocursor";
+    await testCtx.db.insert(user).values({ id: userId, name: "No Cursor", email: "nocursor@voxflow.vn", emailVerified: true });
+    await testCtx.db.insert(attempt).values({ id: "att_nocursor", userId, mode: "full", status: "in_progress" });
+
+    const mockAudioBucket = {
+      delete: vi.fn(async () => {}),
+      list: vi.fn(async () => ({ objects: [{ key: `users/${userId}/attempts/att_nocursor/p1-1.1.webm` }], truncated: true })),
+    };
+
+    // A truncated page without a cursor would silently leave the remaining
+    // objects unreachable once the attempt row is deleted — refuse instead.
+    await expect(eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, userId)).rejects.toThrow(/cursor/i);
+    // The attempt row must survive so a later erasure can still reach the prefix.
+    const rows = await testCtx.db.select().from(attempt);
+    expect(rows.find((r) => r.id === "att_nocursor")).toBeDefined();
+  });
+
+  it("attempt.erase refuses to report success when deletes keep failing", async () => {
+    const userId = "usr_reg_faildel";
+    await testCtx.db.insert(user).values({ id: userId, name: "Fail Delete", email: "faildel@voxflow.vn", emailVerified: true });
+    await testCtx.db.insert(attempt).values({ id: "att_faildel", userId, mode: "full", status: "in_progress" });
+
+    const mockAudioBucket = {
+      delete: vi.fn(async () => {
+        throw new Error("R2 unavailable");
+      }),
+      list: vi.fn(async () => ({ objects: [{ key: `users/${userId}/attempts/att_faildel/p1-1.1.webm` }], truncated: false })),
+    };
+
+    await expect(eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, userId)).rejects.toThrow(/undeleted/i);
+    const rows = await testCtx.db.select().from(attempt);
+    expect(rows.find((r) => r.id === "att_faildel")).toBeDefined();
   });
 });

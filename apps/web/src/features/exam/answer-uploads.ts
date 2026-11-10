@@ -47,17 +47,34 @@ type AnswerSlot = {
   /** Cancels the upload of the newest recording once it is superseded. */
   controller: AbortController;
   record: AnswerUpload;
-  /**
-   * An older recording reached the server after the newest was registered, so
-   * the server may hold the older one; the newest is re-sent by the next flush.
-   */
-  mustResend: boolean;
 };
 
 const answerSlots = new Map<string, AnswerSlot>();
 let nextTicket = 0;
 
+/**
+ * Highest generation this page has issued per answer. Only a clock guard for the
+ * current page: real ordering comes from the epoch-ms timestamps themselves.
+ */
+const lastGeneration = new Map<string, number>();
+
 const answerKey = (attemptId: string, questionKey: string) => `${attemptId}::${questionKey}`;
+
+function nextGeneration(attemptId: string, questionKey: string): number {
+  const key = answerKey(attemptId, questionKey);
+  const gen = Math.max(Date.now(), (lastGeneration.get(key) ?? 0) + 1);
+  lastGeneration.set(key, gen);
+  return gen;
+}
+
+/**
+ * Assigns the recording's version once. Recordings created before this module
+ * knew about generations may already carry one; those are kept untouched.
+ */
+export function withGeneration(record: Omit<AnswerUpload, "generation"> & { generation?: number }): AnswerUpload {
+  if (record.generation !== undefined) return record as AnswerUpload;
+  return { ...record, generation: nextGeneration(record.attemptId, record.questionKey) };
+}
 
 function setFailed(record: AnswerUpload): void {
   const failed = failedUploads.get(record.attemptId);
@@ -85,7 +102,6 @@ function claimAnswer(record: AnswerUpload, ticket: number): AnswerSlot | null {
     ticket,
     controller: new AbortController(),
     record,
-    mustResend: current?.mustResend ?? false,
   };
   answerSlots.set(key, slot);
   return slot;
@@ -131,16 +147,34 @@ function uploadUrl(record: AnswerUpload): string {
     order: record.order.toString(),
     durationMs: record.durationMs.toString(),
     questionText: record.questionText,
+    generation: record.generation.toString(),
   });
   return `${baseUrl}/api/attempts/${encodeURIComponent(record.attemptId)}/answers/${encodeURIComponent(record.questionKey)}/audio?${query}`;
 }
 
+/** How the server answered one upload; `stale` marks a 409 the server sent because a newer generation already won. */
+type UploadResult = { ok: boolean; stale?: boolean; storedGeneration?: number };
+
+const staleRejection = async (res: Response): Promise<UploadResult> => {
+  try {
+    const body = (await res.json()) as { error?: string; storedGeneration?: unknown } | null;
+    const storedGeneration =
+      typeof body?.storedGeneration === "number" && Number.isSafeInteger(body.storedGeneration)
+        ? body.storedGeneration
+        : undefined;
+    return { ok: false, stale: body?.error === "stale_generation", storedGeneration };
+  } catch {
+    return { ok: false };
+  }
+};
+
 /**
- * Sends one recording to the server; resolves to whether the server confirmed
- * it. Gives up after `UPLOAD_TIMEOUT_MS` so a stalled connection cannot block
- * submit forever, or as soon as `signal` aborts.
+ * Sends one recording to the server and classifies the answer. Gives up after
+ * `UPLOAD_TIMEOUT_MS` so a stalled connection cannot block submit forever, or as
+ * soon as `signal` aborts. A 409 `stale_generation` means the server holds a
+ * newer recording — final answer, not a retryable failure.
  */
-async function postAnswerAudio(record: AnswerUpload, signal?: AbortSignal): Promise<boolean> {
+async function postAnswerAudio(record: AnswerUpload, signal?: AbortSignal): Promise<UploadResult> {
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(new DOMException("Answer upload timed out", "TimeoutError")),
@@ -157,14 +191,20 @@ async function postAnswerAudio(record: AnswerUpload, signal?: AbortSignal): Prom
       credentials: "include",
       signal: controller.signal,
     });
+    if (res.status === 409) {
+      const result = await staleRejection(res);
+      if (result.stale) return result;
+      console.warn(`Answer upload for ${record.questionKey} returned 409`);
+      return { ok: false };
+    }
     if (!res.ok) {
       console.warn(`Answer upload for ${record.questionKey} returned ${res.status}`);
-      return false;
+      return { ok: false };
     }
-    return true;
+    return { ok: true };
   } catch (err) {
     console.warn(`Answer upload for ${record.questionKey} failed:`, err);
-    return false;
+    return { ok: false };
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", forwardAbort);
@@ -172,32 +212,20 @@ async function postAnswerAudio(record: AnswerUpload, signal?: AbortSignal): Prom
 }
 
 /**
- * Records the result of uploading the newest recording of an answer: the
- * device copy is dropped only after the server confirmed it, and a failure is
- * remembered so a flush can retry it.
+ * Records the result of uploading the newest recording of an answer. Confirmed
+ * uploads drop the device copy. A stale rejection is final — the server holds a
+ * newer generation, so the upload stops being retried but the recording is kept
+ * on the device (dropping it would silently discard data on a false stale).
+ * Any other failure is remembered so a flush can retry it.
  */
-async function settleNewest(slot: AnswerSlot, ok: boolean): Promise<void> {
+async function settleNewest(slot: AnswerSlot, result: UploadResult): Promise<void> {
   const { record } = slot;
-  if (!ok || slot.mustResend) setFailed(record);
-  else clearFailed(record.attemptId, record.questionKey);
-  if (!ok) return;
+  if (result.ok || result.stale) clearFailed(record.attemptId, record.questionKey);
+  else setFailed(record);
+  if (!result.ok) return;
   await serializeStorage(record.attemptId, record.questionKey, async () => {
     if (isNewest(slot)) await deleteAudioBlob(record.attemptId, record.questionKey);
   });
-}
-
-/**
- * An older recording finished uploading after a newer one was registered. A
- * failure is ignored (the newer recording is the answer). A success means the
- * server may now hold the older recording, so the newest one is re-sent by
- * the next flush.
- */
-function settleSuperseded(record: AnswerUpload, ok: boolean): void {
-  if (!ok) return;
-  const newest = answerSlots.get(answerKey(record.attemptId, record.questionKey));
-  if (!newest) return;
-  newest.mustResend = true;
-  setFailed(newest.record);
 }
 
 /**
@@ -206,31 +234,30 @@ function settleSuperseded(record: AnswerUpload, ok: boolean): void {
  * recording is still being finalised), so submitting the attempt can wait for
  * it instead of racing it. A recording registered later for the same question
  * supersedes this one: its upload is cancelled and its result no longer
- * counts. Resolves to whether the server stored this recording as the answer
- * (true when there was nothing to upload, false once superseded); never
- * rejects.
+ * counts. The server enforces generation order, so a superseded upload that
+ * still lands is rejected as stale and needs no client-side patch-up. Resolves
+ * to whether the server stored this recording as the answer (true when there
+ * was nothing to upload, false once superseded); never rejects.
  */
 export function trackAnswerUpload(
   attemptId: string,
-  recording: Promise<AnswerUpload | null> | AnswerUpload,
+  recording: Promise<(Omit<AnswerUpload, "generation"> & { generation?: number }) | null> | (Omit<AnswerUpload, "generation"> & { generation?: number }),
 ): Promise<boolean> {
   const ticket = (nextTicket += 1);
   const upload = (async (): Promise<UploadOutcome> => {
-    const record = await recording;
-    if (!record) return { record: null, ok: true };
+    const raw = await recording;
+    if (!raw) return { record: null, ok: true };
+    const record = withGeneration(raw);
     const slot = claimAnswer(record, ticket);
     if (!slot) return { record, ok: false };
     await serializeStorage(record.attemptId, record.questionKey, async () => {
       if (isNewest(slot)) await saveAudioBlob(record);
     });
     if (!isNewest(slot)) return { record, ok: false };
-    const ok = await postAnswerAudio(record, slot.controller.signal);
-    if (!isNewest(slot)) {
-      settleSuperseded(record, ok);
-      return { record, ok: false };
-    }
-    await settleNewest(slot, ok);
-    return { record, ok };
+    const result = await postAnswerAudio(record, slot.controller.signal);
+    if (!isNewest(slot)) return { record, ok: false };
+    await settleNewest(slot, result);
+    return { record, ok: result.ok };
   })().catch((err: unknown): UploadOutcome => {
     // The recorder never produced a recording, so there is nothing to retry.
     console.warn("Answer upload could not start:", err);
@@ -263,7 +290,15 @@ export async function flushAnswerUploads(
   const toRetry = new Map<string, AnswerUpload>();
   let storageUnreadable = false;
   try {
-    for (const record of await listPendingUploads(attemptId)) toRetry.set(record.questionKey, record);
+    for (const stored of await listPendingUploads(attemptId)) {
+      // Device copies written before this module tracked generations carry no
+      // version. They cannot prove recency, so they get 0 — the server accepts
+      // them only when it still holds a generation-0 row, and a stale rejection
+      // otherwise. Never re-stamp them with the current time: that would turn an
+      // old recording into the "newest" one.
+      const record: AnswerUpload = stored.generation === undefined ? { ...stored, generation: 0 } : stored;
+      toRetry.set(record.questionKey, record);
+    }
   } catch (err) {
     console.warn("Could not read the recordings kept on this device:", err);
     storageUnreadable = true;
@@ -283,13 +318,15 @@ export async function flushAnswerUploads(
         // Re-recorded meanwhile: that upload owns the answer now, and it has not
         // been waited for, so report the question as not uploaded yet.
         if (slot && !isNewest(slot)) return record.questionKey;
-        const ok = await postAnswerAudio(record, slot?.controller.signal);
-        if (slot && !isNewest(slot)) {
-          settleSuperseded(record, ok);
-          return record.questionKey;
+        const result = await postAnswerAudio(record, slot?.controller.signal);
+        if (slot && !isNewest(slot)) return record.questionKey;
+        if (result.stale) {
+          // The server holds a newer recording of this answer — final answer.
+          // Stop retrying and keep the device copy; this is not a failure.
+          clearFailed(record.attemptId, record.questionKey);
+          return null;
         }
-        if (!ok) continue;
-        if (slot) slot.mustResend = false;
+        if (!result.ok) continue;
         clearFailed(record.attemptId, record.questionKey);
         await serializeStorage(record.attemptId, record.questionKey, async () => {
           if (slot ? isNewest(slot) : !answerSlots.has(key)) await deleteAudioBlob(record.attemptId, record.questionKey);

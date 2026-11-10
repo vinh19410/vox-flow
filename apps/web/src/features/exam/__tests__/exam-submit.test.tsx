@@ -17,7 +17,8 @@ vi.mock("@/utils/trpc", () => ({
   },
 }));
 
-vi.mock("../answer-uploads", () => ({
+vi.mock("../answer-uploads", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../answer-uploads")>()),
   trackAnswerUpload: (...a: unknown[]) => trackUploadSpy(...a),
 }));
 

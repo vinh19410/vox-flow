@@ -14,6 +14,7 @@ import {
   buildAudioKey,
   isValidAudioKey,
   resolveAudioStreamResponse,
+  upsertAnswerRecording,
 } from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
 import {
@@ -72,6 +73,7 @@ const audioUploadQuerySchema = z.object({
   order: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(100)).default(0),
   durationMs: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(3_600_000)).default(0),
   questionText: z.string().max(2000).default(""),
+  generation: z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)).default(0),
 });
 
 app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
@@ -120,7 +122,16 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
   if (!queryResult.success) {
     return c.json({ error: "Invalid query parameters", details: queryResult.error.flatten() }, 400);
   }
-  const { part: partNumber, order: orderIndex, durationMs, questionText } = queryResult.data;
+  const { part: partNumber, order: orderIndex, durationMs, questionText, generation } = queryResult.data;
+
+  // Ceiling on the client-supplied generation: a poisoned value (far beyond any
+  // real epoch-ms stamp) must not lock this question's row forever. Ownership is
+  // already enforced above, so a bad value can only hurt its own attempt; the
+  // ceiling exists for client bugs, not attackers — keep it generous (24h) so
+  // moderately fast clocks are not rejected forever.
+  if (generation > Date.now() + 24 * 60 * 60 * 1000) {
+    return c.json({ error: "Generation too far in the future" }, 400);
+  }
 
   if (!c.req.raw.body) {
     return c.json({ error: "Empty payload body" }, 400);
@@ -145,12 +156,18 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
   }
 
   // Load existing answers once: validates question keys against the topic,
-  // caps the answer count, and enables upsert-aware byte accounting.
+  // caps the answer count, enables upsert-aware byte accounting, and feeds the
+  // stale-generation fast path (a read-only optimization; the conditional
+  // upsert below is the real ordering gate).
   const existingAnswers = await db
     .select()
     .from(attemptAnswer)
     .where(eq(attemptAnswer.attemptId, attemptId));
   const existingAnswer = existingAnswers.find((a) => a.questionKey === questionKey);
+
+  if (existingAnswer && generation < existingAnswer.generation) {
+    return c.json({ error: "stale_generation", storedGeneration: existingAnswer.generation }, 409);
+  }
 
   if (currentAttempt.topicId) {
     const [topic] = await db
@@ -187,7 +204,7 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Payload too large: total audio exceeds 35MB" }, 413);
   }
 
-  const audioKey = buildAudioKey(session.user.id, attemptId, questionKey, contentType);
+  const audioKey = buildAudioKey(session.user.id, attemptId, questionKey, contentType, generation);
 
   const bucket = "AUDIO_BUCKET" in ENV ? (ENV.AUDIO_BUCKET as R2Bucket) : undefined;
   if (!bucket) {
@@ -206,32 +223,60 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     return c.json({ error: "Storage write failed: unverifiable object size" }, 503);
   }
   const actualSizeBytes = reportedSize;
-  await db
-    .insert(attemptAnswer)
-    .values({
-      id: crypto.randomUUID(),
-      attemptId,
-      questionKey,
-      questionText,
-      partNumber,
-      orderIndex,
-      audioKey,
-      durationMs,
-      mimeType: contentType,
-      sizeBytes: actualSizeBytes,
-    })
-    .onConflictDoUpdate({
-      target: [attemptAnswer.attemptId, attemptAnswer.questionKey],
-      set: {
-        questionText,
-        partNumber,
-        orderIndex,
-        audioKey,
-        durationMs,
-        mimeType: contentType,
-        sizeBytes: actualSizeBytes,
-      },
-    });
+
+  const updated = await upsertAnswerRecording(db, {
+    id: crypto.randomUUID(),
+    attemptId,
+    questionKey,
+    questionText,
+    partNumber,
+    orderIndex,
+    audioKey,
+    durationMs,
+    mimeType: contentType,
+    generation,
+    sizeBytes: actualSizeBytes,
+  });
+
+  if (updated.length === 0) {
+    // Lost the race against a higher generation that landed mid-flight: the blob
+    // this request put is now orphaned, and the stored row holds the real winner.
+    const [winner] = await db
+      .select({ generation: attemptAnswer.generation })
+      .from(attemptAnswer)
+      .where(and(eq(attemptAnswer.attemptId, attemptId), eq(attemptAnswer.questionKey, questionKey)))
+      .limit(1);
+    await bucket.delete(audioKey).catch(() => {});
+    return c.json({ error: "stale_generation", storedGeneration: winner?.generation ?? 0 }, 409);
+  }
+
+  // This request won: drop every other blob of this question OLDER than the
+  // winning generation (previous generations and pre-migration bare keys). The
+  // "<questionKey>." prefix cannot match other questions' keys. A key carrying
+  // a generation >= ours belongs to an upload still in flight that may win the
+  // row right after us — deleting it would strand the winning row without a
+  // blob, so it is left for that winner's own cleanup (or erasure).
+  try {
+    const prefix = `users/${session.user.id}/attempts/${attemptId}/${questionKey}.`;
+    const listed = await bucket.list({ prefix });
+    const fileRe = /^(\d+)\.(webm|mp4|ogg|wav|mp3)$/;
+    const bareRe = /^(webm|mp4|ogg|wav|mp3)$/;
+    const winningGeneration = updated[0]!.generation;
+    const winningKey = updated[0]!.audioKey;
+    const staleKeys = listed.objects
+      .map((obj) => obj.key)
+      .filter((key) => {
+        if (key === winningKey) return false;
+        const rest = key.slice(prefix.length);
+        const genMatch = fileRe.exec(rest);
+        if (genMatch) return Number(genMatch[1]) < winningGeneration;
+        // Pre-migration bare key: superseded by any generation-stamped winner.
+        return bareRe.test(rest) && winningGeneration > 0;
+      });
+    await Promise.all(staleKeys.map((key) => bucket.delete(key).catch(() => {})));
+  } catch {
+    // Best-effort cleanup; erasure by prefix still reaches any missed blob.
+  }
 
   return c.json({
     success: true,

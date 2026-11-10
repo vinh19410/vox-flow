@@ -14,7 +14,7 @@ export type AllowedAudioMimeType = (typeof ALLOWED_AUDIO_MIME_TYPES)[number];
 
 export const QUESTION_KEY_RE = /^[a-zA-Z0-9_-]+$/;
 
-const SAFE_FILENAME_RE = /^[a-zA-Z0-9_-]+\.(webm|mp4|ogg|wav|mp3)$/;
+const SAFE_FILENAME_RE = /^[a-zA-Z0-9_-]+(\.\d+)?\.(webm|mp4|ogg|wav|mp3)$/;
 
 /**
  * Normalizes an incoming MIME type string by trimming whitespace,
@@ -60,7 +60,11 @@ export function getAudioExtension(mime: AllowedAudioMimeType): string {
 
 /**
  * Constructs a server-controlled audio storage key with strict tenant hierarchy:
- * users/<userId>/attempts/<attemptId>/<questionKey>.<ext>
+ * users/<userId>/attempts/<attemptId>/<questionKey>[.<generation>].<ext>
+ *
+ * `generation` (epoch ms, client-supplied) gets its own dot segment so concurrent
+ * uploads of different generations never write the same object. `.` is not part of
+ * QUESTION_KEY_RE, so a suffixed key can never collide with a legacy unsuffixed key.
  *
  * Throws an Error if questionKey fails QUESTION_KEY_RE.
  */
@@ -69,12 +73,14 @@ export function buildAudioKey(
   attemptId: string,
   questionKey: string,
   mime: AllowedAudioMimeType,
+  generation?: number,
 ): string {
   if (!QUESTION_KEY_RE.test(questionKey)) {
     throw new Error(`Invalid questionKey format: "${questionKey}"`);
   }
   const ext = getAudioExtension(mime);
-  return `users/${userId}/attempts/${attemptId}/${questionKey}.${ext}`;
+  const stem = generation === undefined ? questionKey : `${questionKey}.${generation}`;
+  return `users/${userId}/attempts/${attemptId}/${stem}.${ext}`;
 }
 
 /**

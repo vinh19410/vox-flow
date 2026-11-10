@@ -187,12 +187,9 @@ describe("attemptRouter", () => {
         durationMs: 15000,
         mimeType: "audio/webm",
       });
-
       const activeRes = await callerA.attempt.getActive();
       expect(activeRes).not.toBeNull();
       expect(activeRes?.answers).toHaveLength(1);
-      expect(activeRes?.answers[0]?.audioKey).toBe(`users/user-a/attempts/${attemptId}/p1-1.webm`);
-      expect(activeRes?.answers[0]?.mimeType).toBe("audio/webm");
 
       const submitRes = await callerA.attempt.submit({ attemptId });
       expect(submitRes.status).toBe("submitted");

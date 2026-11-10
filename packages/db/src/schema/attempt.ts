@@ -40,6 +40,8 @@ export const attemptAnswer = sqliteTable(
     questionText: text("question_text").notNull(),
     partNumber: integer("part_number").notNull(),
     orderIndex: integer("order_index").notNull(),
+    /** Monotonic client-side version (epoch ms, clamped) per question; server rejects uploads older than stored. */
+    generation: integer("generation").default(0).notNull(),
     audioKey: text("audio_key").notNull(),
     durationMs: integer("duration_ms").notNull(),
     mimeType: text("mime_type").notNull(),
