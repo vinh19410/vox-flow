@@ -13,6 +13,7 @@ import { logger } from "hono/logger";
 import { z } from "zod";
 import { createContext } from "./context";
 import { ENV } from "./env.server";
+import { handleScoringQueue } from "./queue";
 import { handleScheduled } from "./scheduled";
 import { createAuth, getDb } from "./services";
 const app = new Hono();
@@ -272,4 +273,5 @@ export { app };
 export default {
   fetch: app.fetch,
   scheduled: handleScheduled,
+  queue: handleScoringQueue,
 };
