@@ -327,7 +327,7 @@ export function ProfileScreen() {
                       type="date"
                       value={examDate}
                       onChange={(e) => setExamDate(e.target.value)}
-                      className="w-full min-w-0 max-w-full rounded-xl border border-line bg-white py-2.5 pr-3 pl-10 text-sm font-medium focus:border-brand focus:outline-none"
+                      className="w-full min-w-0 max-w-full appearance-none rounded-xl border border-line bg-white py-2.5 pr-3 pl-10 text-base font-medium focus:border-brand focus:outline-none sm:text-sm"
                     />
                   </div>
                   {examDate && (

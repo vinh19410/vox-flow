@@ -231,7 +231,7 @@ describe("ProfileScreen component", () => {
     });
   });
 
-  it("renders exam date input with overflow prevention classes", () => {
+  it("renders exam date input with overflow prevention and appearance-none classes", () => {
     renderProfile();
 
     const dateInput = document.getElementById("user-exam-date");
@@ -239,6 +239,9 @@ describe("ProfileScreen component", () => {
     expect(dateInput?.className).toContain("min-w-0");
     expect(dateInput?.className).toContain("max-w-full");
     expect(dateInput?.className).toContain("w-full");
+    expect(dateInput?.className).toContain("appearance-none");
+    expect(dateInput?.className).toContain("text-base");
+    expect(dateInput?.className).toContain("sm:text-sm");
   });
   it("initializes with empty date string when examDate in app state is null", () => {
     renderProfile({ examDate: null });

@@ -18,4 +18,16 @@ describe("prototype-theme.css tokens", () => {
     expect(themeCss).toContain(".proto-root");
     expect(themeCss).toContain(".tnum");
   });
+
+  it("includes iOS WebKit temporal input appearance and date-and-time-value reset rules inside @layer base", () => {
+    const layerBaseIdx = themeCss.indexOf("@layer base");
+    const appearanceIdx = themeCss.indexOf("-webkit-appearance: none;");
+    const dateValIdx = themeCss.indexOf("::-webkit-date-and-time-value");
+    expect(layerBaseIdx).toBeGreaterThan(-1);
+    expect(appearanceIdx).toBeGreaterThan(layerBaseIdx);
+    expect(dateValIdx).toBeGreaterThan(layerBaseIdx);
+    expect(themeCss).toContain("appearance: none;");
+    expect(themeCss).toContain("min-height: 1.25em;");
+    expect(themeCss).toContain("text-align: left;");
+  });
 });
