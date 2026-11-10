@@ -1,7 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { attempt, attemptAnswer, attemptScore } from "@vox-flow/db";
+import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
@@ -44,6 +44,22 @@ export const attemptRouter = router({
           code: "FORBIDDEN",
           message: "Mock exam is currently restricted to pilot candidates.",
         });
+      }
+
+      // Attempts with a topicId are scored, so the topic must be a real published
+      // forecast topic rather than any string the client chooses.
+      if (topicId) {
+        const [topic] = await ctx.db
+          .select({ id: forecastTopic.id })
+          .from(forecastTopic)
+          .where(and(eq(forecastTopic.id, topicId), eq(forecastTopic.status, "published")))
+          .limit(1);
+        if (!topic) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Unknown or unpublished forecast topic",
+          });
+        }
       }
 
       const consent = await requireExamConsent(ctx.db, ctx.session.user.id);

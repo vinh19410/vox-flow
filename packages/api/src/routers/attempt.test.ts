@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { user } from "@vox-flow/db";
+import { forecastTopic, user } from "@vox-flow/db";
 import { appRouter } from "./index";
 import { createTestDb } from "../test/db";
+
+const PUBLISHED_TOPIC = {
+  id: "p1-tidiness",
+  title: "Tidiness",
+  quarter: "2026-Q4",
+  part: 1,
+  status: "published" as const,
+};
 
 describe("attemptRouter", () => {
   it("rejects attempt.start when launch gate is closed and email is not allowed", async () => {
@@ -248,6 +256,7 @@ describe("attemptRouter", () => {
         email: "learner@voxflow.vn",
         emailVerified: true,
       });
+      await db.insert(forecastTopic).values(PUBLISHED_TOPIC);
 
       const caller = appRouter.createCaller({
         db,
@@ -305,6 +314,7 @@ describe("attemptRouter", () => {
         email: "val@voxflow.vn",
         emailVerified: true,
       });
+      await db.insert(forecastTopic).values(PUBLISHED_TOPIC);
 
       const caller = appRouter.createCaller({
         db,
@@ -363,6 +373,38 @@ describe("attemptRouter", () => {
           questionKey: "invalid/key!",
         }),
       ).rejects.toThrow();
+    } finally {
+      await dispose();
+    }
+  });
+  it("rejects attempt.start for a topicId that is not a published forecast topic", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({ id: "user-t", name: "Topic User", email: "t@voxflow.vn", emailVerified: true });
+      await db.insert(forecastTopic).values([
+        PUBLISHED_TOPIC,
+        { ...PUBLISHED_TOPIC, id: "p1-draft", status: "draft" as const },
+        { ...PUBLISHED_TOPIC, id: "p1-archived", status: "archived" as const },
+      ]);
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: { id: "user-t", email: "t@voxflow.vn", name: "Topic User", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+          session: { id: "s-t", userId: "user-t", token: "t-t", expiresAt: new Date(Date.now() + 3600000), createdAt: new Date(), updatedAt: new Date() },
+        },
+        env: { LAUNCH_OPEN: "true" },
+      });
+
+      for (const topicId of ["x", "p1-draft", "p1-archived"]) {
+        await expect(caller.attempt.start({ mode: "full", topicId })).rejects.toMatchObject({
+          code: "BAD_REQUEST",
+          message: "Unknown or unpublished forecast topic",
+        });
+      }
+      expect(await caller.attempt.getActive()).toBeNull();
+
+      const ok = await caller.attempt.start({ mode: "part1", topicId: "p1-tidiness" });
+      expect(ok.topicId).toBe("p1-tidiness");
     } finally {
       await dispose();
     }
