@@ -16,6 +16,7 @@ function record(questionKey: string): Omit<AudioBlobRecord, "createdAt"> {
     part: 1,
     order: 0,
     questionText: "Do you like tidying?",
+    generation: 1000,
   };
 }
 

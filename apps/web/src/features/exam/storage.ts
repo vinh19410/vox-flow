@@ -7,6 +7,8 @@ export type AudioBlobRecord = {
   part: number;
   order: number;
   questionText: string;
+  /** Monotonic client-side version (epoch ms, clamped) assigned when the recording is created. */
+  generation: number;
   createdAt: number;
 };
 

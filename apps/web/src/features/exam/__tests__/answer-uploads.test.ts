@@ -18,6 +18,7 @@ function record(questionKey: string, order = 0): AnswerUpload {
     part: 1,
     order,
     questionText: "Do you like tidying?",
+    generation: 1000,
   };
 }
 
@@ -71,6 +72,51 @@ describe("answer uploads", () => {
     ready(record("q1"));
     await expect(flush).resolves.toEqual({ failedQuestionKeys: [], storageUnreadable: false });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the recording's generation in the upload URL", async () => {
+    fetchSpy.mockResolvedValue(ok());
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(true);
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain("generation=1000");
+  });
+
+  it("marks a stale rejection of the newest recording as settled and keeps the device copy", async () => {
+    // The server holds a higher generation (e.g. re-recorded after a reload lost
+    // the page's clock guard): it rejects this upload as stale. Each call gets a
+    // fresh Response — a Response body can be read only once.
+    fetchSpy.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "stale_generation", storedGeneration: 2000 }), { status: 409 }),
+    );
+    await expect(trackAnswerUpload(ATTEMPT, record("q1"))).resolves.toBe(false);
+
+    // A stale upload must not surface as a submit-blocking failure...
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+      failedQuestionKeys: [],
+      storageUnreadable: false,
+    });
+    // ...the flush asks the server once more (the copy is kept on purpose) and
+    // settles on the same final answer instead of retrying UPLOAD_RETRIES times.
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // ...and the recording stays on the device instead of being silently dropped.
+    expect(await getAudioBlob(ATTEMPT, "q1")).not.toBeNull();
+  });
+
+  it("treats a legacy device copy without a version as generation 0 and keeps it on a stale rejection", async () => {
+    const legacy = record("q1");
+    // A copy written before generations existed carries no version field.
+    await saveAudioBlob({ ...legacy, generation: undefined } as unknown as AnswerUpload);
+
+    fetchSpy.mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ error: "stale_generation", storedGeneration: 2000 }), { status: 409 }),
+    );
+    await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+      failedQuestionKeys: [],
+      storageUnreadable: false,
+    });
+    expect(String(fetchSpy.mock.calls[0]![0])).toContain("generation=0");
+    expect(await getAudioBlob(ATTEMPT, "q1")).not.toBeNull();
   });
 
   it("retries a failed upload from the device copy", async () => {
@@ -193,7 +239,9 @@ describe("answer uploads", () => {
       expect(await listPendingUploads(ATTEMPT)).toHaveLength(0);
     });
 
-    it("re-sends the newest recording when the replaced one still reaches the server late", async () => {
+    it("does not re-send anything when the server rejects the replaced recording as stale", async () => {
+      // The server now owns ordering: a superseded recording landing late carries
+      // a lower generation and is rejected, so the client has nothing to re-send.
       const first = record("q1");
       const second = record("q1");
       const blocked = blockFirstRecording(first);
@@ -204,7 +252,11 @@ describe("answer uploads", () => {
       // The client cancels the replaced upload, but a request the server has
       // already received may still be stored after the newer one.
       expect(blocked.firstSignal()?.aborted).toBe(true);
-      blocked.settle(ok());
+      blocked.settle(
+        new Response(JSON.stringify({ error: "stale_generation", storedGeneration: (second as AnswerUpload & { generation: number }).generation }), {
+          status: 409,
+        }),
+      );
       await expect(firstUpload).resolves.toBe(false);
       fetchSpy.mockClear();
 
@@ -212,10 +264,10 @@ describe("answer uploads", () => {
         failedQuestionKeys: [],
         storageUnreadable: false,
       });
-      // The last upload the server receives is the newest recording.
-      expect(bodies()).toEqual([second.blob]);
+      // Nothing further is sent: the newest recording already reached the server.
+      expect(fetchSpy).not.toHaveBeenCalled();
 
-      // Once restored, a later flush has nothing left to send.
+      // Once settled, a later flush has nothing left to send either.
       fetchSpy.mockClear();
       await flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 });
       expect(fetchSpy).not.toHaveBeenCalled();

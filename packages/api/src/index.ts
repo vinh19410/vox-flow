@@ -4,6 +4,7 @@ import { isUserAdmin, canAccessAudio } from "./auth-utils";
 import type { Context } from "./context";
 
 export { isUserAdmin, canAccessAudio };
+export * from "./answers";
 export * from "./audio";
 export const t = initTRPC.context<Context>().create();
 

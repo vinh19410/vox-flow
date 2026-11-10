@@ -1,0 +1,1 @@
+ALTER TABLE `attempt_answer` ADD `generation` integer DEFAULT 0 NOT NULL;

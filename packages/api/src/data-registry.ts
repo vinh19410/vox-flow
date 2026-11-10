@@ -1,5 +1,4 @@
 import { eq, inArray } from "drizzle-orm";
-import { isValidAudioKey } from "./audio";
 
 import type { Database } from "@vox-flow/db";
 import {
@@ -19,8 +18,15 @@ import {
 
 export type EraseContext = {
   db: Database;
-  audioBucket?: {
-    delete?: (key: string) => Promise<void>;
+  /** R2-backed audio storage. `list` is required so erasure can reach orphaned
+   * generation blobs that no attempt_answer row points at anymore. */
+  audioBucket: {
+    delete: (key: string) => Promise<void>;
+    list: (opts: { prefix: string; cursor?: string }) => Promise<{
+      objects: { key: string }[];
+      truncated: boolean;
+      cursor?: string;
+    }>;
   };
 };
 
@@ -162,16 +168,35 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     erase: async (ctx, userId) => {
       const userAttempts = await ctx.db.select().from(attempt).where(eq(attempt.userId, userId));
       for (const att of userAttempts) {
-        const answers = await ctx.db
-          .select()
-          .from(attemptAnswer)
-          .where(eq(attemptAnswer.attemptId, att.id));
-        if (ctx.audioBucket?.delete) {
-          for (const ans of answers) {
-            if (isValidAudioKey(ans.audioKey, userId, att.id)) {
-              await ctx.audioBucket.delete(ans.audioKey).catch(() => {});
+        // Erase by R2 prefix, not by row: per-generation audio keys leave orphaned
+        // blobs no attempt_answer row points at anymore. R2 pages at 1000 objects,
+        // so keep following `truncated`/`cursor` until the prefix is empty. Any
+        // failure throws BEFORE the attempt row is deleted — a deleted row would
+        // make the prefix unreachable for every later erasure pass.
+        const prefix = `users/${userId}/attempts/${att.id}/`;
+        let cursor: string | undefined;
+        const undeleted: string[] = [];
+        do {
+          const page = await ctx.audioBucket.list({ prefix, cursor });
+          for (const obj of page.objects) {
+            try {
+              await ctx.audioBucket.delete(obj.key);
+            } catch {
+              // One retry for transient errors, then give up loudly.
+              try {
+                await ctx.audioBucket.delete(obj.key);
+              } catch {
+                undeleted.push(obj.key);
+              }
             }
           }
+          if (page.truncated && !page.cursor) {
+            throw new Error(`Erasure stalled for ${prefix}: truncated page without a cursor`);
+          }
+          cursor = page.truncated ? page.cursor : undefined;
+        } while (cursor);
+        if (undeleted.length > 0) {
+          throw new Error(`Erasure left ${undeleted.length} audio object(s) undeleted under ${prefix}`);
         }
       }
       await ctx.db.delete(attempt).where(eq(attempt.userId, userId));

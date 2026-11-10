@@ -7,7 +7,7 @@ import { cancelSpeech, speakText } from "@/lib/speech";
 import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
-import { trackAnswerUpload, type AnswerUpload } from "./answer-uploads";
+import { trackAnswerUpload, withGeneration, type AnswerUpload } from "./answer-uploads";
 import { deleteAudioBlob, saveAudioBlob } from "./storage";
 import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./types";
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
@@ -253,7 +253,9 @@ export function useExamSession(): ExamSessionValue {
       }));
 
       if (!audio.blob) return null;
-      return {
+      // The version is stamped once, at creation, so every path (tracked upload,
+      // device copy, later flush) carries the same generation.
+      return withGeneration({
         attemptId: attemptIdRef.current ?? clientSessionIdRef.current,
         questionKey: step.key,
         blob: audio.blob,
@@ -262,7 +264,7 @@ export function useExamSession(): ExamSessionValue {
         part: step.part,
         order: idx,
         questionText: step.text,
-      };
+      });
     });
 
     if (attemptId) {

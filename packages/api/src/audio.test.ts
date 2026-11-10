@@ -79,6 +79,15 @@ describe("audio security module", () => {
       expect(mp4Key).toBe("users/user-123/attempts/att-456/p2-1.mp4");
     });
 
+    it("embeds the generation as its own dot segment when provided", () => {
+      expect(buildAudioKey("user-123", "att-456", "p1-1", "audio/webm", 1731212345678)).toBe(
+        "users/user-123/attempts/att-456/p1-1.1731212345678.webm",
+      );
+      expect(buildAudioKey("user-123", "att-456", "p1-1", "audio/webm")).toBe(
+        "users/user-123/attempts/att-456/p1-1.webm",
+      );
+    });
+
     it("throws an error when questionKey contains invalid characters or traversal", () => {
       expect(() =>
         buildAudioKey("user-123", "att-456", "../evil", "audio/webm"),
@@ -100,6 +109,19 @@ describe("audio security module", () => {
       expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/q1.ogg`, userId, attemptId)).toBe(true);
       expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/q2.wav`, userId, attemptId)).toBe(true);
       expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/q3.mp3`, userId, attemptId)).toBe(true);
+    });
+
+    it("accepts generation-suffixed keys and rejects malformed generation segments", () => {
+      expect(
+        isValidAudioKey(`users/${userId}/attempts/${attemptId}/p1-1.1731212345678.webm`, userId, attemptId),
+      ).toBe(true);
+      expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/p1-1.webm`, userId, attemptId)).toBe(true);
+      expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/p1-1.webm.gaa.webm`, userId, attemptId)).toBe(
+        false,
+      );
+      expect(isValidAudioKey(`users/${userId}/attempts/${attemptId}/p1-1.1731212345678.99.webm`, userId, attemptId)).toBe(
+        false,
+      );
     });
 
     it("rejects keys belonging to another user or attempt", () => {
