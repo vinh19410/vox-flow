@@ -13,7 +13,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Cloudflare Beta
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: beta
