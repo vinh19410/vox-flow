@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { attempt, attemptAnswer, attemptScore, scoreRun, user } from "@vox-flow/db/schema";
 
+import { appRouter } from "../routers/index";
 import { createTestDb, type TestDbContext } from "../test/db";
 import { OpenAIRequestError, type ChatCompletionResult, type ScoringOpenAIClient } from "./openai-client";
 import {
   MAX_GRADING_AUDIO_BYTES,
+  markScoreFailed,
   MAX_SCORING_TRIES,
   SCORING_LEASE_MS,
   scoreAttempt,
@@ -135,6 +137,21 @@ async function seed(db: TestDbContext["db"], opts: { answers?: boolean } = {}) {
     ]);
   }
   await db.insert(attemptScore).values({ attemptId: ATTEMPT_ID, userId: USER_ID, status: "queued" });
+}
+
+function makeSession(userId: string) {
+  const at = new Date();
+  return {
+    user: { id: userId, email: `${userId}@voxflow.vn`, name: "Learner", emailVerified: true, createdAt: at, updatedAt: at },
+    session: {
+      id: `session-${userId}`,
+      userId,
+      token: `token-${userId}`,
+      expiresAt: new Date(at.getTime() + 3_600_000),
+      createdAt: at,
+      updatedAt: at,
+    },
+  };
 }
 
 async function loadScore(db: TestDbContext["db"]) {
@@ -522,6 +539,63 @@ describe("scoreAttempt", () => {
       const score = await loadScore(ctx.db);
       expect(score.status).toBe("done");
       expect(score.lastError).toBeNull();
+    });
+
+    it("does not let a stale worker overwrite a newer claim after a learner retry reset the tries", async () => {
+      await seed(ctx.db);
+      /** A client whose chat calls block until `release()`, then fail or succeed. */
+      function gatedClient(fail: boolean) {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        let started!: () => void;
+        const firstCall = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+        const fake = new FakeOpenAI();
+        const original = fake.chatImpl;
+        fake.chatImpl = async (body, i) => {
+          started();
+          await gate;
+          if (fail) throw new Error("stale worker timed out");
+          return original(body, i);
+        };
+        return { client: fake, release, firstCall };
+      }
+
+      // Worker A claims (tries=1) and outlives its lease.
+      const a = gatedClient(true);
+      const stale = scoreAttempt({ ...deps, client: a.client, now: () => T0 }, ATTEMPT_ID);
+      await a.firstCall;
+      expect((await loadScore(ctx.db)).tries).toBe(1);
+
+      // The queue gives up on the message and fails the row, then the learner presses "Chấm lại".
+      await markScoreFailed(ctx.db, ATTEMPT_ID, new Error("delivery attempts exhausted"), afterLease);
+      const learner = appRouter.createCaller({ db: ctx.db, session: makeSession(USER_ID), env: {} });
+      await expect(learner.scoring.retry({ attemptId: ATTEMPT_ID })).resolves.toMatchObject({ status: "queued" });
+      expect(await loadScore(ctx.db)).toMatchObject({ status: "queued", tries: 0 });
+
+      // Worker B claims the retried row and reaches the same tries count as A.
+      const claimB = new Date(afterLease.getTime() + 60_000);
+      const b = gatedClient(false);
+      const fresh = scoreAttempt({ ...deps, client: b.client, now: () => claimB }, ATTEMPT_ID);
+      await b.firstCall;
+      expect(await loadScore(ctx.db)).toMatchObject({ status: "processing", tries: 1, updatedAt: claimB });
+
+      // A fails now: its release must not touch B's claim.
+      a.release();
+      await expect(stale).resolves.toBe("skipped");
+      expect(await loadScore(ctx.db)).toMatchObject({
+        status: "processing",
+        tries: 1,
+        updatedAt: claimB,
+        lastError: null,
+      });
+
+      b.release();
+      await expect(fresh).resolves.toBe("done");
+      expect(await loadScore(ctx.db)).toMatchObject({ status: "done", lastError: null });
     });
 
     it("does not claim a row that already used every try", async () => {

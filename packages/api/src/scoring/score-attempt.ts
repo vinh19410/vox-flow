@@ -178,9 +178,12 @@ export async function scoreAttempt(
       isNonRetriableRequestError(error) ||
       claimed.tries >= MAX_SCORING_TRIES;
     // Only the current lease holder may record the outcome: a stale worker
-    // whose lease was taken over must not overwrite the newer claim. A
-    // retriable failure releases the lease (back to queued) so the queue's
-    // redelivery can claim it again.
+    // whose lease was taken over must not overwrite the newer claim. Every
+    // claim stamps `updatedAt` with its own claim time, so the pair
+    // (tries, updatedAt) identifies this claim even after `scoring.retry`
+    // resets `tries` and a later claim reaches the same count. A retriable
+    // failure releases the lease (back to queued) so the queue's redelivery
+    // can claim it again.
     const released = await db
       .update(attemptScore)
       .set({
@@ -193,6 +196,7 @@ export async function scoreAttempt(
           eq(attemptScore.attemptId, attemptId),
           eq(attemptScore.status, "processing"),
           eq(attemptScore.tries, claimed.tries),
+          eq(attemptScore.updatedAt, claimedAt),
         ),
       )
       .returning({ attemptId: attemptScore.attemptId });
