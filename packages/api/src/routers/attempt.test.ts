@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { attempt, forecastTopic, user } from "@vox-flow/db";
+import { attempt, attemptAnswer, forecastTopic, user } from "@vox-flow/db";
 import { appRouter } from "./index";
 import { createTestDb } from "../test/db";
 
@@ -8,6 +8,10 @@ const PUBLISHED_TOPIC = {
   title: "Tidiness",
   quarter: "2026-Q4",
   part: 1,
+  questions: JSON.stringify([
+    "Were you a tidy person when you were a child?",
+    "Do you think it is possible for people to be tidy all the time?",
+  ]),
   status: "published" as const,
 };
 
@@ -135,7 +139,7 @@ describe("attemptRouter", () => {
     }
   });
 
-  it("prevents User B from uploading answers or submitting User A's attempt", async () => {
+  it("prevents User B from submitting User A's attempt", async () => {
     const { db, dispose } = await createTestDb();
     try {
       await db.insert(user).values([
@@ -163,19 +167,6 @@ describe("attemptRouter", () => {
 
       const { attemptId } = await callerA.attempt.start();
 
-      // User B tries to upload answer for User A's attempt
-      await expect(
-        callerB.attempt.uploadAnswer({
-          attemptId,
-          questionKey: "p1-1",
-          questionText: "Where do you live?",
-          partNumber: 1,
-          orderIndex: 0,
-          durationMs: 15000,
-          mimeType: "audio/webm",
-        }),
-      ).rejects.toThrow("You are not authorized");
-
       // User B tries to submit User A's attempt
       await expect(
         callerB.attempt.submit({
@@ -183,43 +174,19 @@ describe("attemptRouter", () => {
         }),
       ).rejects.toThrow("You are not authorized");
 
-      // User A uploads and submits successfully
-      // Reject invalid or unsupported mimeType (e.g. text/html for stored XSS)
-      await expect(
-        callerA.attempt.uploadAnswer({
-          attemptId,
-          questionKey: "p1-1",
-          questionText: "Where do you live?",
-          partNumber: 1,
-          orderIndex: 0,
-          durationMs: 15000,
-          mimeType: "text/html",
-        }),
-      ).rejects.toThrow();
-
-      // Reject questionKey with path traversal or invalid characters
-      await expect(
-        callerA.attempt.uploadAnswer({
-          attemptId,
-          questionKey: "../evil",
-          questionText: "Where do you live?",
-          partNumber: 1,
-          orderIndex: 0,
-          durationMs: 15000,
-          mimeType: "audio/webm",
-        }),
-      ).rejects.toThrow();
-
-      const uploadRes = await callerA.attempt.uploadAnswer({
+      // User A seeds an answer directly (audio uploads go through the Hono
+      // route, not tRPC) and submits successfully
+      await db.insert(attemptAnswer).values({
+        id: "ans-a-1",
         attemptId,
         questionKey: "p1-1",
         questionText: "Where do you live?",
         partNumber: 1,
         orderIndex: 0,
+        audioKey: `users/user-a/attempts/${attemptId}/p1-1.webm`,
         durationMs: 15000,
         mimeType: "audio/webm",
       });
-      expect(uploadRes.success).toBe(true);
 
       const activeRes = await callerA.attempt.getActive();
       expect(activeRes).not.toBeNull();
@@ -229,19 +196,6 @@ describe("attemptRouter", () => {
 
       const submitRes = await callerA.attempt.submit({ attemptId });
       expect(submitRes.status).toBe("submitted");
-
-      // Attempting to upload to a submitted attempt fails
-      await expect(
-        callerA.attempt.uploadAnswer({
-          attemptId,
-          questionKey: "p1-2",
-          questionText: "Another question?",
-          partNumber: 1,
-          orderIndex: 1,
-          durationMs: 10000,
-          mimeType: "audio/webm",
-        }),
-      ).rejects.toThrow("Cannot upload answer to a finalized attempt");
     } finally {
       await dispose();
     }
@@ -560,5 +514,144 @@ describe("attemptRouter", () => {
         await dispose();
       }
     });
+  });
+
+  it("rejects attempt.start when questionKey is not valid for the topic", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({
+        id: "user-key",
+        name: "Key User",
+        email: "key@voxflow.vn",
+        emailVerified: true,
+      });
+      await db.insert(forecastTopic).values(PUBLISHED_TOPIC);
+
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: { id: "user-key", email: "key@voxflow.vn", name: "Key User", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+          session: { id: "s-key", userId: "user-key", token: "t-key", expiresAt: new Date(Date.now() + 3600000), createdAt: new Date(), updatedAt: new Date() },
+        },
+        env: { LAUNCH_OPEN: "true" },
+      });
+
+      // Out-of-range index for a topic with 2 questions
+      await expect(
+        caller.attempt.start({
+          mode: "part1",
+          topicId: "p1-tidiness",
+          questionKey: "p1-tidiness-99",
+        }),
+      ).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Invalid questionKey for topic",
+      });
+
+      // Valid main question key passes
+      const ok = await caller.attempt.start({
+        mode: "part1",
+        topicId: "p1-tidiness",
+        questionKey: "p1-tidiness-1",
+      });
+      expect(ok.questionKey).toBe("p1-tidiness-1");
+
+      // Follow-up key of a valid question passes
+      const followUp = await caller.attempt.start({
+        mode: "part1",
+        topicId: "p1-tidiness",
+        questionKey: "p1-tidiness-0-f",
+      });
+      expect(followUp.questionKey).toBe("p1-tidiness-0-f");
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("rejects attempt.submit when answer count exceeds the topic limit", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({
+        id: "user-count",
+        name: "Count User",
+        email: "count@voxflow.vn",
+        emailVerified: true,
+      });
+      await db.insert(forecastTopic).values(PUBLISHED_TOPIC);
+
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: { id: "user-count", email: "count@voxflow.vn", name: "Count User", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+          session: { id: "s-count", userId: "user-count", token: "t-count", expiresAt: new Date(Date.now() + 3600000), createdAt: new Date(), updatedAt: new Date() },
+        },
+        env: { LAUNCH_OPEN: "true" },
+      });
+
+      // Topic has 2 questions -> validKeys.size = 4 (with follow-ups) -> maxCount = 4
+      const { attemptId } = await caller.attempt.start({ mode: "part1", topicId: "p1-tidiness" });
+      await db.insert(attemptAnswer).values(
+        [0, 1, 2, 3, 4].map((i) => ({
+          id: `ans-count-${i}`,
+          attemptId,
+          questionKey: `p1-tidiness-${i}`,
+          questionText: `Question ${i}`,
+          partNumber: 1,
+          orderIndex: i,
+          audioKey: `users/user-count/attempts/${attemptId}/p1-tidiness-${i}.webm`,
+          durationMs: 1000,
+          mimeType: "audio/webm",
+        })),
+      );
+
+      await expect(caller.attempt.submit({ attemptId })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "ANSWER_COUNT_EXCEEDED",
+      });
+    } finally {
+      await dispose();
+    }
+  });
+
+  it("rejects attempt.submit when total audio size exceeds 35MB", async () => {
+    const { db, dispose } = await createTestDb();
+    try {
+      await db.insert(user).values({
+        id: "user-size",
+        name: "Size User",
+        email: "size@voxflow.vn",
+        emailVerified: true,
+      });
+
+      const caller = appRouter.createCaller({
+        db,
+        session: {
+          user: { id: "user-size", email: "size@voxflow.vn", name: "Size User", emailVerified: true, createdAt: new Date(), updatedAt: new Date() },
+          session: { id: "s-size", userId: "user-size", token: "t-size", expiresAt: new Date(Date.now() + 3600000), createdAt: new Date(), updatedAt: new Date() },
+        },
+        env: { LAUNCH_OPEN: "true" },
+      });
+
+      const { attemptId } = await caller.attempt.start();
+      await db.insert(attemptAnswer).values({
+        id: "ans-size-1",
+        attemptId,
+        questionKey: "p1-1",
+        questionText: "Where do you live?",
+        partNumber: 1,
+        orderIndex: 0,
+        audioKey: `users/user-size/attempts/${attemptId}/p1-1.webm`,
+        durationMs: 1000,
+        mimeType: "audio/webm",
+        sizeBytes: 36 * 1024 * 1024,
+      });
+
+      await expect(caller.attempt.submit({ attemptId })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+        message: "TOTAL_AUDIO_LIMIT_EXCEEDED",
+      });
+    } finally {
+      await dispose();
+    }
   });
 });

@@ -20,10 +20,3 @@ export interface Follow {
   trigger: string;
   answer: string;
 }
-
-export interface ForecastCueInput {
-  title: string;
-  points: string[];
-  ending: string;
-  answer: string;
-}

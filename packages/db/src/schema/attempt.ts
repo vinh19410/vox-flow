@@ -43,6 +43,8 @@ export const attemptAnswer = sqliteTable(
     audioKey: text("audio_key").notNull(),
     durationMs: integer("duration_ms").notNull(),
     mimeType: text("mime_type").notNull(),
+    /** Actual byte size reported by R2 after the upload; drives the 35MB per-attempt budget. */
+    sizeBytes: integer("size_bytes").default(0).notNull(),
     /** Speech-to-text of this answer, filled by the scoring pipeline. */
     transcript: text("transcript"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

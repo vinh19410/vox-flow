@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLANS } from "../../billing/data";
 import { planUntil } from "../../billing/plan-utils";
 import { ITEMS, MIN_WORDS, MODES, PART_INFO, VOICES, modeLabel } from "../../exam/data";
-import { mapApiTopicToForecastTopic, p1, p23 } from "../../forecast/builders";
+import { mapApiTopicToForecastTopic, p1 } from "../../forecast/builders";
 import { QUARTER } from "../../forecast/data";
 import { HISTORY, resolveAttemptView } from "../../history/data";
 import type { Attempt } from "../../history/types";
@@ -87,7 +87,7 @@ describe("forecast data & builders", () => {
     expect(p23Topic.items[1]?.part).toBe(3);
     expect(p23Topic.items[1]?.text).toBe("Is creativity important?");
   });
-  it("builds p1 and p23 topics with targeted follow-up questions", () => {
+  it("builds p1 topics with targeted follow-up questions", () => {
     const builtP1 = p1(
       "t-p1",
       "Music",
@@ -103,22 +103,8 @@ describe("forecast data & builders", () => {
     );
     expect(builtP1.items[0]?.followUp).toBeUndefined();
     expect(builtP1.items[1]?.followUp?.text).toBe("Follow?");
-
-    const builtP23 = p23(
-      "t-p23",
-      "A book",
-      "Sở thích",
-      80,
-      "2 ngày trước",
-      { title: "Describe a book.", points: ["what", "why"], ending: "explain.", answer: "Book ans" },
-      [["P3 Q1?", "P3 A1"]],
-      "new",
-      { at: 0, text: "P3 Follow?", trigger: "P3 A1", answer: "P3 FA1" },
-    );
-    expect(builtP23.items).toHaveLength(2);
-    expect(builtP23.items[0]?.part).toBe(2);
-    expect(builtP23.items[1]?.part).toBe(3);
-    expect(builtP23.items[1]?.followUp?.text).toBe("P3 Follow?");
+    expect(builtP1.items[0]?.id).toBe("t-p1-0");
+    expect(builtP1.items[1]?.id).toBe("t-p1-1");
   });
 });
 

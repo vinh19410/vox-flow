@@ -5,7 +5,9 @@ import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/d
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
-import { buildAudioKey, normalizeMimeType, QUESTION_KEY_RE } from "../audio";
+import { QUESTION_KEY_RE } from "../audio";
+import { getValidQuestionKeysForTopic } from "../scoring/forecast-keys";
+import { findAnswerLimitViolation } from "../scoring/answer-limits";
 import { sanitizeDelimited } from "../scoring/prompt";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
 
@@ -58,7 +60,11 @@ export const attemptRouter = router({
       // forecast topic rather than any string the client chooses.
       if (topicId) {
         const [topic] = await ctx.db
-          .select({ id: forecastTopic.id })
+          .select({
+            id: forecastTopic.id,
+            part: forecastTopic.part,
+            questions: forecastTopic.questions,
+          })
           .from(forecastTopic)
           .where(and(eq(forecastTopic.id, topicId), eq(forecastTopic.status, "published")))
           .limit(1);
@@ -67,6 +73,15 @@ export const attemptRouter = router({
             code: "BAD_REQUEST",
             message: "Unknown or unpublished forecast topic",
           });
+        }
+        if (questionKey) {
+          const validKeys = getValidQuestionKeysForTopic(topic, null);
+          if (!validKeys.has(questionKey)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Invalid questionKey for topic",
+            });
+          }
         }
       }
 
@@ -125,92 +140,6 @@ export const attemptRouter = router({
       answers,
     };
   }),
-
-  uploadAnswer: protectedProcedure
-    .input(
-      z.object({
-        attemptId: z.string(),
-        questionKey: z.string().regex(QUESTION_KEY_RE, "Invalid questionKey format"),
-        questionText: z.string().max(2000),
-        partNumber: z.number().int().min(1).max(3),
-        orderIndex: z.number().int().min(0).max(100),
-        durationMs: z.number().int().min(0).max(3_600_000),
-        mimeType: z
-          .string()
-          .refine((val) => normalizeMimeType(val) !== null, {
-            message: "Invalid or unsupported audio mimeType",
-          })
-          .transform((val) => normalizeMimeType(val)!),
-      }),
-    )
-    .mutation(async ({ ctx, input }) => {
-      const [currentAttempt] = await ctx.db
-        .select()
-        .from(attempt)
-        .where(eq(attempt.id, input.attemptId))
-        .limit(1);
-
-      if (!currentAttempt) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Attempt not found",
-        });
-      }
-
-      if (currentAttempt.userId !== ctx.session.user.id) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You are not authorized to upload answers for this attempt",
-        });
-      }
-
-      if (currentAttempt.status !== "in_progress") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Cannot upload answer to a finalized attempt",
-        });
-      }
-
-      const answerId = crypto.randomUUID();
-      const audioKey = buildAudioKey(
-        ctx.session.user.id,
-        input.attemptId,
-        input.questionKey,
-        input.mimeType,
-      );
-
-      await ctx.db
-        .insert(attemptAnswer)
-        .values({
-          id: answerId,
-          attemptId: input.attemptId,
-          questionKey: input.questionKey,
-          questionText: input.questionText,
-          partNumber: input.partNumber,
-          orderIndex: input.orderIndex,
-          audioKey,
-          durationMs: input.durationMs,
-          mimeType: input.mimeType,
-        })
-        .onConflictDoUpdate({
-          target: [attemptAnswer.attemptId, attemptAnswer.questionKey],
-          set: {
-            questionText: input.questionText,
-            partNumber: input.partNumber,
-            orderIndex: input.orderIndex,
-            audioKey,
-            durationMs: input.durationMs,
-            mimeType: input.mimeType,
-          },
-        });
-
-      return {
-        success: true,
-        answerId,
-        attemptId: input.attemptId,
-        questionKey: input.questionKey,
-      };
-    }),
 
   getFollowUp: protectedProcedure
     .input(
@@ -303,6 +232,33 @@ export const attemptRouter = router({
       }
       if (currentAttempt.status !== "in_progress") {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Attempt is abandoned" });
+      }
+
+      // Authoritative barrier: re-check answer count and total audio size so no
+      // concurrency abuse or forged client state can slip past the upload route.
+      // The scoring consumer re-runs the same guard (answer-limits.ts), so an
+      // upload that lands after this snapshot is never transcribed either.
+      const answers = await ctx.db
+        .select()
+        .from(attemptAnswer)
+        .where(eq(attemptAnswer.attemptId, input.attemptId));
+
+      let topic: { id: string; part: number; questions: string | unknown } | null = null;
+      if (currentAttempt.topicId) {
+        const [row] = await ctx.db
+          .select({
+            id: forecastTopic.id,
+            part: forecastTopic.part,
+            questions: forecastTopic.questions,
+          })
+          .from(forecastTopic)
+          .where(eq(forecastTopic.id, currentAttempt.topicId))
+          .limit(1);
+        topic = row ?? null;
+      }
+      const violation = findAnswerLimitViolation(currentAttempt, topic, answers);
+      if (violation) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: violation });
       }
 
       const submittedAt = new Date();

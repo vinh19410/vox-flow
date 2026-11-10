@@ -28,6 +28,8 @@ export const attemptScore = sqliteTable(
     model: text("model"),
     /** Number of processing attempts made by the queue consumer. */
     tries: integer("tries").default(0).notNull(),
+    /** Manual retry count driven by scoring.retry; capped at 1 per attempt. */
+    manualRetries: integer("manual_retries").default(0).notNull(),
     lastError: text("last_error"),
     costUsd: real("cost_usd"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -77,3 +79,31 @@ export const scoreRun = sqliteTable(
 
 export type AttemptScore = typeof attemptScore.$inferSelect;
 export type ScoreRun = typeof scoreRun.$inferSelect;
+
+/**
+ * One manual scoring retry. Powers the 3-retries-per-user-per-day cap
+ * (Asia/Ho_Chi_Minh day). Rescue-path re-enqueues never write here.
+ */
+export const scoringRetryLog = sqliteTable(
+  "scoring_retry_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    attemptId: text("attempt_id")
+      .notNull()
+      .references(() => attempt.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    index("scoring_retry_log_userId_createdAt_idx").on(table.userId, table.createdAt),
+    index("scoring_retry_log_attemptId_idx").on(table.attemptId),
+  ],
+);
+
+export type ScoringRetryLog = typeof scoringRetryLog.$inferSelect;

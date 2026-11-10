@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Hardening Pipeline Chấm Điểm (Issue #91)",
+    "visual_preset": "signal-flow",
+    "theme": "dark",
+    "animation": "none"
+  },
+  "lanes": [
+    { "id": "learner", "label": "Học viên (Client)", "role": "user" },
+    { "id": "api", "label": "API Server (Hono / tRPC)", "role": "orchestrator" },
+    { "id": "worker", "label": "Queue Worker (Scoring)", "role": "worker" },
+    { "id": "db", "label": "Storage (R2 & D1)", "role": "system" }
+  ],
+  "steps": [
+    { "id": "upload-audio", "label": "Upload audio câu trả lời", "lane": "learner", "kind": "action" },
+    { "id": "check-upload-limits", "label": "Check: questionKey thuộc đề & tổng audio <= 35MB (upsert-aware)", "lane": "api", "kind": "decision" },
+    { "id": "reject-upload", "label": "Từ chối HTTP 400 (sai đề/thừa câu) / 413 (>35MB)", "lane": "api", "kind": "terminal-failure" },
+    { "id": "save-r2-db", "label": "Lưu R2 & upsert attemptAnswer (lưu sizeBytes)", "lane": "db", "kind": "action" },
+    { "id": "submit-attempt", "label": "Nộp bài (attempt.submit)", "lane": "learner", "kind": "action" },
+    { "id": "check-submit", "label": "Validate toàn bài: câu đúng đề & tổng <= 35MB", "lane": "api", "kind": "decision" },
+    { "id": "enqueue-worker", "label": "Enqueue SCORING_QUEUE", "lane": "api", "kind": "action" },
+    { "id": "sequential-transcribe", "label": "Tải tuần tự R2 -> Whisper (từng file, RAM < 30MB)", "lane": "worker", "kind": "action" },
+    { "id": "grade-runs", "label": "GPT-6 Luna chấm 3 lần (audio budget <= 8MB)", "lane": "worker", "kind": "action" },
+    { "id": "scoring-success", "label": "Lưu điểm & status = done", "lane": "db", "kind": "terminal-success" },
+    { "id": "scoring-failed", "label": "Hết 3 tries trong queue (status = failed)", "lane": "worker", "kind": "action" },
+    { "id": "req-retry", "label": "Bấm Thử lại (scoring.retry)", "lane": "learner", "kind": "action" },
+    { "id": "check-retry-guard", "label": "Check: manualRetries < 1 & dailyRetries < 3", "lane": "api", "kind": "decision" },
+    { "id": "reject-retry", "label": "Khóa retry (HTTP 429 / BAD_REQUEST, UI disable)", "lane": "api", "kind": "terminal-failure" }
+  ],
+  "transitions": [
+    { "from": "upload-audio", "to": "check-upload-limits", "label": "Gửi audio" },
+    { "from": "check-upload-limits", "to": "reject-upload", "label": "Sai đề / >35MB", "kind": "branch-false" },
+    { "from": "check-upload-limits", "to": "save-r2-db", "label": "Hợp lệ", "kind": "branch-true" },
+    { "from": "save-r2-db", "to": "submit-attempt", "label": "Ghi âm tiếp" },
+    { "from": "submit-attempt", "to": "check-submit", "label": "Nộp bài" },
+    { "from": "check-submit", "to": "enqueue-worker", "label": "Đạt chuẩn", "kind": "branch-true" },
+    { "from": "enqueue-worker", "to": "sequential-transcribe", "label": "Worker xử lý" },
+    { "from": "sequential-transcribe", "to": "grade-runs", "label": "Transcribed" },
+    { "from": "grade-runs", "to": "scoring-success", "label": "Thành công", "kind": "branch-true" },
+    { "from": "grade-runs", "to": "scoring-failed", "label": "Lỗi 3 lần", "kind": "branch-false" },
+    { "from": "scoring-failed", "to": "req-retry", "label": "Báo lỗi" },
+    { "from": "req-retry", "to": "check-retry-guard", "label": "Thử lại" },
+    { "from": "check-retry-guard", "to": "reject-retry", "label": "Hết lượt", "kind": "branch-false" },
+    { "from": "check-retry-guard", "to": "enqueue-worker", "label": "Còn lượt (tối đa 1)", "kind": "branch-true" }
+  ]
+}

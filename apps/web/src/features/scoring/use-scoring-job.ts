@@ -34,7 +34,7 @@ export type ScoringView =
    */
   | { kind: "upload_error"; missing: number }
   | { kind: "in_progress"; status: "queued" | "processing" }
-  | { kind: "failed" }
+  | { kind: "failed"; manualRetries?: number; canRetry?: boolean }
   | { kind: "connection_error" }
   /** Still queued/processing after SLOW_SCORING_AFTER_MS; polling paused until the user checks again. */
   | { kind: "slow" }
@@ -70,6 +70,22 @@ export interface ScoringJobValue {
 /** Must match ATTEMPT_ALREADY_SUBMITTED_MESSAGE in packages/api/src/routers/attempt.ts. */
 export const ATTEMPT_ALREADY_SUBMITTED_MESSAGE = "Attempt is already submitted";
 
+/** Must match the retry rejection messages in packages/api/src/routers/scoring.ts. */
+export const DAILY_RETRY_LIMIT_EXCEEDED = "DAILY_RETRY_LIMIT_EXCEEDED";
+export const RETRY_LIMIT_EXCEEDED = "RETRY_LIMIT_EXCEEDED";
+
+export const DAILY_RETRY_LIMIT_MESSAGE =
+  "Bạn đã đạt giới hạn 3 lần thử lại trong ngày. Vui lòng quay lại vào ngày mai.";
+export const RETRY_LIMIT_MESSAGE = "Bài thi đã hết số lần thử lại cho phép.";
+
+/** Server retry-quota codes; any other error keeps the generic wording. */
+function retryLimitMessage(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+  if (err.message === DAILY_RETRY_LIMIT_EXCEEDED) return DAILY_RETRY_LIMIT_MESSAGE;
+  if (err.message === RETRY_LIMIT_EXCEEDED) return RETRY_LIMIT_MESSAGE;
+  return null;
+}
+
 /**
  * True only for the server's "already submitted" rejection. Other BAD_REQUESTs
  * (e.g. an abandoned attempt) must surface as errors, not trigger a re-score.
@@ -87,6 +103,15 @@ function isAlreadySubmittedError(err: unknown): boolean {
 }
 
 const QUEUED: ScoringView = { kind: "in_progress", status: "queued" };
+
+/** Maps a status result onto the failed view, carrying the retry budget for the screen. */
+function failedView(st: { manualRetries?: number; canRetry?: boolean }): ScoringView {
+  return {
+    kind: "failed",
+    manualRetries: st.manualRetries ?? 0,
+    canRetry: st.canRetry ?? (st.manualRetries ?? 0) < 1,
+  };
+}
 
 /**
  * Drives a forecast practice attempt from submit to a final scoring state:
@@ -156,7 +181,7 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
             setView({ kind: "submit_error" });
           } else {
             markSubmitted(attemptId);
-            setView(st.status === "failed" ? { kind: "failed" } : QUEUED);
+            setView(st.status === "failed" ? failedView(st) : QUEUED);
           }
         } catch {
           if (mountedRef.current) setView({ kind: "submit_error" });
@@ -191,13 +216,13 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
           return;
         }
         if (st.status === "failed") {
-          setView({ kind: "failed" });
+          setView(failedView(st));
           return;
         }
         if (st.status === "not_scored") {
           notScored += 1;
           if (notScored >= MAX_NOT_SCORED_POLLS) {
-            setView({ kind: "failed" });
+            setView(failedView(st));
             return;
           }
         } else {
@@ -237,7 +262,9 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
       if (mountedRef.current) setView(QUEUED);
     } catch (err) {
       console.warn("Scoring retry failed:", err);
-      if (mountedRef.current) setActionError("Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
+      if (mountedRef.current) {
+        setActionError(retryLimitMessage(err) ?? "Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
+      }
     } finally {
       if (mountedRef.current) setBusy(false);
     }
@@ -264,8 +291,18 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
           // scoring stands first; polling takes over for queued, processing,
           // done and unscorable attempts.
           const st = await trpcClient.scoring.status.query({ attemptId });
-          if (st.scorable && (st.status === "failed" || st.status === "not_scored")) {
+          if (st.scorable && st.status === "not_scored") {
+            // Rescue path: the score row never existed, so the server re-enqueues
+            // without spending any of the learner's manual-retry budget.
             await trpcClient.scoring.retry.mutate({ attemptId });
+          } else if (st.scorable && st.status === "failed") {
+            // Auto-retrying a failed attempt would silently spend its single
+            // manual retry. Keep retrying an explicit choice: show the failed
+            // state (with its budget) directly instead of flashing "queued".
+            if (!mountedRef.current) return;
+            markSubmitted(attemptId);
+            setView(failedView(st));
+            return;
           }
         }
         if (!mountedRef.current) return;
