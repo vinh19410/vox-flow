@@ -212,7 +212,7 @@ export function ExamScreen() {
             )}
 
             {(phase === "recording" || phase === "answered") && (
-              <LiveTranscript phase={phase} words={session.words} spoken={session.spoken} ans={ans} />
+              <LiveTranscript phase={phase} ans={ans} />
             )}
 
             {phase === "answered" && ans && short(step.key, step.part) && (
