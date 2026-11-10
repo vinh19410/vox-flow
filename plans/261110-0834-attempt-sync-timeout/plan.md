@@ -1,7 +1,7 @@
 ---
 title: "Timeout 15s cho attempt sync — mở khoá nút nộp (fix #106)"
 description: "Chuyển attemptStatus sang failed sau ~15s nếu chuỗi getActive/attempt.start treo không settle, giữ phục hồi khi id về muộn trong lúc màn thi còn mounted."
-status: pending
+status: completed
 priority: P1
 effort: 2h
 issue: 106
