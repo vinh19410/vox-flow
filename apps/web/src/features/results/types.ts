@@ -23,10 +23,12 @@ export interface Criterion {
   name: string;
   vi: string;
   band: number;
-  range: [number, number];
-  runs: number[];
+  /** Prototype-only confidence range; hidden when absent (real scoring results). */
+  range?: [number, number];
+  /** Prototype-only independent run bands; hidden when absent. */
+  runs?: number[];
   summary: string;
-  metrics: CriterionMetric[];
+  metrics?: CriterionMetric[];
   evidence: Evidence[];
   improve: CriterionImprovement[];
 }

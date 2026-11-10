@@ -39,6 +39,13 @@ export interface PracticeSession {
   attemptId?: string;
 }
 
+/** Forecast practice attempt handed from the exam to the scoring screen. */
+export interface ScoringJob {
+  attemptId: string;
+  /** True once `attempt.submit` succeeded (or the server already shows the attempt as submitted). */
+  submitted: boolean;
+}
+
 export interface ActivePlan {
   id: string;
   name: string;
@@ -69,6 +76,8 @@ export interface AppState {
   saved: string[];
   /** Target forecast topic to reopen upon returning from practice results */
   reopenTopicId?: string | null;
+  /** Scorable attempt the scoring screen should submit/poll; null for unscored modes. */
+  scoringAttempt: ScoringJob | null;
 }
 
 export type AppStateUpdater = Partial<AppState> | ((prev: AppState) => Partial<AppState>);

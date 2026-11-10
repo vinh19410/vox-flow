@@ -34,9 +34,11 @@ export function CriteriaGrid({ sel, pro, onPick, criteria = [] }: CriteriaGridPr
               <span className={cx("tnum text-[40px] leading-none font-extrabold tracking-tight", !pro && "blur-[9px] select-none")}>
                 {c.band.toFixed(1)}
               </span>
-              <span className={cx("tnum font-mono text-xs text-subtle", !pro && "blur-[5px]")}>
-                {c.range[0].toFixed(1)}–{c.range[1].toFixed(1)}
-              </span>
+              {c.range && (
+                <span className={cx("tnum font-mono text-xs text-subtle", !pro && "blur-[5px]")}>
+                  {c.range[0].toFixed(1)}–{c.range[1].toFixed(1)}
+                </span>
+              )}
             </div>
             {!pro && <span className="mt-3 text-xs font-semibold text-brand group-hover:underline">Mở khóa chi tiết →</span>}
           </button>

@@ -1,11 +1,19 @@
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { attempt, attemptAnswer } from "@vox-flow/db";
+import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp } from "../exam/follow-up";
 import { buildAudioKey, normalizeMimeType, QUESTION_KEY_RE } from "../audio";
+import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
+
+/**
+ * Returned (as BAD_REQUEST) when submit is called twice. The web client matches
+ * this exact text to recover by re-enqueueing scoring, so keep them in sync.
+ */
+export const ATTEMPT_ALREADY_SUBMITTED_MESSAGE = "Attempt is already submitted";
+
 export const attemptRouter = router({
   start: protectedProcedure
     .input(
@@ -43,6 +51,22 @@ export const attemptRouter = router({
           code: "FORBIDDEN",
           message: "Mock exam is currently restricted to pilot candidates.",
         });
+      }
+
+      // Attempts with a topicId are scored, so the topic must be a real published
+      // forecast topic rather than any string the client chooses.
+      if (topicId) {
+        const [topic] = await ctx.db
+          .select({ id: forecastTopic.id })
+          .from(forecastTopic)
+          .where(and(eq(forecastTopic.id, topicId), eq(forecastTopic.status, "published")))
+          .limit(1);
+        if (!topic) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Unknown or unpublished forecast topic",
+          });
+        }
       }
 
       const consent = await requireExamConsent(ctx.db, ctx.session.user.id);
@@ -260,21 +284,44 @@ export const attemptRouter = router({
         });
       }
 
+      if (currentAttempt.status === "submitted") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: ATTEMPT_ALREADY_SUBMITTED_MESSAGE });
+      }
       if (currentAttempt.status !== "in_progress") {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Attempt is already submitted or abandoned",
-        });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Attempt is abandoned" });
       }
 
       const submittedAt = new Date();
-      await ctx.db
+      const markSubmitted = ctx.db
         .update(attempt)
         .set({
           status: "submitted",
           submittedAt,
         })
         .where(eq(attempt.id, input.attemptId));
+
+      // Forecast practice attempts are scored asynchronously. The status change
+      // and the score row are written in one D1 batch (a single transaction), so
+      // a submitted forecast attempt never lacks its score row. The primary key
+      // on attempt_score makes this idempotent: only the call that creates the
+      // row enqueues.
+      if (currentAttempt.topicId) {
+        const [, inserted] = await ctx.db.batch([
+          markSubmitted,
+          ctx.db
+            .insert(attemptScore)
+            .values({ attemptId: input.attemptId, userId: currentAttempt.userId, status: "queued" })
+            .onConflictDoNothing()
+            .returning({ attemptId: attemptScore.attemptId }),
+        ]);
+        if (inserted.length > 0) {
+          await enqueueScoring(ctx.env?.SCORING_QUEUE, input.attemptId, {
+            delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS,
+          });
+        }
+      } else {
+        await markSubmitted;
+      }
 
       return {
         success: true,

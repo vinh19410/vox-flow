@@ -3,10 +3,12 @@ import {
   account,
   attempt,
   attemptAnswer,
+  attemptScore,
   consentEvent,
   forecastReport,
   forecastTopic,
   scoreDispute,
+  scoreRun,
   session,
   user,
 } from "@vox-flow/db/schema";
@@ -168,6 +170,25 @@ describe("Data registry for personal data discovery and erasure", () => {
         mimeType: "audio/webm",
       },
     ]);
+    // Seed scores and grading runs for both users
+    await testCtx.db.insert(attemptScore).values([
+      { attemptId: "att_reg_1", userId: user1Id, status: "done", overall: 6.5 },
+      { attemptId: "att_reg_2", userId: user2Id, status: "queued" },
+    ]);
+    const runValues = (attemptId: string, runIndex: number) => ({
+      attemptId,
+      runIndex,
+      fc: 6.5,
+      lr: 6,
+      gra: 6,
+      p: 6.5,
+      overall: 6.5,
+      payloadJson: "{}",
+      model: "test-model",
+    });
+    await testCtx.db
+      .insert(scoreRun)
+      .values([runValues("att_reg_1", 0), runValues("att_reg_1", 1), runValues("att_reg_2", 0)]);
     await testCtx.db.insert(scoreDispute).values([
       {
         id: "disp_reg_1",
@@ -197,6 +218,8 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(exportUser1.data.forecast_report).toHaveLength(1);
     expect(exportUser1.data.attempt).toHaveLength(1);
     expect(exportUser1.data.score_dispute).toHaveLength(1);
+    expect(exportUser1.data.attempt_score).toHaveLength(1);
+    expect(exportUser1.data.score_run).toHaveLength(2);
 
     // Test erase with mock audioBucket
     const deletedAudioKeys: string[] = [];
@@ -220,6 +243,8 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser1.data.forecast_report).toHaveLength(0);
     expect(afterEraseUser1.data.attempt).toHaveLength(0);
     expect(afterEraseUser1.data.score_dispute).toHaveLength(0);
+    expect(afterEraseUser1.data.attempt_score).toHaveLength(0);
+    expect(afterEraseUser1.data.score_run).toHaveLength(0);
 
     // Verify user2 remains completely intact
     const afterEraseUser2 = await exportUserData(testCtx.db, user2Id);
@@ -230,5 +255,7 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser2.data.forecast_report).toHaveLength(1);
     expect(afterEraseUser2.data.attempt).toHaveLength(1);
     expect(afterEraseUser2.data.score_dispute).toHaveLength(1);
+    expect(afterEraseUser2.data.attempt_score).toHaveLength(1);
+    expect(afterEraseUser2.data.score_run).toHaveLength(1);
   });
 });

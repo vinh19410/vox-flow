@@ -10,6 +10,9 @@ export const db = Cloudflare.D1.Database("database", {
 
 export const audioBucket = Cloudflare.R2.Bucket("audio-storage");
 
+/** Forecast-practice scoring jobs; consumed by the server worker (see consumer below). */
+export const scoringQueue = Cloudflare.Queues.Queue("scoring-queue");
+
 export const server = Cloudflare.Worker("server", {
   main: "../../apps/server/src/index.ts",
   compatibility: {
@@ -18,6 +21,12 @@ export const server = Cloudflare.Worker("server", {
   env: {
     DB: db,
     AUDIO_BUCKET: audioBucket,
+    SCORING_QUEUE: scoringQueue,
+    SCORING_MODEL: Config.String("SCORING_MODEL").pipe(Config.withDefault("gpt-6-luna")),
+    SCORING_RUNS: Config.String("SCORING_RUNS").pipe(Config.withDefault("3")),
+    // Empty pricing leaves cost_usd null.
+    SCORING_PRICE_INPUT_PER_1M: Config.String("SCORING_PRICE_INPUT_PER_1M").pipe(Config.withDefault("")),
+    SCORING_PRICE_OUTPUT_PER_1M: Config.String("SCORING_PRICE_OUTPUT_PER_1M").pipe(Config.withDefault("")),
     CORS_ORIGIN: Config.String("CORS_ORIGIN"),
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
@@ -30,7 +39,9 @@ export const server = Cloudflare.Worker("server", {
     GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
     GOOGLE_CLIENT_SECRET: Config.Redacted("GOOGLE_CLIENT_SECRET"),
   },
-  crons: ["0 * * * *"],
+  // Hourly jobs, plus a 5-minute scoring sweep for lost queue messages.
+  // Must match HOURLY_CRON / SCORING_SWEEP_CRON in apps/server/src/scheduled.ts.
+  crons: ["0 * * * *", "*/5 * * * *"],
   domain: "api.vox.vinhtran.io.vn",
   dev: {
     port: 3000,
@@ -47,6 +58,18 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const serverWorker = yield* server;
+    const queue = yield* scoringQueue;
+    // The server worker's `queue` handler consumes scoring jobs one at a time.
+    // maxRetries must match SCORING_QUEUE_MAX_RETRIES in apps/server/src/queue.ts.
+    yield* Cloudflare.Queues.Consumer("scoring-queue-consumer", {
+      queueId: queue.queueId,
+      scriptName: serverWorker.workerName,
+      settings: {
+        batchSize: 1,
+        maxRetries: 3,
+        retryDelay: 30,
+      },
+    });
     const webWorker = yield* Cloudflare.Website.Vite("web", {
       rootDir: "../../apps/web",
       domain: "vox.vinhtran.io.vn",

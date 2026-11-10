@@ -6,13 +6,20 @@ import {
   account,
   attempt,
   attemptAnswer,
+  attemptScore,
   consentEvent,
   forecastReport,
   scoreDispute,
+  scoreRun,
   session,
   user,
   userProfile,
 } from "@vox-flow/db/schema";
+
+async function userAttemptIds(db: Database, userId: string): Promise<string[]> {
+  const rows = await db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId));
+  return rows.map((r) => r.id);
+}
 
 export type EraseContext = {
   db: Database;
@@ -102,6 +109,29 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(forecastReport).where(eq(forecastReport.userId, userId));
+    },
+  },
+  attempt_score: {
+    tableName: "attempt_score",
+    export: async (db, userId) => {
+      return db.select().from(attemptScore).where(eq(attemptScore.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(attemptScore).where(eq(attemptScore.userId, userId));
+    },
+  },
+  score_run: {
+    tableName: "score_run",
+    export: async (db, userId) => {
+      const attemptIds = await userAttemptIds(db, userId);
+      if (attemptIds.length === 0) return [];
+      return db.select().from(scoreRun).where(inArray(scoreRun.attemptId, attemptIds));
+    },
+    erase: async (ctx, userId) => {
+      const attemptIds = await userAttemptIds(ctx.db, userId);
+      if (attemptIds.length > 0) {
+        await ctx.db.delete(scoreRun).where(inArray(scoreRun.attemptId, attemptIds));
+      }
     },
   },
   attempt: {

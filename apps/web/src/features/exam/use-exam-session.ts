@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ENV } from "@/env.public";
 import { useApp } from "@/features/app-state/types";
 import { useMicLevel } from "@/hooks/use-mic-level";
 import { useRecorder } from "@/hooks/use-recorder";
@@ -8,7 +7,8 @@ import { cancelSpeech, speakText } from "@/lib/speech";
 import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
-import { deleteAudioBlob, saveAudioBlob } from "./storage";
+import { trackAnswerUpload, type AnswerUpload } from "./answer-uploads";
+import { saveAudioBlob } from "./storage";
 import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./types";
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
@@ -212,8 +212,8 @@ export function useExamSession(): ExamSessionValue {
     }));
     setPhase("answered");
 
-    void recorder.stop().then((audio) => {
-      if (!audio) return;
+    const recorded = recorder.stop().then((audio): AnswerUpload | null => {
+      if (!audio) return null;
       const durationMs = audio.durationMs ?? Math.round(currentRecT * 1000);
       const mimeType = audio.mimeType ?? "audio/webm";
 
@@ -227,47 +227,27 @@ export function useExamSession(): ExamSessionValue {
         },
       }));
 
-      const effectiveId = attemptId ?? clientSessionIdRef.current;
-      if (audio.blob) {
-        void saveAudioBlob({
-          attemptId: effectiveId,
-          questionKey: step.key,
-          blob: audio.blob,
-          durationMs,
-          mimeType,
-          part: step.part,
-          order: idx,
-          questionText: step.text,
-        });
-
-        if (attemptId) {
-          const baseUrl = (ENV.VITE_SERVER_URL ?? "").replace(/\/$/, "");
-          const query = new URLSearchParams({
-            part: step.part.toString(),
-            order: idx.toString(),
-            durationMs: durationMs.toString(),
-            questionText: step.text,
-          });
-          void fetch(
-            `${baseUrl}/api/attempts/${encodeURIComponent(attemptId)}/answers/${encodeURIComponent(step.key)}/audio?${query}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": mimeType,
-              },
-              body: audio.blob,
-              credentials: "include",
-            },
-          )
-            .then((res) => {
-              if (res.ok) {
-                void deleteAudioBlob(effectiveId, step.key);
-              }
-            })
-            .catch(() => {});
-        }
-      }
+      if (!audio.blob) return null;
+      return {
+        attemptId: attemptId ?? clientSessionIdRef.current,
+        questionKey: step.key,
+        blob: audio.blob,
+        durationMs,
+        mimeType,
+        part: step.part,
+        order: idx,
+        questionText: step.text,
+      };
     });
+
+    if (attemptId) {
+      // Tracked from the moment recording stops, so the scoring screen waits for
+      // (and retries) this upload before submitting, even if the user submits
+      // before the recorder has finished encoding.
+      void trackAnswerUpload(attemptId, recorded);
+    } else {
+      void recorded.then((record) => (record ? saveAudioBlob(record) : undefined));
+    }
   }
   useEffect(() => {
     if (phase === "recording" && recT >= maxRec && !paused) stopRec();
