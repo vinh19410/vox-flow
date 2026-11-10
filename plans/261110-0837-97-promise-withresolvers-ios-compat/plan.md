@@ -61,7 +61,7 @@ Học viên trên iOS Safari < 17.4 (và Chrome < 119 / Firefox < 121) ghi âm, 
 ## Red Team Review
 
 ### Session — 2026-11-10
-**Findings:** 8 (7 accepted, 1 rejected-as-evidence-free: 0) — 2 reviewer (Security Adversary + Assumption Destroyer), Light tier/Fact Checker; 1 Critical, 1 High, 6 Medium.
+**Findings:** 8 (8 accepted, 0 rejected) — 2 reviewer (Security Adversary + Assumption Destroyer), Light tier/Fact Checker; 1 Critical, 1 High, 6 Medium.
 
 | # | Finding | Severity | Disposition | Applied To |
 |---|---------|----------|-------------|------------|
