@@ -10,6 +10,7 @@ export type ProtoScreen =
   | "onboarding"
   | "dashboard"
   | "select"
+  | "select-setup"
   | "forecast"
   | "exam"
   | "scoring"

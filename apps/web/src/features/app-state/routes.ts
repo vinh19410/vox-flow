@@ -12,6 +12,7 @@ export const SCREEN_ROUTES: Record<ProtoScreen, RouteTarget> = {
   scoring: "/scoring",
   dashboard: "/app/dashboard",
   select: "/app/select",
+  "select-setup": "/app/select/setup",
   forecast: "/app/forecast",
   history: "/app/history",
   results: { to: "/app/history/$attemptId", params: {} },
