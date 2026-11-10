@@ -147,6 +147,118 @@ describe("answer uploads", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  describe("when an answer is recorded again while its first upload is still running", () => {
+    /**
+     * The first recording's request stays pending until the test settles it,
+     * and (like a request the server already received) ignores the abort.
+     */
+    function blockFirstRecording(first: AnswerUpload) {
+      let settle!: (res: Response | Error) => void;
+      const pending = new Promise<Response>((resolve, reject) => {
+        settle = (res) => (res instanceof Error ? reject(res) : resolve(res));
+      });
+      let firstSignal: AbortSignal | undefined;
+      fetchSpy.mockImplementation(async (_url, init) => {
+        if (init?.body === first.blob) {
+          firstSignal = init.signal ?? undefined;
+          return pending;
+        }
+        return ok();
+      });
+      return { settle, firstSignal: () => firstSignal };
+    }
+    const bodies = () => fetchSpy.mock.calls.map(([, init]) => init?.body);
+
+    it("never re-sends the replaced recording after its upload fails late", async () => {
+      const first = record("q1");
+      const second = record("q1");
+      const blocked = blockFirstRecording(first);
+
+      const firstUpload = trackAnswerUpload(ATTEMPT, first);
+      await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+      await expect(trackAnswerUpload(ATTEMPT, second)).resolves.toBe(true);
+      expect(blocked.firstSignal()?.aborted).toBe(true);
+
+      blocked.settle(new TypeError("network"));
+      await expect(firstUpload).resolves.toBe(false);
+      fetchSpy.mockClear();
+
+      await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+        failedQuestionKeys: [],
+        storageUnreadable: false,
+      });
+      expect(bodies()).not.toContain(first.blob);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      // Neither the replaced recording nor the delivered one is left to upload.
+      expect(await listPendingUploads(ATTEMPT)).toHaveLength(0);
+    });
+
+    it("re-sends the newest recording when the replaced one still reaches the server late", async () => {
+      const first = record("q1");
+      const second = record("q1");
+      const blocked = blockFirstRecording(first);
+
+      const firstUpload = trackAnswerUpload(ATTEMPT, first);
+      await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+      await expect(trackAnswerUpload(ATTEMPT, second)).resolves.toBe(true);
+      // The client cancels the replaced upload, but a request the server has
+      // already received may still be stored after the newer one.
+      expect(blocked.firstSignal()?.aborted).toBe(true);
+      blocked.settle(ok());
+      await expect(firstUpload).resolves.toBe(false);
+      fetchSpy.mockClear();
+
+      await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+        failedQuestionKeys: [],
+        storageUnreadable: false,
+      });
+      // The last upload the server receives is the newest recording.
+      expect(bodies()).toEqual([second.blob]);
+
+      // Once restored, a later flush has nothing left to send.
+      fetchSpy.mockClear();
+      await flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it("never uploads or stores a recording that was replaced before it was ready", async () => {
+      fetchSpy.mockResolvedValue(ok());
+      const first = record("q1");
+      const second = record("q1");
+      let ready!: (r: AnswerUpload) => void;
+      const firstUpload = trackAnswerUpload(ATTEMPT, new Promise<AnswerUpload>((resolve) => (ready = resolve)));
+      await expect(trackAnswerUpload(ATTEMPT, second)).resolves.toBe(true);
+
+      ready(first);
+      await expect(firstUpload).resolves.toBe(false);
+      expect(bodies()).toEqual([second.blob]);
+      expect(await listPendingUploads(ATTEMPT)).toHaveLength(0);
+    });
+
+    it("keeps the newest recording, not the replaced one, when the newest upload fails", async () => {
+      const first = record("q1");
+      const second = record("q1");
+      const blocked = blockFirstRecording(first);
+      const firstUpload = trackAnswerUpload(ATTEMPT, first);
+      await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+
+      fetchSpy.mockImplementation(async (_url, init) => (init?.body === first.blob ? ok() : fail()));
+      await expect(trackAnswerUpload(ATTEMPT, second)).resolves.toBe(false);
+      blocked.settle(new TypeError("network"));
+      await firstUpload;
+
+      const [kept] = await listPendingUploads(ATTEMPT);
+      expect(kept?.blob).toBe(second.blob);
+
+      fetchSpy.mockReset().mockResolvedValue(ok());
+      await expect(flushAnswerUploads(ATTEMPT, { retryDelayMs: 0 })).resolves.toEqual({
+        failedQuestionKeys: [],
+        storageUnreadable: false,
+      });
+      expect(bodies()).toEqual([second.blob]);
+    });
+  });
+
   describe("with IndexedDB", () => {
     let idb: FakeIndexedDB;
     let uninstall: () => void;
