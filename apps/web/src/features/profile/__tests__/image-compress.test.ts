@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { compressImageFile } from "../utils/image-compress";
+import { withoutPromiseWithResolvers } from "@/test/without-promise-with-resolvers";
 
 describe("compressImageFile", () => {
   it("rejects non-image files with a Vietnamese error message", async () => {
@@ -72,6 +73,45 @@ describe("compressImageFile", () => {
         180,
       );
     } finally {
+      getContextSpy.mockRestore();
+      toDataURLSpy.mockRestore();
+      vi.unstubAllGlobals();
+      void imageSpy;
+    }
+  });
+
+  it("compresses when Promise.withResolvers is unavailable (iOS Safari < 17.4)", async () => {
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue({ drawImage: vi.fn() } as never);
+    const toDataURLSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "toDataURL")
+      .mockReturnValue("data:image/webp;base64,AAA");
+    const imageSpy = vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 400;
+        naturalHeight = 300;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(_value: string) {
+          queueMicrotask(() => this.onload?.());
+        }
+      },
+    );
+
+    const restore = withoutPromiseWithResolvers();
+    try {
+      const pngContent = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const imageFile = new File([pngContent], "avatar.png", {
+        type: "image/png",
+      });
+
+      await expect(compressImageFile(imageFile, 180, 0.85)).resolves.toBe(
+        "data:image/webp;base64,AAA",
+      );
+    } finally {
+      restore();
       getContextSpy.mockRestore();
       toDataURLSpy.mockRestore();
       vi.unstubAllGlobals();

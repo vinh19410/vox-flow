@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { deleteAudioBlob, getAudioBlob, listPendingUploads, saveAudioBlob, type AudioBlobRecord } from "../storage";
+import { withoutPromiseWithResolvers } from "@/test/without-promise-with-resolvers";
 import { FakeIndexedDB } from "./fake-indexed-db";
 
 let attemptSeq = 0;
@@ -64,5 +65,22 @@ describe("device storage for answer recordings (IndexedDB)", () => {
     await saveAudioBlob(record("q1"));
     idb.failNextRead = new DOMException("Read failed", "UnknownError");
     await expect(listPendingUploads(ATTEMPT)).rejects.toThrow("Read failed");
+  });
+
+  it("still writes to IndexedDB when Promise.withResolvers is unavailable (iOS Safari < 17.4)", async () => {
+    const restore = withoutPromiseWithResolvers();
+    try {
+      await saveAudioBlob(record("q1"));
+      // The row must reach IndexedDB itself — the memory fallback would leave it empty.
+      expect(idb.rows.size).toBe(1);
+      expect(await getAudioBlob(ATTEMPT, "q1")).toMatchObject({ questionKey: "q1" });
+      expect((await listPendingUploads(ATTEMPT)).map((r) => r.questionKey)).toEqual(["q1"]);
+
+      await deleteAudioBlob(ATTEMPT, "q1");
+      expect(await listPendingUploads(ATTEMPT)).toEqual([]);
+      expect(idb.rows.size).toBe(0);
+    } finally {
+      restore();
+    }
   });
 });

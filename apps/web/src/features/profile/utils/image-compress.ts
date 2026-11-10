@@ -4,6 +4,7 @@
  * Luôn trả về ảnh đã nén — không bao giờ trả về dữ liệu gốc chưa xử lý.
  */
 import { MAX_USER_IMAGE_LENGTH } from "@vox-flow/auth/image-validation";
+import { promiseWithResolvers } from "@/lib/promise-with-resolvers";
 
 export async function compressImageFile(
   file: File,
@@ -20,7 +21,7 @@ export async function compressImageFile(
     throw new Error("Kích thước tệp vượt quá 5MB. Vui lòng chọn ảnh nhỏ hơn.");
   }
 
-  const { promise, resolve, reject } = Promise.withResolvers<string>();
+  const { promise, resolve, reject } = promiseWithResolvers<string>();
   const reader = new FileReader();
 
   reader.onerror = () => {
