@@ -4,7 +4,21 @@ import type { ScoringJob } from "@/features/app-state/types";
 import { flushAnswerUploads } from "@/features/exam/answer-uploads";
 import { trpcClient } from "@/utils/trpc";
 
+/** Poll interval for the first minute, when most attempts finish. */
 export const POLL_INTERVAL_MS = 2500;
+/** Poll interval after the first minute. */
+export const POLL_BACKOFF_INTERVAL_MS = 5000;
+/** Poll interval once scoring has taken more than three minutes. */
+export const POLL_MAX_INTERVAL_MS = 10_000;
+/** After this long without a final state, polling stops and the screen says scoring is slow. */
+export const SLOW_SCORING_AFTER_MS = 10 * 60 * 1000;
+
+/** Delay before the next status check, backing off the longer scoring takes. */
+export function pollDelayMs(elapsedMs: number): number {
+  if (elapsedMs < 60_000) return POLL_INTERVAL_MS;
+  if (elapsedMs < 3 * 60_000) return POLL_BACKOFF_INTERVAL_MS;
+  return POLL_MAX_INTERVAL_MS;
+}
 /** Consecutive failed status checks before polling stops and asks the user to retry. */
 export const MAX_POLL_ERRORS = 3;
 /** Polls an already-submitted attempt may stay "not_scored" before it is treated as failed. */
@@ -18,6 +32,8 @@ export type ScoringView =
   | { kind: "in_progress"; status: "queued" | "processing" }
   | { kind: "failed" }
   | { kind: "connection_error" }
+  /** Still queued/processing after SLOW_SCORING_AFTER_MS; polling paused until the user checks again. */
+  | { kind: "slow" }
   | { kind: "not_scorable" }
   | { kind: "done" };
 
@@ -43,7 +59,7 @@ export interface ScoringJobValue {
   submitWithoutMissing: () => Promise<void>;
   /** Asks the server to score a failed attempt again, then resumes polling. */
   retryScoring: () => Promise<void>;
-  /** Resumes polling after repeated connection errors. */
+  /** Resumes polling after repeated connection errors or a slow-scoring pause. */
   resumePolling: () => void;
 }
 
@@ -58,8 +74,9 @@ const QUEUED: ScoringView = { kind: "in_progress", status: "queued" };
 
 /**
  * Drives a forecast practice attempt from submit to a final scoring state:
- * submit (with recovery) → poll `scoring.status` every POLL_INTERVAL_MS until
- * done/failed → hand off to the caller. Polling stops on unmount.
+ * upload check → submit (with recovery) → poll `scoring.status`, backing off
+ * from POLL_INTERVAL_MS, until done/failed → hand off to the caller. Polling
+ * pauses after SLOW_SCORING_AFTER_MS and stops on unmount.
  */
 export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandlers): ScoringJobValue {
   const attemptId = job?.attemptId ?? null;
@@ -140,6 +157,7 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
     let timer: ReturnType<typeof setTimeout> | undefined;
     let errors = 0;
     let notScored = 0;
+    const startedAt = Date.now();
 
     const tick = async () => {
       try {
@@ -179,7 +197,12 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
           return;
         }
       }
-      timer = setTimeout(() => void tick(), POLL_INTERVAL_MS);
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= SLOW_SCORING_AFTER_MS) {
+        setView({ kind: "slow" });
+        return;
+      }
+      timer = setTimeout(() => void tick(), pollDelayMs(elapsed));
     };
 
     void tick();

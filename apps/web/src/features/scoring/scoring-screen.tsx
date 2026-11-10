@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Loader2, TriangleAlert, WifiOff } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, TriangleAlert, WifiOff } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Card } from "@/components/ds/card";
@@ -159,6 +159,23 @@ function ScoringJobState({
           Bỏ qua câu bị lỗi và nộp bài
         </button>
         {error}
+      </div>
+    );
+  }
+
+  if (view.kind === "slow") {
+    return (
+      <div data-testid="scoring-slow">
+        <EmptyState
+          size="lg"
+          icon={Clock}
+          title="Đang chậm hơn bình thường"
+          description="Bài thi vẫn đang được chấm và đã được lưu an toàn. Bạn có thể kiểm tra lại, hoặc quay lại sau và xem kết quả trong lịch sử luyện tập."
+          action={{ label: "Kiểm tra lại", onClick: onResume }}
+          secondaryAction={home}
+          bordered
+          className="bg-white p-8"
+        />
       </div>
     );
   }

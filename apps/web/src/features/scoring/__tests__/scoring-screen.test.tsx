@@ -23,7 +23,14 @@ vi.mock("@/features/exam/answer-uploads", () => ({
 import { renderWithApp } from "@/test/harness";
 
 import { ScoringScreen } from "../scoring-screen";
-import { MAX_POLL_ERRORS, POLL_INTERVAL_MS } from "../use-scoring-job";
+import {
+  MAX_POLL_ERRORS,
+  POLL_BACKOFF_INTERVAL_MS,
+  POLL_INTERVAL_MS,
+  POLL_MAX_INTERVAL_MS,
+  pollDelayMs,
+  SLOW_SCORING_AFTER_MS,
+} from "../use-scoring-job";
 
 const ATTEMPT = "att-forecast-1";
 const st = (status: string, scorable = true) => ({ attemptId: ATTEMPT, status, scorable });
@@ -236,6 +243,44 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(screen.queryByTestId("scoring-submit-error")).toBeNull();
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
     expect(h.state().scoringAttempt?.submitted).toBe(true);
+  });
+
+  it("backs off polling over time", () => {
+    expect(pollDelayMs(0)).toBe(POLL_INTERVAL_MS);
+    expect(pollDelayMs(59_999)).toBe(POLL_INTERVAL_MS);
+    expect(pollDelayMs(60_000)).toBe(POLL_BACKOFF_INTERVAL_MS);
+    expect(pollDelayMs(3 * 60_000)).toBe(POLL_MAX_INTERVAL_MS);
+    expect(pollDelayMs(9 * 60_000)).toBe(POLL_MAX_INTERVAL_MS);
+  });
+
+  it("polls less often after the first minute and stops with a slow state after the limit", async () => {
+    statusSpy.mockResolvedValue(st("processing"));
+    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: true } });
+    await advance(0);
+    // First minute at the fast interval: the initial check plus one per interval.
+    await advance(60_000);
+    const afterFirstMinute = statusSpy.mock.calls.length;
+    expect(afterFirstMinute).toBe(1 + 60_000 / POLL_INTERVAL_MS);
+
+    await advance(60_000);
+    expect(statusSpy.mock.calls.length - afterFirstMinute).toBeLessThanOrEqual(60_000 / POLL_BACKOFF_INTERVAL_MS + 1);
+
+    await advance(SLOW_SCORING_AFTER_MS);
+    expect(screen.getByTestId("scoring-slow")).toBeTruthy();
+    expect(screen.getByText("Đang chậm hơn bình thường")).toBeTruthy();
+    const callsWhenSlow = statusSpy.mock.calls.length;
+    // Bounded total: far fewer checks than polling every 2.5s for 10 minutes.
+    expect(callsWhenSlow).toBeLessThan(SLOW_SCORING_AFTER_MS / POLL_INTERVAL_MS / 2);
+
+    await advance(POLL_MAX_INTERVAL_MS * 5);
+    expect(statusSpy.mock.calls.length).toBe(callsWhenSlow);
+
+    // Manual check resumes polling and hands off once done.
+    statusSpy.mockResolvedValue(st("done"));
+    fireEvent.click(screen.getByText("Kiểm tra lại"));
+    await advance(0);
+    expect(statusSpy.mock.calls.length).toBe(callsWhenSlow + 1);
+    expect(screen.queryByTestId("scoring-slow")).toBeNull();
   });
 
   it("asks to retry after repeated status errors and resumes polling on demand", async () => {
