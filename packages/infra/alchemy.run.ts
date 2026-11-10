@@ -39,7 +39,9 @@ export const server = Cloudflare.Worker("server", {
     GOOGLE_CLIENT_ID: Config.String("GOOGLE_CLIENT_ID"),
     GOOGLE_CLIENT_SECRET: Config.Redacted("GOOGLE_CLIENT_SECRET"),
   },
-  crons: ["0 * * * *"],
+  // Hourly jobs, plus a 5-minute scoring sweep for lost queue messages.
+  // Must match HOURLY_CRON / SCORING_SWEEP_CRON in apps/server/src/scheduled.ts.
+  crons: ["0 * * * *", "*/5 * * * *"],
   domain: "api.vox.vinhtran.io.vn",
   dev: {
     port: 3000,
