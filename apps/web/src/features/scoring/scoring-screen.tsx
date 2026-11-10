@@ -6,7 +6,14 @@ import { Card } from "@/components/ds/card";
 import { EmptyState } from "@/components/ds/empty-state";
 import { Logo } from "@/components/ds/logo";
 
-import { useScoringJob, type ScoringView } from "./use-scoring-job";
+import {
+  DAILY_RETRY_LIMIT_EXCEEDED,
+  DAILY_RETRY_LIMIT_MESSAGE,
+  RETRY_LIMIT_EXCEEDED,
+  RETRY_LIMIT_MESSAGE,
+  useScoringJob,
+  type ScoringView,
+} from "./use-scoring-job";
 
 export const SCORING_STEPS = [
   "Chuyển giọng nói thành chữ",
@@ -113,9 +120,16 @@ function ScoringJobState({
   }
 
   const home = { label: "Về trang chủ", onClick: onHome, variant: "outline" as const, disabled: busy };
-  const error = actionError ? (
+  // The server's machine-readable quota codes surface as learner-friendly wording.
+  const errorText =
+    actionError === DAILY_RETRY_LIMIT_EXCEEDED
+      ? DAILY_RETRY_LIMIT_MESSAGE
+      : actionError === RETRY_LIMIT_EXCEEDED
+        ? RETRY_LIMIT_MESSAGE
+        : actionError;
+  const error = errorText ? (
     <p role="alert" className="mt-4 text-sm font-medium text-bad">
-      {actionError}
+      {errorText}
     </p>
   ) : null;
 
@@ -201,14 +215,25 @@ function ScoringJobState({
     );
   }
 
+  // canRetry === false: re-scoring this attempt is no longer offered. The
+  // copy must match the reason: a spent per-attempt retry is permanent, while
+  // a full daily quota comes back tomorrow.
+  const retryExhausted = view.canRetry === false;
+  const retrySpentOnThisAttempt = (view.manualRetries ?? 0) >= 1;
   return (
     <div data-testid="scoring-failed">
       <EmptyState
         size="lg"
         icon={TriangleAlert}
         title="Chấm điểm chưa thành công"
-        description="Hệ thống gặp lỗi khi chấm bài này. Bài thi của bạn vẫn được lưu đầy đủ, bạn có thể chấm lại ngay."
-        action={{ label: busy ? "Đang gửi yêu cầu…" : "Chấm lại", onClick: onRetry, disabled: busy }}
+        description={
+          retryExhausted
+            ? retrySpentOnThisAttempt
+              ? "Bài thi đã được thử lại tối đa 1 lần. Vui lòng tạo bài luyện tập mới."
+              : "Bạn đã đạt giới hạn 3 lần thử lại trong ngày. Vui lòng quay lại vào ngày mai."
+            : "Hệ thống gặp lỗi khi chấm bài này. Bài thi của bạn vẫn được lưu đầy đủ, bạn có thể chấm lại ngay."
+        }
+        action={{ label: busy ? "Đang gửi yêu cầu…" : "Chấm lại", onClick: onRetry, disabled: busy || retryExhausted }}
         secondaryAction={home}
         bordered
         className="bg-white p-8"

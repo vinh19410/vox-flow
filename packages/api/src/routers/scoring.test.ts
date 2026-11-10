@@ -1,9 +1,10 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { attempt, attemptAnswer, attemptScore, user } from "@vox-flow/db/schema";
+import { attempt, attemptAnswer, attemptScore, scoringRetryLog, user } from "@vox-flow/db/schema";
 
 import { SCORING_ENQUEUE_DELAY_SECONDS, type ScoringQueue } from "../scoring/queue";
+import { startOfVietnamDayMs } from "../scoring/retry-limits";
 import type { ScoredCriterion, ScoringQueueMessage } from "../scoring/types";
 import { createTestDb, type TestDbContext } from "../test/db";
 import { ATTEMPT_ALREADY_SUBMITTED_MESSAGE } from "./attempt";
@@ -58,11 +59,12 @@ describe("scoringRouter", () => {
   let ctx: TestDbContext;
   let queue: ReturnType<typeof makeQueue>;
 
-  const callerFor = (userId: string, withQueue = true) =>
+  const callerFor = (userId: string, withQueue = true, clock?: { now: () => Date }) =>
     appRouter.createCaller({
       db: ctx.db,
       session: makeSession(userId),
       env: withQueue ? { SCORING_QUEUE: queue } : {},
+      ...(clock ?? {}),
     });
 
   beforeEach(async () => {
@@ -89,11 +91,15 @@ describe("scoringRouter", () => {
         attemptId: "att-forecast",
         status: "not_scored",
         scorable: true,
+        manualRetries: 0,
+        canRetry: true,
       });
       await expect(caller.scoring.status({ attemptId: "att-full" })).resolves.toEqual({
         attemptId: "att-full",
         status: "not_scored",
         scorable: false,
+        manualRetries: 0,
+        canRetry: true,
       });
     });
 
@@ -124,7 +130,7 @@ describe("scoringRouter", () => {
       });
 
       const res = await callerFor("owner").scoring.retry({ attemptId: "att-forecast" });
-      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true });
+      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true, manualRetries: 1 });
       expect(queue.sent).toEqual([{ attemptId: "att-forecast" }]);
       expect(queue.options).toEqual([{ delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS }]);
 
@@ -142,7 +148,7 @@ describe("scoringRouter", () => {
 
     it("creates and enqueues a score for a submitted forecast attempt without a score row", async () => {
       const res = await callerFor("owner").scoring.retry({ attemptId: "att-forecast" });
-      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true });
+      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true, manualRetries: 0 });
       expect(queue.sent).toEqual([{ attemptId: "att-forecast" }]);
       const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-forecast"));
       expect(row).toMatchObject({ status: "queued", tries: 0, userId: "owner" });
@@ -185,6 +191,161 @@ describe("scoringRouter", () => {
       await ctx.db.insert(attemptScore).values({ attemptId: "att-forecast", userId: "owner", status: "failed" });
       const res = await callerFor("owner", false).scoring.retry({ attemptId: "att-forecast" });
       expect(res.status).toBe("queued");
+    });
+
+    describe("retry limits", () => {
+      const seedFailedAttempts = async (ids: string[]) => {
+        await ctx.db.insert(attempt).values(
+          ids.map((id) => ({
+            id,
+            userId: "owner",
+            mode: "part1" as const,
+            status: "submitted" as const,
+            topicId: "topic-1",
+          })),
+        );
+        await ctx.db.insert(attemptScore).values(
+          ids.map((id) => ({
+            attemptId: id,
+            userId: "owner",
+            status: "failed" as const,
+            tries: 1,
+            lastError: "boom",
+          })),
+        );
+      };
+
+      it("records a retry log row stamped with the injected clock and returns manualRetries=1", async () => {
+        await seedFailedAttempts(["att-r1"]);
+        const nowMs = new Date("2026-11-10T02:30:00.000Z").getTime();
+        const caller = callerFor("owner", true, { now: () => new Date(nowMs) });
+
+        const res = await caller.scoring.retry({ attemptId: "att-r1" });
+        expect(res).toEqual({ attemptId: "att-r1", status: "queued", scorable: true, manualRetries: 1 });
+
+        const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-r1"));
+        expect(row).toMatchObject({
+          status: "queued",
+          tries: 0,
+          lastError: null,
+          manualRetries: 1,
+          updatedAt: new Date(nowMs),
+        });
+
+        const logs = await ctx.db.select().from(scoringRetryLog);
+        expect(logs).toHaveLength(1);
+        expect(logs[0]).toMatchObject({ userId: "owner", attemptId: "att-r1", createdAt: new Date(nowMs) });
+      });
+
+      it("rejects a second manual retry of the same attempt with RETRY_LIMIT_EXCEEDED", async () => {
+        await seedFailedAttempts(["att-r1"]);
+        const caller = callerFor("owner");
+        await caller.scoring.retry({ attemptId: "att-r1" });
+
+        await expect(caller.scoring.retry({ attemptId: "att-r1" })).rejects.toMatchObject({
+          code: "BAD_REQUEST",
+          message: "RETRY_LIMIT_EXCEEDED",
+        });
+        expect(queue.sent).toHaveLength(1);
+        expect(await ctx.db.select().from(scoringRetryLog)).toHaveLength(1);
+        const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-r1"));
+        expect(row).toMatchObject({ status: "queued", manualRetries: 1 });
+      });
+
+      it("rejects retrying an attempt whose score is queued with the generic message", async () => {
+        await ctx.db.insert(attemptScore).values({ attemptId: "att-forecast", userId: "owner", status: "queued" });
+        await expect(callerFor("owner").scoring.retry({ attemptId: "att-forecast" })).rejects.toMatchObject({
+          code: "BAD_REQUEST",
+          message: "Only a failed or unscored attempt can be retried",
+        });
+        expect(await ctx.db.select().from(scoringRetryLog)).toHaveLength(0);
+      });
+
+      it("rejects a fourth retry in one Vietnam day with DAILY_RETRY_LIMIT_EXCEEDED", async () => {
+        await seedFailedAttempts(["att-r1", "att-r2", "att-r3", "att-r4"]);
+        const caller = callerFor("owner");
+        for (const id of ["att-r1", "att-r2", "att-r3"]) {
+          await expect(caller.scoring.retry({ attemptId: id })).resolves.toMatchObject({ manualRetries: 1 });
+        }
+
+        await expect(caller.scoring.retry({ attemptId: "att-r4" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "DAILY_RETRY_LIMIT_EXCEEDED",
+        });
+        // The over-quota attempt keeps its failed state untouched.
+        const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-r4"));
+        expect(row).toMatchObject({ status: "failed", manualRetries: 0, tries: 1, lastError: "boom" });
+        expect((await ctx.db.select().from(scoringRetryLog)).map((l) => l.attemptId).sort()).toEqual([
+          "att-r1",
+          "att-r2",
+          "att-r3",
+        ]);
+        expect(queue.sent).toHaveLength(3);
+      });
+
+      it("lets exactly 3 of 4 parallel retries through", async () => {
+        await seedFailedAttempts(["att-r1", "att-r2", "att-r3", "att-r4"]);
+        const caller = callerFor("owner");
+
+        const settled = await Promise.allSettled([
+          caller.scoring.retry({ attemptId: "att-r1" }),
+          caller.scoring.retry({ attemptId: "att-r2" }),
+          caller.scoring.retry({ attemptId: "att-r3" }),
+          caller.scoring.retry({ attemptId: "att-r4" }),
+        ]);
+
+        const fulfilled = settled.filter((r) => r.status === "fulfilled");
+        const rejected = settled.filter((r) => r.status === "rejected");
+        expect(fulfilled).toHaveLength(3);
+        expect(rejected).toHaveLength(1);
+        expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "DAILY_RETRY_LIMIT_EXCEEDED",
+        });
+        expect(await ctx.db.select().from(scoringRetryLog)).toHaveLength(3);
+        expect(queue.sent).toHaveLength(3);
+      });
+
+      it("does not count a 23:59 Vietnam retry against the next day's 00:01 quota", async () => {
+        await seedFailedAttempts(["att-r1", "att-r2"]);
+        // 23:59 on Nov 9 in Vietnam is 16:59 UTC; 00:01 on Nov 10 is 17:01 UTC.
+        const lateNight = new Date("2026-11-09T16:59:00.000Z").getTime();
+        const nextMorning = new Date("2026-11-09T17:01:00.000Z").getTime();
+        expect(startOfVietnamDayMs(nextMorning)).toBeGreaterThan(startOfVietnamDayMs(lateNight));
+
+        // Three retries logged at 23:59 exhaust the quota for Nov 9 only.
+        await ctx.db.insert(scoringRetryLog).values(
+          ["att-r1", "att-r2", "att-forecast"].map((attemptId) => ({
+            id: `log-${attemptId}`,
+            userId: "owner",
+            attemptId,
+            createdAt: new Date(lateNight),
+          })),
+        );
+
+        const nightCaller = callerFor("owner", true, { now: () => new Date(lateNight) });
+        await expect(nightCaller.scoring.status({ attemptId: "att-r2" })).resolves.toMatchObject({
+          status: "failed",
+          canRetry: false,
+        });
+        await expect(nightCaller.scoring.retry({ attemptId: "att-r2" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "DAILY_RETRY_LIMIT_EXCEEDED",
+        });
+
+        const morningCaller = callerFor("owner", true, { now: () => new Date(nextMorning) });
+        await expect(morningCaller.scoring.status({ attemptId: "att-r2" })).resolves.toMatchObject({
+          status: "failed",
+          canRetry: true,
+        });
+        await expect(morningCaller.scoring.retry({ attemptId: "att-r2" })).resolves.toMatchObject({
+          status: "queued",
+          manualRetries: 1,
+        });
+        const logs = await ctx.db.select().from(scoringRetryLog).where(eq(scoringRetryLog.attemptId, "att-r2"));
+        // Yesterday's seeded 23:59 log plus today's retry — the night attempt left none.
+        expect(logs.map((l) => l.createdAt.getTime()).sort()).toEqual([lateNight, nextMorning]);
+      });
     });
   });
 

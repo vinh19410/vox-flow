@@ -33,6 +33,10 @@ export type ScoreStatusResult = {
   status: ScoreStatus;
   /** False when the attempt's mode is not scored (e.g. full mock exam in this beta). */
   scorable: boolean;
+  /** Manual retries already spent on this attempt (0 without a score row). */
+  manualRetries?: number;
+  /** False when the learner has exhausted the per-attempt manual retry or daily quota. */
+  canRetry?: boolean;
 };
 
 export type ScoringResult = {

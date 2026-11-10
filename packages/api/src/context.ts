@@ -27,4 +27,6 @@ export type Context = {
   session: Session | null;
   db: Database;
   env?: ApiEnv;
+  /** Injectable clock (same shape as `score-attempt.ts`); tests pin time with it. */
+  now?: () => Date;
 };

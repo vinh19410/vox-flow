@@ -2,10 +2,11 @@ import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "@vox-flow/db";
-import { attempt, attemptAnswer, attemptScore, scoreRun } from "@vox-flow/db/schema";
+import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@vox-flow/db/schema";
 
 import { isValidAudioKey } from "../audio";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
+import { findAnswerLimitViolation } from "./answer-limits";
 import { computeCostUsd, type ScoringConfig } from "./config";
 import { OpenAIRequestError, type ScoringOpenAIClient } from "./openai-client";
 import {
@@ -22,11 +23,22 @@ import { CRITERION_KEYS, scoredCriterionSchema, type ScoredCriterion } from "./t
 export const MAX_SCORING_TRIES = 3;
 
 /**
- * How long a claim stays exclusive. Longer than the slowest pipeline
- * (transcription 60s, then up to three sequential 180s grading calls), so a
- * live worker is never overtaken; after it, the row is assumed abandoned.
+ * How long a claim stays exclusive. Longer than the worst-case delivery
+ * (transcription budget 240s + 60s timeout for the clip in flight, then
+ * grading 180s for the first run plus 180s for the remaining two in
+ * parallel = 660s), so a live worker is never overtaken; after it, the row
+ * is assumed abandoned. Each transcript is persisted the moment it is
+ * produced, so an exceeded transcription budget throws a retriable error,
+ * releases the lease, and the next delivery resumes from the saved progress
+ * instead of starting over.
  */
 export const SCORING_LEASE_MS = 12 * 60 * 1000;
+
+/**
+ * Wall-clock budget for the sequential transcription loop, leaving a 60s
+ * margin under the lease so grading still fits after a redelivery.
+ */
+export const TRANSCRIPTION_TIME_BUDGET_MS = 240_000;
 
 /**
  * Total recording size above which grading skips audio and sends transcripts
@@ -244,6 +256,24 @@ async function runPipeline(
     }
   }
 
+  // Re-run the authoritative count/bytes guard (attempt.submit checks the same
+  // helper). Closes the race where an upload passed the route's status check
+  // just before submit snapshotted the answers: such a late row must never be
+  // transcribed or graded.
+  const [topicRow] = await db
+    .select({
+      id: forecastTopic.id,
+      part: forecastTopic.part,
+      questions: forecastTopic.questions,
+    })
+    .from(forecastTopic)
+    .where(eq(forecastTopic.id, attemptRow.topicId))
+    .limit(1);
+  const limitViolation = findAnswerLimitViolation(attemptRow, topicRow ?? null, answerRows);
+  if (limitViolation) {
+    throw new NonRetriableScoringError(`Attempt answers rejected: ${limitViolation}`);
+  }
+
   const existingRuns = await db
     .select({ runIndex: scoreRun.runIndex })
     .from(scoreRun)
@@ -286,19 +316,29 @@ async function runPipeline(
     }
   }
 
-  // 2. Transcribe answers without a transcript; persist each success so a retry skips it.
+  // 2. Transcribe answers without a transcript, one at a time: a single
+  //    audio buffer is in flight and is released as soon as the iteration's
+  //    scope ends, and each success is persisted immediately so a retry
+  //    skips it. The wall-clock budget bounds the whole loop; on overrun the
+  //    error propagates as retriable and the next delivery resumes from the
+  //    transcripts already saved.
   const transcripts = new Map(answerRows.map((row) => [row.questionKey, row.transcript]));
-  const transcription = await Promise.allSettled(
-    needsTranscript.map(async (row) => {
-      const text = await deps.client.transcribe({
-        audio: audio.get(row.questionKey) ?? (await loadAudio(row)),
-        mimeType: row.mimeType,
-      });
-      await db.update(attemptAnswer).set({ transcript: text }).where(eq(attemptAnswer.id, row.id));
-      transcripts.set(row.questionKey, text);
-    }),
-  );
-  throwFirstRejection(transcription);
+  const transcriptionStart = now();
+  for (const row of needsTranscript) {
+    if (now().getTime() - transcriptionStart.getTime() > TRANSCRIPTION_TIME_BUDGET_MS) {
+      console.warn(
+        `[scoring] Attempt ${attemptId} transcription time budget exceeded (${TRANSCRIPTION_TIME_BUDGET_MS}ms); requeueing to resume`,
+      );
+      throw new Error("Transcription time budget exceeded; saved progress will resume on next delivery");
+    }
+    const audioBuffer = audio.get(row.questionKey) ?? (await loadAudio(row));
+    const text = await deps.client.transcribe({
+      audio: audioBuffer,
+      mimeType: row.mimeType,
+    });
+    await db.update(attemptAnswer).set({ transcript: text }).where(eq(attemptAnswer.id, row.id));
+    transcripts.set(row.questionKey, text);
+  }
 
   const partCounters = new Map<number, number>();
   const answers: GradingAnswer[] = answerRows.map((row) => {

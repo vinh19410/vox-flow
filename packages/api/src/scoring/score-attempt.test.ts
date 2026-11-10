@@ -12,6 +12,7 @@ import {
   MAX_SCORING_TRIES,
   SCORING_LEASE_MS,
   scoreAttempt,
+  TRANSCRIPTION_TIME_BUDGET_MS,
   type AudioReader,
   type ScoreAttemptDeps,
 } from "./score-attempt";
@@ -419,6 +420,71 @@ describe("scoreAttempt", () => {
     const byKey = Object.fromEntries(answers.map((a) => [a.questionKey, a.transcript]));
     expect(byKey.q1).toBe(TRANSCRIPTS.q1);
     expect(byKey.q2).toBeNull();
+    expect(client.chatBodies).toHaveLength(0);
+  });
+
+  it("transcribes one answer at a time in part/order order, without overlap", async () => {
+    await seed(ctx.db);
+    const started: string[] = [];
+    const firstStarted = Promise.withResolvers<void>();
+    const firstGate = Promise.withResolvers<void>();
+    client.transcribeImpl = async (mimeType) => {
+      started.push(mimeType);
+      if (mimeType === "audio/webm") {
+        // Hold the first call open; the second may only start after it resolves.
+        firstStarted.resolve();
+        await firstGate.promise;
+      }
+      return mimeType === "audio/mp4" ? TRANSCRIPTS.q2! : TRANSCRIPTS.q1!;
+    };
+
+    const running = scoreAttempt(deps, ATTEMPT_ID);
+    await firstStarted.promise;
+    // Drain the microtask queue so a wrongly-overlapped second call would have started.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    expect(started).toEqual(["audio/webm"]);
+
+    firstGate.resolve();
+    await expect(running).resolves.toBe("done");
+    expect(started).toEqual(["audio/webm", "audio/mp4"]);
+  });
+
+  it("does not re-transcribe answers that already have a saved transcript", async () => {
+    await seed(ctx.db);
+    await ctx.db.update(attemptAnswer).set({ transcript: TRANSCRIPTS.q1 }).where(eq(attemptAnswer.id, "ans-1"));
+
+    await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+    expect(client.transcribeCalls.map((c) => c.mimeType)).toEqual(["audio/mp4"]);
+    const answers = await ctx.db.select().from(attemptAnswer).where(eq(attemptAnswer.attemptId, ATTEMPT_ID));
+    expect(Object.fromEntries(answers.map((a) => [a.questionKey, a.transcript]))).toEqual(TRANSCRIPTS);
+  });
+
+  it("throws a retriable error when transcription exceeds the time budget, keeping saved progress", async () => {
+    await seed(ctx.db);
+    const T0 = new Date("2026-11-10T10:00:00.000Z");
+    let calls = 0;
+    // Each clip advances the injected clock past the whole budget.
+    const slowNow = (): Date => new Date(T0.getTime() + calls * (TRANSCRIPTION_TIME_BUDGET_MS + 1000));
+    client.transcribeImpl = async (mimeType) => {
+      calls += 1;
+      return mimeType === "audio/mp4" ? TRANSCRIPTS.q2! : TRANSCRIPTS.q1!;
+    };
+
+    await expect(scoreAttempt({ ...deps, now: slowNow }, ATTEMPT_ID)).rejects.toThrow(
+      "Transcription time budget exceeded; saved progress will resume on next delivery",
+    );
+    expect(client.transcribeCalls).toHaveLength(1);
+
+    // The first transcript was persisted before the budget tripped.
+    const answers = await ctx.db.select().from(attemptAnswer).where(eq(attemptAnswer.attemptId, ATTEMPT_ID));
+    const byKey = Object.fromEntries(answers.map((a) => [a.questionKey, a.transcript]));
+    expect(byKey.q1).toBe(TRANSCRIPTS.q1);
+    expect(byKey.q2).toBeNull();
+
+    // The retriable failure released the lease for the next delivery.
+    const score = await loadScore(ctx.db);
+    expect(score.status).toBe("queued");
+    expect(score.lastError).toContain("Transcription time budget exceeded");
     expect(client.chatBodies).toHaveLength(0);
   });
 

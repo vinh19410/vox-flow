@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth } = vi.hoisted(() => {
-  const mockPut = vi.fn().mockResolvedValue(undefined);
+const { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth, mockDelete } = vi.hoisted(() => {
+  const mockPut = vi.fn().mockResolvedValue({ size: 3 });
+  const mockDelete = vi.fn().mockResolvedValue(undefined);
   const mockGet = vi.fn().mockResolvedValue({
     body: new ReadableStream(),
     size: 1024,
@@ -10,12 +11,18 @@ const { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth } = v
   const mockBucket = {
     put: mockPut,
     get: mockGet,
+    delete: mockDelete,
   };
 
   const mockState = {
     currentAttemptStatus: "in_progress",
     currentAttemptUserId: "user-1",
     attemptExists: true,
+    attemptTopicId: null as string | null,
+    attemptQuestionKey: null as string | null,
+    existingAnswers: [] as Array<{ id: string; questionKey: string; sizeBytes: number }>,
+    topicRow: null as { id: string; part: number; questions: unknown } | null,
+    upsertSet: null as Record<string, unknown> | null,
     currentSessionUser: {
       id: "user-1",
       email: "test@example.com",
@@ -28,28 +35,52 @@ const { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth } = v
     },
   };
   const mockInsertValues = vi.fn().mockImplementation((val: unknown) => ({
-    onConflictDoUpdate: vi.fn().mockResolvedValue(val),
+    onConflictDoUpdate: vi.fn().mockImplementation((conflict: { set?: Record<string, unknown> }) => {
+      mockState.upsertSet = conflict?.set ?? null;
+      return Promise.resolve(val);
+    }),
   }));
+
+  // Identify drizzle table objects by their column properties so the mock can
+  // route selects per table without importing @vox-flow/db inside vi.hoisted.
+  const tableName = (table: unknown): string => {
+    if (typeof table === "object" && table !== null) {
+      if ("questions" in table && "quarter" in table) return "forecast_topic";
+      if ("audioKey" in table && "questionKey" in table) return "attempt_answer";
+      if ("questionKey" in table || "status" in table) return "attempt";
+    }
+    return "unknown";
+  };
 
   const mockDb = {
     select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: () =>
-            Promise.resolve(
-              mockState.attemptExists
-                ? [
-                    {
-                      id: "att-123",
-                      userId: mockState.currentAttemptUserId,
-                      status: mockState.currentAttemptStatus,
-                      audioKey: mockState.ansRecord.audioKey,
-                      mimeType: mockState.ansRecord.mimeType,
-                    },
-                  ]
-                : [],
-            ),
-        }),
+      from: (table: unknown) => ({
+        where: () => {
+          const name = tableName(table);
+          if (name === "attempt_answer") {
+            // POST upload route awaits the where() result directly (all rows);
+            // GET route chains .limit(1) for a single answer.
+            const allRows = Promise.resolve(mockState.existingAnswers);
+            return Object.assign(allRows, {
+              limit: () => Promise.resolve([mockState.ansRecord]),
+            });
+          }
+          const row =
+            name === "forecast_topic"
+              ? mockState.topicRow
+              : mockState.attemptExists
+                ? {
+                    id: "att-123",
+                    userId: mockState.currentAttemptUserId,
+                    status: mockState.currentAttemptStatus,
+                    topicId: mockState.attemptTopicId,
+                    questionKey: mockState.attemptQuestionKey,
+                  }
+                : null;
+          return {
+            limit: () => Promise.resolve(row ? [row] : []),
+          };
+        },
       }),
     }),
     insert: () => ({
@@ -72,7 +103,7 @@ const { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth } = v
     },
   };
 
-  return { mockBucket, mockPut, mockInsertValues, mockState, mockDb, mockAuth };
+  return { mockBucket, mockPut, mockDelete, mockInsertValues, mockState, mockDb, mockAuth };
 });
 
 vi.mock("./env.server", () => ({
@@ -92,9 +123,19 @@ import { app } from "./index";
 describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Drop leftover mockResolvedValueOnce queues from earlier tests.
+    mockPut.mockReset();
+    mockPut.mockResolvedValue({ size: 3 });
+    mockDelete.mockReset();
+    mockDelete.mockResolvedValue(undefined);
     mockState.currentAttemptStatus = "in_progress";
     mockState.currentAttemptUserId = "user-1";
     mockState.attemptExists = true;
+    mockState.attemptTopicId = null;
+    mockState.attemptQuestionKey = null;
+    mockState.existingAnswers = [];
+    mockState.topicRow = null;
+    mockState.upsertSet = null;
     mockState.currentSessionUser = {
       id: "user-1",
       email: "test@example.com",
@@ -402,6 +443,146 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
         mimeType: "audio/mpeg",
       }),
     );
+  });
+
+  it("returns 400 when the question key is not valid for the topic", async () => {
+    mockState.attemptTopicId = "topic-1";
+    mockState.topicRow = { id: "topic-1", part: 1, questions: ["Q1", "Q2"] };
+
+    const res = await app.request(validUrl, {
+      method: "POST",
+      headers: {
+        "content-length": "100",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Invalid question key for this attempt");
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when uploading a third answer in single-question mode", async () => {
+    mockState.attemptTopicId = "topic-1";
+    mockState.attemptQuestionKey = "topic-1-0";
+    mockState.topicRow = { id: "topic-1", part: 1, questions: ["Q1", "Q2", "Q3"] };
+    mockState.existingAnswers = [
+      { id: "ans-1", questionKey: "topic-1-0", sizeBytes: 100 },
+      { id: "ans-2", questionKey: "topic-1-1", sizeBytes: 100 },
+    ];
+
+    // The follow-up key is the only remaining valid key, and the attempt
+    // already holds the single-question maximum of 2 answers.
+    const res = await app.request("/api/attempts/att-123/answers/topic-1-0-f/audio?part=1&order=2&durationMs=5000&questionText=Follow", {
+      method: "POST",
+      headers: {
+        "content-length": "100",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Question limit reached for this attempt");
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("replaces sizeBytes on re-record instead of accumulating", async () => {
+    mockState.attemptTopicId = "topic-1";
+    mockState.topicRow = { id: "topic-1", part: 1, questions: ["Q1"] };
+    mockState.existingAnswers = [{ id: "ans-1", questionKey: "topic-1-0", sizeBytes: 500 }];
+    mockPut.mockResolvedValueOnce({ size: 700 });
+
+    const res = await app.request("/api/attempts/att-123/answers/topic-1-0/audio?part=1&order=0&durationMs=5000&questionText=Sample", {
+      method: "POST",
+      headers: {
+        "content-length": "300",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(200);
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attemptId: "att-123",
+        questionKey: "topic-1-0",
+        sizeBytes: 700,
+      }),
+    );
+    expect(mockState.upsertSet).toEqual(expect.objectContaining({ sizeBytes: 700 }));
+  });
+
+  it("returns 413 when the new upload would push total audio past 35MB", async () => {
+    mockState.existingAnswers = [
+      { id: "ans-1", questionKey: "other-q", sizeBytes: 30 * 1024 * 1024 },
+    ];
+
+    const res = await app.request(validUrl, {
+      method: "POST",
+      headers: {
+        "content-length": String(6 * 1024 * 1024),
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1]),
+    });
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Payload too large: total audio exceeds 35MB");
+    expect(mockPut).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 and deletes the object when R2 reports an empty stored object size", async () => {
+    mockPut.mockResolvedValueOnce({ size: 0 });
+
+    const res = await app.request(validUrl, {
+      method: "POST",
+      headers: {
+        "content-length": "100",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Storage write failed: unverifiable object size");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.webm");
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 and deletes the object when R2 omits the reported size (fail closed)", async () => {
+    mockPut.mockResolvedValueOnce(undefined);
+
+    const res = await app.request(validUrl, {
+      method: "POST",
+      headers: {
+        "content-length": "100",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(503);
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.webm");
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when another user's attempt is targeted", async () => {
+    mockState.currentAttemptUserId = "user-2";
+
+    const res = await app.request(validUrl, {
+      method: "POST",
+      headers: {
+        "content-length": "3",
+        "content-type": "audio/webm",
+      },
+      body: new Uint8Array([1, 2, 3]),
+    });
+    expect(res.status).toBe(403);
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+    // The beforeEach lives in the POST describe only; later describes (GET)
+    // inherit this mockState, so restore the default owner.
+    mockState.currentAttemptUserId = "user-1";
   });
 });
 
