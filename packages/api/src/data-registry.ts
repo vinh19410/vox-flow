@@ -16,11 +16,6 @@ import {
   userProfile,
 } from "@vox-flow/db/schema";
 
-async function userAttemptIds(db: Database, userId: string): Promise<string[]> {
-  const rows = await db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId));
-  return rows.map((r) => r.id);
-}
-
 export type EraseContext = {
   db: Database;
   audioBucket?: {
@@ -34,6 +29,14 @@ export interface TablePersonalDataHandler {
   erase: (ctx: EraseContext, userId: string) => Promise<void>;
 }
 
+// Convention cho bảng thêm sau này (xem #92):
+// - `export` chỉ lộ trường kết quả của học viên; trường vận hành (model, cost,
+//   token, lỗi, payload thô) không bao giờ nằm trong payload export.
+// - Bảng mới CHỈ có khóa `attempt_id` (không có cột `user_id` riêng) phải query
+//   theo `userId` qua subquery (`attempt_id IN (SELECT id FROM attempt WHERE
+//   user_id = ?)`), không bao giờ IN-list danh sách id — D1 giới hạn 100 bind
+//   parameters/query. Bảng có cột `user_id` riêng thì `eq(col.userId, userId)`
+//   trực tiếp (ví dụ `attempt_score`).
 export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
   user: {
     tableName: "user",
@@ -114,7 +117,20 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
   attempt_score: {
     tableName: "attempt_score",
     export: async (db, userId) => {
-      return db.select().from(attemptScore).where(eq(attemptScore.userId, userId));
+      // Chỉ trường kết quả học viên; bỏ userId/model/tries/lastError/costUsd/
+      // updatedAt (dữ liệu vận hành, xem #92).
+      return db
+        .select({
+          attemptId: attemptScore.attemptId,
+          status: attemptScore.status,
+          overall: attemptScore.overall,
+          criteriaJson: attemptScore.criteriaJson,
+          oneLiner: attemptScore.oneLiner,
+          createdAt: attemptScore.createdAt,
+          scoredAt: attemptScore.scoredAt,
+        })
+        .from(attemptScore)
+        .where(eq(attemptScore.userId, userId));
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(attemptScore).where(eq(attemptScore.userId, userId));
@@ -122,16 +138,19 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
   },
   score_run: {
     tableName: "score_run",
-    export: async (db, userId) => {
-      const attemptIds = await userAttemptIds(db, userId);
-      if (attemptIds.length === 0) return [];
-      return db.select().from(scoreRun).where(inArray(scoreRun.attemptId, attemptIds));
-    },
+    // score_run là dữ liệu vận hành chấm điểm (schema: "Never shown to the
+    // learner directly") — không thuộc export cá nhân theo quyết định #92.
+    // Nếu OQ-6 kết luận phải xuất, mở lại bằng projection riêng.
+    export: async () => [],
+    // Erase vẫn xóa đầy đủ: subquery theo userId, không IN-list id (trần 100
+    // bind parameters của D1, xem #92).
     erase: async (ctx, userId) => {
-      const attemptIds = await userAttemptIds(ctx.db, userId);
-      if (attemptIds.length > 0) {
-        await ctx.db.delete(scoreRun).where(inArray(scoreRun.attemptId, attemptIds));
-      }
+      await ctx.db.delete(scoreRun).where(
+        inArray(
+          scoreRun.attemptId,
+          ctx.db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId)),
+        ),
+      );
     },
   },
   attempt: {
@@ -160,17 +179,23 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
   attempt_answer: {
     tableName: "attempt_answer",
     export: async (db, userId) => {
-      const userAttempts = await db.select().from(attempt).where(eq(attempt.userId, userId));
-      const attemptIds = userAttempts.map((a) => a.id);
-      if (attemptIds.length === 0) return [];
-      return db.select().from(attemptAnswer).where(inArray(attemptAnswer.attemptId, attemptIds));
+      return db
+        .select()
+        .from(attemptAnswer)
+        .where(
+          inArray(
+            attemptAnswer.attemptId,
+            db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId)),
+          ),
+        );
     },
     erase: async (ctx, userId) => {
-      const userAttempts = await ctx.db.select().from(attempt).where(eq(attempt.userId, userId));
-      const attemptIds = userAttempts.map((a) => a.id);
-      if (attemptIds.length > 0) {
-        await ctx.db.delete(attemptAnswer).where(inArray(attemptAnswer.attemptId, attemptIds));
-      }
+      await ctx.db.delete(attemptAnswer).where(
+        inArray(
+          attemptAnswer.attemptId,
+          ctx.db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId)),
+        ),
+      );
     },
   },
   score_dispute: {
