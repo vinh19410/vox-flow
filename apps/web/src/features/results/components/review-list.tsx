@@ -13,21 +13,15 @@ import type { ReviewItem, Seg } from "../types";
 export interface ReviewListProps {
   pro: boolean;
   items?: ReviewItem[];
+  /** Simulated playback controls; off when no recording is available to play. */
+  playback?: boolean;
 }
 
-export function ReviewList({ pro, items = [] }: ReviewListProps) {
+export function ReviewList({ pro, items = [], playback = true }: ReviewListProps) {
   const { openPaywall } = useApp();
   const [playing, setPlaying] = useState<string | null>(null);
   const [pos, setPos] = useState(0);
   const [mark, setMark] = useState<{ id: string; i: number } | null>(null);
-
-  if (!items.length) {
-    return (
-      <div className="py-12 text-center text-sm text-subtle">
-        Chưa có dữ liệu phân tích từng câu.
-      </div>
-    );
-  }
 
   const current = playing ? (items.find((r) => r.id === playing) ?? null) : null;
   useEffect(() => {
@@ -44,8 +38,19 @@ export function ReviewList({ pro, items = [] }: ReviewListProps) {
     }
   }, [pos, current]);
 
+  if (!items.length) {
+    return (
+      <div className="py-12 text-center text-sm text-subtle">
+        Chưa có dữ liệu phân tích từng câu.
+      </div>
+    );
+  }
+
+  const hasMarks = items.some((r) => r.segs.some((sg) => typeof sg !== "string"));
+
   return (
     <div className="space-y-3">
+      {hasMarks && (
       <div className="flex flex-wrap items-center gap-4 text-xs text-ink-2">
         {Object.entries(MARK).map(([k, m]) => (
           <span key={k} className="flex items-center gap-1.5">
@@ -58,12 +63,14 @@ export function ReviewList({ pro, items = [] }: ReviewListProps) {
           </button>
         )}
       </div>
+      )}
       {items.map((r) => {
         const isPlaying = playing === r.id;
         const selected = mark?.id === r.id ? (r.segs[mark.i] as Exclude<Seg, string>) : null;
         return (
           <Card key={r.id} className="p-5 sm:p-6">
             <div className="flex items-start gap-4">
+              {playback && (
               <button
                 onClick={() => {
                   setPos(0);
@@ -77,6 +84,7 @@ export function ReviewList({ pro, items = [] }: ReviewListProps) {
               >
                 {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
               </button>
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold text-subtle">{r.label}</span>
@@ -91,9 +99,11 @@ export function ReviewList({ pro, items = [] }: ReviewListProps) {
                   </span>
                 </div>
                 <div className="mt-1 font-semibold">{r.q}</div>
+                {playback && (
                 <div className="mt-3 h-1 overflow-hidden rounded-full bg-paper-2">
                   <div className="h-full bg-brand transition-all" style={{ width: isPlaying ? `${(pos / r.dur) * 100}%` : "0%" }} />
                 </div>
+                )}
                 <p className="mt-4 text-[15px] leading-[1.8] text-ink-2">
                   {r.segs.map((sg, i) => {
                     if (typeof sg === "string") return <span key={i}>{sg}</span>;

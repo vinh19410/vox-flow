@@ -41,11 +41,17 @@ const PracticeSessionSchema = z.object({
   attemptId: z.string().optional(),
 });
 
+const ScoringJobSchema = z.object({
+  attemptId: z.string().min(1),
+  submitted: z.boolean(),
+});
+
 const PersistedAppStateSchema = z
   .object({
     mode: ModeSchema,
     voice: z.string(),
     practice: PracticeSessionSchema.nullable(),
+    scoringAttempt: ScoringJobSchema.nullable(),
   })
   .partial();
 function hydrateState(): AppState {
@@ -61,6 +67,7 @@ function hydrateState(): AppState {
       mode: d.mode ?? base.mode,
       voice: d.voice ?? base.voice,
       practice: d.practice !== undefined ? d.practice : base.practice,
+      scoringAttempt: d.scoringAttempt !== undefined ? d.scoringAttempt : base.scoringAttempt,
     };
   } catch {
     return base;
@@ -81,12 +88,13 @@ export function useAppStateStore(): AppStoreValue {
         mode: s.mode,
         voice: s.voice,
         practice: s.practice,
+        scoringAttempt: s.scoringAttempt,
       };
       globalThis.sessionStorage?.setItem(PROTO_STORAGE_KEY, JSON.stringify(persisted));
     } catch {
       // Ignore storage quota or restricted-mode errors
     }
-  }, [s.mode, s.voice, s.practice]);
+  }, [s.mode, s.voice, s.practice, s.scoringAttempt]);
 
   useEffect(() => {
     return () => {

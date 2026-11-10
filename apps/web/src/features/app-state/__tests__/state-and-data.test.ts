@@ -233,6 +233,7 @@ describe("useAppStateStore & ProtoToast", () => {
       mode: "p2",
       voice: "au-f",
       practice: null,
+      scoringAttempt: null,
     });
     expect(parsed.name).toBeUndefined();
     expect(parsed.target).toBeUndefined();
@@ -269,6 +270,16 @@ describe("useAppStateStore & ProtoToast", () => {
     expect(remounted.result.current.s.practice?.topicId).toBe("p1-tidiness");
     // Server-owned attempts are not restored across remount
     expect(remounted.result.current.s.attempts).toHaveLength(0);
+  });
+  it("persists the pending scoring attempt so a refresh on the scoring screen keeps polling it", () => {
+    const { result, unmount } = renderHook(() => useAppStateStore());
+    act(() => {
+      result.current.set({ scoringAttempt: { attemptId: "att-forecast", submitted: true } });
+    });
+    unmount();
+
+    const remounted = renderHook(() => useAppStateStore());
+    expect(remounted.result.current.s.scoringAttempt).toEqual({ attemptId: "att-forecast", submitted: true });
   });
   it("falls back safely to initial state when sessionStorage has malformed JSON", () => {
     sessionStorage.setItem(PROTO_STORAGE_KEY, "{corrupt-json");

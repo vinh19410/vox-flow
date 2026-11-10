@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Flag, Mic, Repeat, Sparkles } from "lucide-react";
+import { ArrowRight, Flag, Loader2, Repeat, Sparkles, TriangleAlert } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
@@ -18,6 +18,8 @@ import { CriterionDetail } from "./components/criterion-detail";
 import { ReportModal } from "./components/report-modal";
 import { ReviewList } from "./components/review-list";
 import { SoftPaywall } from "./components/soft-paywall";
+import { toCriteria, toReviewItems } from "./scored-result";
+import { useScoredResult } from "./use-scored-result";
 import type { CritKey, ResultData, ReviewItem } from "./types";
 import type { ExamItem } from "@/features/exam/types";
 import type { Attempt } from "@/features/history/types";
@@ -35,7 +37,12 @@ export function ResultsScreen({
  * concrete ids (or the transient unsaved attempt) to the attempt's own band. */
   const { s, set, go, openPaywall, lastUnpersistedAttempt } = useApp();
   const { isDefaultLatest, attempt } = resolveAttemptView(s.attempts, attemptId, lastUnpersistedAttempt);
-  const pro = !!s.plan;
+  // Server attempts (not the prototype "latest", injected data or a local attempt) load real scoring.
+  const remoteEnabled = attemptId !== "latest" && !resultData && isDefaultLatest;
+  const remote = useScoredResult(attemptId, remoteEnabled);
+  const scored = remote.state === "ready" ? remote.result : null;
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
   const [tab, setTab] = useState<"criteria" | "review">("criteria");
   const [sel, setSel] = useState<CritKey>("GRA");
   const [report, setReport] = useState(false);
@@ -66,7 +73,92 @@ export function ResultsScreen({
   useEffect(() => {
     loadDispute();
   }, [loadDispute]);
-  if (!FEATURES.scoring) {
+
+  const openScoring = () => {
+    set({ scoringAttempt: { attemptId, submitted: true } });
+    go("scoring");
+  };
+  const retryScoring = async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await trpcClient.scoring.retry.mutate({ attemptId });
+      openScoring();
+    } catch (err) {
+      console.warn("Scoring retry failed:", err);
+      setRetryError("Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  if (remoteEnabled && !scored) {
+    if (remote.state === "loading" || remote.state === "idle") {
+      return (
+        <div className="py-6" data-testid="results-loading">
+          <Card className="mt-6 flex items-center justify-center gap-3 p-10 text-sm text-ink-2">
+            <Loader2 size={18} className="animate-spin text-brand" aria-hidden /> Đang tải kết quả…
+          </Card>
+        </div>
+      );
+    }
+    if (remote.state === "error") {
+      return (
+        <div className="py-6" data-testid="results-error">
+          <Card className="mt-6 p-8">
+            <EmptyState
+              size="lg"
+              icon={TriangleAlert}
+              title="Không tải được kết quả"
+              description="Kết nối gặp sự cố. Bài thi của bạn vẫn được lưu, hãy thử tải lại."
+              action={{ label: "Tải lại", onClick: remote.reload }}
+              secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
+            />
+          </Card>
+        </div>
+      );
+    }
+    const { status } = remote;
+    if (status.scorable && (status.status === "queued" || status.status === "processing")) {
+      return (
+        <div className="py-6" data-testid="results-scoring">
+          <Card className="mt-6 p-8">
+            <EmptyState
+              size="lg"
+              icon={<Loader2 size={32} className="animate-spin text-brand" aria-hidden />}
+              title="Bài thi đang được chấm"
+              description="Kết quả 4 tiêu chí sẽ sẵn sàng ngay khi hệ thống chấm xong."
+              action={{ label: "Xem tiến trình chấm", onClick: openScoring }}
+              secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
+            />
+          </Card>
+        </div>
+      );
+    }
+    if (status.scorable && status.status === "failed") {
+      return (
+        <div className="py-6" data-testid="results-failed">
+          <Card className="mt-6 p-8">
+            <EmptyState
+              size="lg"
+              icon={TriangleAlert}
+              title="Chấm điểm chưa thành công"
+              description="Bài thi của bạn vẫn được lưu đầy đủ, bạn có thể chấm lại ngay."
+              action={{ label: retrying ? "Đang gửi yêu cầu…" : "Chấm lại", onClick: () => void retryScoring(), disabled: retrying }}
+              secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
+            />
+            {retryError && (
+              <p role="alert" className="mt-4 text-center text-sm font-medium text-bad">
+                {retryError}
+              </p>
+            )}
+          </Card>
+        </div>
+      );
+    }
+  }
+
+  if (!scored && !FEATURES.scoring) {
     return (
       <div className="py-6">
         <PageHead
@@ -96,8 +188,15 @@ export function ResultsScreen({
   }
 
   const active: Attempt | null = isDefaultLatest ? null : attempt;
-  const band = active?.band ?? resultData?.overall ?? 6.5;
-  const range = active?.range ?? resultData?.range ?? [6.0, 7.0];
+  const band = scored ? scored.overall : (active?.band ?? resultData?.overall ?? 6.5);
+  // Scored results show a single band: no confidence range or per-run values.
+  const range = scored ? undefined : (active?.range ?? resultData?.range ?? [6.0, 7.0]);
+  const runs = scored ? undefined : (resultData?.runs ?? [band, band, band]);
+  const oneLiner = scored ? scored.oneLiner : resultData?.oneLiner;
+  // Beta: every scored result is fully unlocked.
+  const pro = scored ? true : !!s.plan;
+  const criteria = scored ? toCriteria(scored) : resultData?.criteria;
+  const reviewItems = scored ? toReviewItems(scored) : (reviews ?? resultData?.reviews);
   const lastSession = s.lastPracticeSession;
   const isViewingCurrentPracticeAttempt = Boolean(
     lastSession?.singleQuestionId &&
@@ -133,10 +232,12 @@ export function ResultsScreen({
     go("exam");
   };
 
-  const eyebrow = active
+  const eyebrow = scored
+    ? `Kết quả · Luyện đề Forecast · ${new Date(scored.scoredAt).toLocaleDateString("vi-VN")}`
+    : active
     ? `Kết quả · ${active.topic} · ${new Date(active.date).toLocaleDateString("vi-VN")}`
     : `Kết quả · ${lastSession ? `Forecast: ${lastSession.title}` : s.practice ? `Forecast: ${s.practice.title}` : modeLabel(s.mode)} · ${new Date().toLocaleDateString("vi-VN")}`;
-  const crit = resultData?.criteria?.find((c) => c.key === sel);
+  const crit = criteria?.find((c) => c.key === sel);
   const pickCriterion = (key: CritKey) => {
     setSel(key);
     setTab("criteria");
@@ -209,8 +310,8 @@ export function ResultsScreen({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.15fr]">
-        <BandHero band={band} range={range} target={s.target} runs={resultData?.runs} oneLiner={resultData?.oneLiner} />
-        <CriteriaGrid criteria={resultData?.criteria} sel={tab === "criteria" ? sel : null} pro={pro} onPick={pickCriterion} />
+        <BandHero band={band} range={range} target={s.target} runs={runs} oneLiner={oneLiner} />
+        <CriteriaGrid criteria={criteria} sel={tab === "criteria" ? sel : null} pro={pro} onPick={pickCriterion} />
       </div>
 
       <div className="mt-10 flex gap-1 rounded-full bg-paper-2 p-1 sm:w-fit">
@@ -237,7 +338,7 @@ export function ResultsScreen({
             {!pro && <SoftPaywall />}
           </div>
         ) : (
-          <ReviewList pro={pro} items={reviews ?? resultData?.reviews} />
+          <ReviewList pro={pro} items={reviewItems} playback={!scored} />
         )}
       </div>
 

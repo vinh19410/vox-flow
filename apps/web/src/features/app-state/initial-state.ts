@@ -17,6 +17,7 @@ export function createInitialState(): AppState {
     practicedQuestions: {},
     saved: [],
     reopenTopicId: null,
+    scoringAttempt: null,
   };
 }
 

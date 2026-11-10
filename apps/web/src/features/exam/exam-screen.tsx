@@ -25,6 +25,15 @@ export function ExamScreen() {
   const doneCount = Object.keys(answers).length;
 
   const submit = () => {
+    if (s.practice && session.attemptId) {
+      // Forecast practice is scored: the scoring screen submits the attempt itself so a
+      // failed submit surfaces there with a retry instead of being swallowed here.
+      set({ scoringAttempt: { attemptId: session.attemptId, submitted: false } });
+      setPendingSubmission(true);
+      go("scoring");
+      return;
+    }
+    if (s.scoringAttempt) set({ scoringAttempt: null });
     if (session.attemptId) {
       void trpcClient.attempt.submit
         .mutate({ attemptId: session.attemptId })
