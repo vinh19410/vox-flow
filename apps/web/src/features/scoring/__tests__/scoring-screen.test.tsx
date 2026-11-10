@@ -221,21 +221,64 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
   });
 
-  it("re-enqueues scoring when a resend finds the attempt already submitted", async () => {
-    submitSpy
-      .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(
-        Object.assign(new Error(ATTEMPT_ALREADY_SUBMITTED_MESSAGE), { data: { code: "BAD_REQUEST" } }),
-      );
-    statusSpy.mockResolvedValueOnce(st("not_scored")).mockResolvedValue(st("queued"));
-    retrySpy.mockResolvedValue(st("queued"));
+  describe("resend after a submit whose response was lost", () => {
+    /**
+     * Mirrors the server once the first submit committed: submit rejects as
+     * already submitted, status reports the score row, and retry only accepts
+     * a failed or unscored attempt (packages/api/src/routers/scoring.ts).
+     */
+    function serverAlreadySubmitted(initial: "queued" | "processing" | "done" | "failed" | "not_scored") {
+      let score = initial;
+      submitSpy
+        .mockRejectedValueOnce(new Error("response lost"))
+        .mockRejectedValue(Object.assign(new Error(ATTEMPT_ALREADY_SUBMITTED_MESSAGE), { data: { code: "BAD_REQUEST" } }));
+      // The recovery check right after the lost submit also fails, so the screen shows the resend action.
+      statusSpy.mockRejectedValueOnce(new Error("offline")).mockImplementation(async () => st(score));
+      retrySpy.mockImplementation(async () => {
+        if (score !== "failed" && score !== "not_scored") {
+          throw Object.assign(new Error("Only a failed or unscored attempt can be retried"), {
+            data: { code: "BAD_REQUEST" },
+          });
+        }
+        score = "queued";
+        return st("queued");
+      });
+    }
 
-    renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
-    await advance(0);
-    fireEvent.click(screen.getByText("Gửi lại"));
-    await advance(0);
-    expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
-    expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+    async function renderAndResend() {
+      const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+      await advance(0);
+      expect(screen.getByTestId("scoring-submit-error")).toBeTruthy();
+      fireEvent.click(screen.getByText("Gửi lại"));
+      await advance(0);
+      return h;
+    }
+
+    it.each(["queued", "processing"] as const)("resumes polling without a retry when scoring is %s", async (status) => {
+      serverAlreadySubmitted(status);
+      const h = await renderAndResend();
+      expect(retrySpy).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    });
+
+    it("opens the results when scoring already finished", async () => {
+      serverAlreadySubmitted("done");
+      const h = await renderAndResend();
+      expect(retrySpy).not.toHaveBeenCalled();
+      expect(h.goResult).toHaveBeenCalledWith(ATTEMPT, { replace: true });
+    });
+
+    it.each(["failed", "not_scored"] as const)("re-enqueues scoring when it is %s", async (status) => {
+      serverAlreadySubmitted(status);
+      const h = await renderAndResend();
+      expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+      expect(screen.getByTestId("scoring-status").textContent).toContain("chờ đến lượt");
+      expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: true });
+    });
   });
 
   it("does not re-enqueue scoring for other BAD_REQUEST rejections of a resend", async () => {

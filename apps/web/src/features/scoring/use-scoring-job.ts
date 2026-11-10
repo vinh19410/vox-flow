@@ -51,8 +51,8 @@ export interface ScoringJobValue {
   busy: boolean;
   actionError: string | null;
   /**
-   * Re-sends any recordings still on the device, then re-submits (falls back to
-   * re-enqueueing if already submitted).
+   * Re-sends any recordings still on the device, then re-submits. If the attempt
+   * was already submitted, resumes polling, or re-enqueues scoring when it failed.
    */
   resubmit: () => Promise<void>;
   /** Submits with only the recordings the server already has, after the learner chose to. */
@@ -255,8 +255,14 @@ export function useScoringJob(job: ScoringJob | null, handlers: ScoringJobHandle
           await trpcClient.attempt.submit.mutate({ attemptId });
         } catch (err) {
           if (!isAlreadySubmittedError(err)) throw err;
-          // Already submitted on the server but never queued: enqueue scoring instead.
-          await trpcClient.scoring.retry.mutate({ attemptId });
+          // An earlier submit went through but its response was lost. The server
+          // only accepts a retry for a failed or unscored attempt, so ask where
+          // scoring stands first; polling takes over for queued, processing,
+          // done and unscorable attempts.
+          const st = await trpcClient.scoring.status.query({ attemptId });
+          if (st.scorable && (st.status === "failed" || st.status === "not_scored")) {
+            await trpcClient.scoring.retry.mutate({ attemptId });
+          }
         }
         if (!mountedRef.current) return;
         markSubmitted(attemptId);
