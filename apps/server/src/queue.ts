@@ -1,4 +1,4 @@
-import { readScoringConfig } from "@vox-flow/api/scoring/config";
+import { readScoringConfig, readScoringQueueMaxRetries } from "@vox-flow/api/scoring/config";
 import { createOpenAIScoringClient } from "@vox-flow/api/scoring/openai-client";
 import { parseScoringQueueMessage } from "@vox-flow/api/scoring/queue";
 import {
@@ -10,9 +10,6 @@ import {
 
 import { ENV } from "./env.server";
 import { getDb } from "./services";
-
-/** Must match `settings.maxRetries` of the scoring consumer in packages/infra/alchemy.run.ts. */
-export const SCORING_QUEUE_MAX_RETRIES = 3;
 
 type QueueMessageLike = {
   readonly body: unknown;
@@ -38,6 +35,13 @@ function createScoringDeps(): ScoreAttemptDeps {
  * delivery an error marks the score failed so it never stays pending.
  */
 export async function handleScoringQueue(batch: { readonly messages: readonly QueueMessageLike[] }): Promise<void> {
+  // Single source: SCORING_QUEUE_MAX_RETRIES in packages/infra/alchemy.run.ts
+  // configures both the consumer's settings.maxRetries and this env binding.
+  // Typed field access: renaming or removing the binding in alchemy.run.ts
+  // breaks the type check here instead of silently drifting to the fallback.
+  const maxRetries = readScoringQueueMaxRetries({
+    SCORING_QUEUE_MAX_RETRIES: ENV.SCORING_QUEUE_MAX_RETRIES,
+  });
   for (const message of batch.messages) {
     const body = parseScoringQueueMessage(message.body);
     if (!body) {
@@ -51,7 +55,7 @@ export async function handleScoringQueue(batch: { readonly messages: readonly Qu
       console.log(`[scoring-queue] Attempt ${body.attemptId}: ${outcome}`);
       message.ack();
     } catch (error) {
-      const isLastDelivery = message.attempts > SCORING_QUEUE_MAX_RETRIES;
+      const isLastDelivery = message.attempts > maxRetries;
       console.error(
         `[scoring-queue] Attempt ${body.attemptId} delivery ${message.attempts} failed:`,
         describeScoringError(error),

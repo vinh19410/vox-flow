@@ -2,8 +2,13 @@ import { z } from "zod";
 import { getFallbackFollowUp } from "./fallback-data";
 
 export const FollowUpResultSchema = z.object({
-  questionText: z.string().min(5),
-  triggerPhrase: z.string().min(1),
+  // Bounded: the text is seeded by the client-controlled transcript, so a
+  // runaway generation falls back to a canned question instead of reaching
+  // the client.
+  questionText: z.string().min(5).max(300),
+  // Same untrusted-generation class as questionText: bounded at the schema so
+  // a runaway generation falls back instead of reaching the client.
+  triggerPhrase: z.string().min(1).max(200),
 });
 
 export type FollowUpResult = z.infer<typeof FollowUpResultSchema>;

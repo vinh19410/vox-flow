@@ -5,6 +5,7 @@ import type { Database } from "@vox-flow/db";
 import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@vox-flow/db/schema";
 
 import { isValidAudioKey } from "../audio";
+import { resolveCanonicalQuestionText, type CanonicalQuestionTopic } from "../forecast/questions";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { findAnswerLimitViolation } from "./answer-limits";
 import { computeCostUsd, type ScoringConfig } from "./config";
@@ -256,13 +257,15 @@ async function runPipeline(
     }
   }
 
-  // Re-run the authoritative count/bytes guard (attempt.submit checks the same
-  // helper). Closes the race where an upload passed the route's status check
-  // just before submit snapshotted the answers: such a late row must never be
-  // transcribed or graded.
+  // Authoritative count/bytes guard from #91, re-run at scoring time: a row
+  // uploaded after submit snapshotted answers must never be graded.
+  // Canonical question source (from #93): the forecast bank, keyed by
+  // (topicId, questionKey). The client-supplied questionText stored on the
+  // answer row never enters the grading prompt. One topic row serves both.
   const [topicRow] = await db
     .select({
       id: forecastTopic.id,
+      title: forecastTopic.title,
       part: forecastTopic.part,
       questions: forecastTopic.questions,
     })
@@ -299,7 +302,19 @@ async function runPipeline(
   // 1. Load the recordings to attach to grading, one at a time within a byte
   //    budget. Over budget, grading goes transcript-only and the buffers are
   //    dropped at once, so memory stays bounded whatever the learner uploaded.
+  //    bankTopic comes from the topic row already fetched for the #91 guard —
+  //    one query serves both the guard and the canonical question lookup.
   const audio: GradingAudio = new Map();
+  const bankTopic: CanonicalQuestionTopic | null = topicRow
+    ? {
+        id: topicRow.id,
+        title: topicRow.title,
+        part: topicRow.part,
+        // Raw column: resolveCanonicalQuestionText parses via the shared
+        // #91 parser, so scoring sees exactly the guard's key set.
+        questions: topicRow.questions,
+      }
+    : null;
   if (missingRunIndexes.length > 0) {
     let totalBytes = 0;
     for (const row of answerRows) {
@@ -344,9 +359,16 @@ async function runPipeline(
   const answers: GradingAnswer[] = answerRows.map((row) => {
     const indexInPart = (partCounters.get(row.partNumber) ?? 0) + 1;
     partCounters.set(row.partNumber, indexInPart);
+    // Follow-up (-f) keys have no server-side source today: the web never
+    // calls getFollowUp. If that flow is wired in later, design a real
+    // persistence for generated questions — do NOT fall back to the
+    // client-supplied questionText here.
+    const questionText =
+      (bankTopic && resolveCanonicalQuestionText(bankTopic, row.questionKey)) ??
+      "(question unavailable)";
     return {
       questionKey: row.questionKey,
-      questionText: row.questionText,
+      questionText,
       partNumber: row.partNumber,
       indexInPart,
       transcript: transcripts.get(row.questionKey) ?? "",
