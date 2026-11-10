@@ -89,10 +89,26 @@ describe("resolveCanonicalQuestionText", () => {
     expect(resolveCanonicalQuestionText(blankBank, "T-1")).toBeNull();
   });
 
+  it("aligns plain-array part-2 topics with the #91 upload guard", () => {
+    // #91's parseTopicQuestions treats a plain unprefixed array on a part 2+
+    // topic as cue cards (never part 3), and the upload guard accepts `-c`.
+    const plainP2 = { id: "T", title: "Cue card title", part: 2, questions: ["legacy", "array"] };
+    expect(resolveCanonicalQuestionText(plainP2, "T-c")).toBe("Cue card title");
+    expect(resolveCanonicalQuestionText(plainP2, "T-p3-0")).toBeNull();
+  });
+
+  it("resolves legacy prefixed arrays on part-2 topics like the guard", () => {
+    const legacyP2 = {
+      id: "T",
+      title: "Cue card title",
+      part: 2,
+      questions: ["[Cue] point one", "[Cue] ending", "[Part 3] Follow up?"],
+    };
+    expect(resolveCanonicalQuestionText(legacyP2, "T-c")).toBe("Cue card title");
+    expect(resolveCanonicalQuestionText(legacyP2, "T-p3-0")).toBe("Follow up?");
+  });
+
   it("rejects bank keys when the shape does not match the topic part", () => {
-    expect(
-      resolveCanonicalQuestionText({ ...part2Topic, questions: ["legacy", "array"] }, "T-c"),
-    ).toBeNull();
     expect(
       resolveCanonicalQuestionText({ ...part1Topic, questions: { cueCards: [], part3: [] } }, "T-0"),
     ).toBeNull();

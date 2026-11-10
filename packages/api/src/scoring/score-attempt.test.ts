@@ -809,19 +809,25 @@ describe("scoreAttempt", () => {
       expect((await loadScore(ctx.db)).status).toBe("done");
     });
 
-    it("still completes the run when the topic JSON is malformed", async () => {
-      await seedBankAttempt([{ questionKey: "topic-1-0", questionText: "HACKED malformed json" }], {
+    it("fails the attempt when the topic JSON is malformed (#91 guard caps answers at 0)", async () => {
+      // #91's authoritative count guard derives the cap from valid topic keys;
+      // an unparseable bank yields cap 0, so any answer trips
+      // ANSWER_COUNT_EXCEEDED and the score is marked failed. Malformed-topic
+      // bricking looks like an unintended #91 edge (their own comment says a
+      // missing topic row must never shrink the limit to 0) — follow-up for
+      // #91, out of scope here.
+      await seedBankAttempt([{ questionKey: "topic-1-0", questionText: "client text" }], {
         topicQuestions: "not json",
       });
 
-      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
 
-      expect(firstBodyText()).toContain("(question unavailable)");
-      expect(firstBodyText()).not.toContain("HACKED");
-      expect((await loadScore(ctx.db)).status).toBe("done");
+      const score = await loadScore(ctx.db);
+      expect(score.status).toBe("failed");
+      expect(score.lastError).toContain("ANSWER_COUNT_EXCEEDED");
     });
 
-    it("treats a legacy plain-array question bank on a part-2 topic as unresolvable", async () => {
+    it("resolves legacy plain-array part-2 cue cards like the #91 upload guard", async () => {
       await seedBankAttempt([{ questionKey: "topic-1-c", questionText: "HACKED cue" }], {
         topicPart: 2,
         topicQuestions: JSON.stringify(["legacy cue text"]),
@@ -829,8 +835,11 @@ describe("scoreAttempt", () => {
 
       await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
 
-      expect(firstBodyText()).toContain("(question unavailable)");
+      // Plain unprefixed array on a part 2 topic: #91's shared parser treats
+      // it as cue cards, so `-c` grades with the topic title.
+      expect(firstBodyText()).toContain("Bank topic title");
       expect(firstBodyText()).not.toContain("HACKED");
+      expect(firstBodyText()).not.toContain("(question unavailable)");
     });
   });
 });
