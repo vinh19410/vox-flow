@@ -5,6 +5,7 @@ const getActiveSpy = vi.fn();
 const startSpy = vi.fn();
 const submitSpy = vi.fn();
 const trackUploadSpy = vi.fn();
+const flushSpy = vi.fn();
 const recordedBlob = new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" });
 
 vi.mock("@/utils/trpc", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/utils/trpc", () => ({
 vi.mock("../answer-uploads", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../answer-uploads")>()),
   trackAnswerUpload: (...a: unknown[]) => trackUploadSpy(...a),
+  flushAnswerUploads: (...a: unknown[]) => flushSpy(...a),
 }));
 
 const saveAudioSpy = vi.fn<(record: { attemptId: string }) => Promise<void>>();
@@ -69,6 +71,7 @@ describe("ExamScreen submit", () => {
     startSpy.mockReset();
     submitSpy.mockReset().mockResolvedValue({ success: true });
     trackUploadSpy.mockReset().mockResolvedValue(true);
+    flushSpy.mockReset().mockResolvedValue({ failedQuestionKeys: [], storageUnreadable: false });
     stopSpy.mockReset().mockResolvedValue({ blob: recordedBlob, durationMs: 4000, mimeType: "audio/webm" });
     saveAudioSpy.mockReset().mockResolvedValue(undefined);
     deleteAudioSpy.mockReset().mockResolvedValue(undefined);
@@ -111,7 +114,7 @@ describe("ExamScreen submit", () => {
     });
   });
 
-  it("keeps the background submit for a mock test and clears any stale scoring attempt", async () => {
+  it("flushes every answer upload before submitting a mock test", async () => {
     startSpy.mockResolvedValue({ attemptId: "att-mock" });
     const h = renderWithApp(<ExamScreen />, {
       mode: "p1",
@@ -120,12 +123,344 @@ describe("ExamScreen submit", () => {
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+      failedQuestionKeys: string[];
+      storageUnreadable: boolean;
+    }>();
+    flushSpy.mockReturnValue(flushPromise);
+    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    submitSpy.mockReturnValue(submitPromise);
     fireEvent.click(screen.getByText(/nộp & chấm/i));
 
+    expect(flushSpy).toHaveBeenCalledWith("att-mock");
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(screen.getByText(/Đang tải lên bản ghi…/)).toHaveProperty("disabled", true);
+
+    await act(async () => {
+      resolveFlush({ failedQuestionKeys: [], storageUnreadable: false });
+      await flush();
+    });
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: "att-mock" });
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(screen.getByText(/Đang nộp…/)).toHaveProperty("disabled", true);
+
+    await act(async () => {
+      resolveSubmit({ success: true });
+      await flush();
+    });
     expect(h.state().scoringAttempt).toBeNull();
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(screen.getByText(/nộp & chấm/i)).toHaveProperty("disabled", false);
+  });
+
+  it("blocks submit and offers a retry when uploads still fail after retries", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    flushSpy.mockResolvedValueOnce({ failedQuestionKeys: ["p1-x-0"], storageUnreadable: false });
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(screen.getByText("Vẫn chưa tải lên được một số câu trả lời. Kiểm tra kết nối mạng rồi thử lại.")).toBeTruthy();
+    expect(screen.queryByText("Vẫn nộp")).toBeNull();
+
+    flushSpy.mockResolvedValueOnce({ failedQuestionKeys: [], storageUnreadable: false });
+    fireEvent.click(screen.getByText("Thử lại"));
+    await flush();
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(h.go).toHaveBeenCalledWith("scoring");
+  });
+
+  it("offers submit anyway when the device storage cannot be read", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    flushSpy.mockResolvedValueOnce({ failedQuestionKeys: [], storageUnreadable: true });
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(
+      screen.getByText(
+        "Chưa đọc được bản ghi trên thiết bị nên chưa chắc bài đã đủ. Bạn vẫn có thể nộp những gì máy chủ đã nhận.",
+      ),
+    ).toBeTruthy();
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByText("Vẫn nộp"));
+    await flush();
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy).toHaveBeenCalledWith({ attemptId: "att-mock" });
+    expect(h.go).toHaveBeenCalledWith("scoring");
+  });
+
+  it("treats an already-submitted rejection as success", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    submitSpy.mockRejectedValue(
+      Object.assign(new Error("Attempt is already submitted"), { data: { code: "BAD_REQUEST" } }),
+    );
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
+    expect(screen.queryByText(/Vẫn chưa nộp được bài/)).toBeNull();
+  });
+
+  it("surfaces a failed submit without navigating and retries cleanly", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: submitPromise, reject: rejectSubmit } = Promise.withResolvers<{ success: boolean }>();
+    submitSpy.mockReturnValueOnce(submitPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    await act(async () => {
+      rejectSubmit(new Error("network down"));
+      await flush();
+    });
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(screen.getByText("Vẫn chưa nộp được bài. Kiểm tra kết nối mạng rồi thử lại.")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Thử lại"));
+    await flush();
+    expect(submitSpy).toHaveBeenCalledTimes(2);
+    expect(h.go).toHaveBeenCalledWith("scoring");
+  });
+
+  it("distinguishes a permanent rejection from a network error", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    submitSpy.mockRejectedValueOnce(
+      Object.assign(new Error("Attempt is abandoned"), { data: { code: "BAD_REQUEST" } }),
+    );
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(
+      screen.getByText("Bài thi không thể nộp lúc này. Vui lòng thử lại hoặc liên hệ hỗ trợ nếu tiếp tục gặp lỗi."),
+    ).toBeTruthy();
+  });
+
+  it("does not flush or submit when attempt.start failed (offline mock)", async () => {
+    startSpy.mockRejectedValue(new Error("network down"));
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+
+    expect(flushSpy).not.toHaveBeenCalled();
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
+  });
+
+  it("ignores a second submit click while one is already running", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+      failedQuestionKeys: string[];
+      storageUnreadable: boolean;
+    }>();
+    flushSpy.mockReturnValue(flushPromise);
+    const clickTarget = screen.getByText(/nộp & chấm/i);
+    fireEvent.click(clickTarget);
+    fireEvent.click(clickTarget);
+    await act(async () => {
+      resolveFlush({ failedQuestionKeys: [], storageUnreadable: false });
+      await flush();
+    });
+
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(h.go).toHaveBeenCalledWith("scoring");
+  });
+
+  it("does not navigate in the background after closing the modal mid-flush", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+      failedQuestionKeys: string[];
+      storageUnreadable: boolean;
+    }>();
+    flushSpy.mockReturnValue(flushPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    fireEvent.click(screen.getByText("Quay lại"));
+    await act(async () => {
+      resolveFlush({ failedQuestionKeys: [], storageUnreadable: false });
+      await flush();
+    });
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).not.toHaveBeenCalled();
+  });
+
+  it("navigates to scoring when the modal closes mid-submit but the submit succeeds", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    submitSpy.mockReturnValue(submitPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+    expect(flushSpy).toHaveBeenCalledTimes(1);
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Đang nộp…/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Quay lại"));
+    await act(async () => {
+      resolveSubmit({ success: true });
+      await flush();
+    });
+
+    expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
+  });
+
+  it("discards a failed submit silently when the modal is closed mid-submit", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: submitPromise, reject: rejectSubmit } = Promise.withResolvers<{ success: boolean }>();
+    submitSpy.mockReturnValue(submitPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+    expect(screen.getByText(/Đang nộp…/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Quay lại"));
+    await act(async () => {
+      rejectSubmit(new Error("network down"));
+      await flush();
+    });
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(screen.queryByText(/Vẫn chưa nộp được bài/)).toBeNull();
+
+    // Reopening the review after the silent discard must not resurrect the error.
+    fireEvent.click(screen.getByText(/Hoàn thành|Về danh sách nộp/));
+    await flush();
+    expect(screen.queryByText(/Vẫn chưa nộp được bài/)).toBeNull();
+  });
+
+  it("never navigates after exiting the exam mid-submit", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: submitPromise, resolve: resolveSubmit } = Promise.withResolvers<{ success: boolean }>();
+    submitSpy.mockReturnValue(submitPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+    expect(screen.getByText(/Đang nộp…/)).toBeTruthy();
+
+    fireEvent.click(screen.getAllByText("Thoát")[0]!);
+    await flush();
+    // The header trigger only opens ExitExamModal; confirm the exit there.
+    fireEvent.click(screen.getAllByText("Thoát").at(-1)!);
+    await flush();
+    expect(h.go).toHaveBeenCalledWith("select");
+
+    await act(async () => {
+      resolveSubmit({ success: true });
+      await flush();
+    });
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).not.toHaveBeenCalled();
+  });
+
+  it("never submits after exiting the exam mid-flush", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+      failedQuestionKeys: string[];
+      storageUnreadable: boolean;
+    }>();
+    flushSpy.mockReturnValue(flushPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    expect(screen.getByText(/Đang tải lên bản ghi…/)).toBeTruthy();
+
+    fireEvent.click(screen.getAllByText("Thoát")[0]!);
+    await flush();
+    fireEvent.click(screen.getAllByText("Thoát").at(-1)!);
+    await flush();
+    expect(h.go).toHaveBeenCalledWith("select");
+
+    await act(async () => {
+      resolveFlush({ failedQuestionKeys: [], storageUnreadable: false });
+      await flush();
+    });
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(h.setPendingSubmission).not.toHaveBeenCalled();
+  });
+
+  it("resumes submitting normally after abandoning a slow flush", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    const { promise: flushPromise, resolve: resolveFlush } = Promise.withResolvers<{
+      failedQuestionKeys: string[];
+      storageUnreadable: boolean;
+    }>();
+    flushSpy.mockReturnValueOnce(flushPromise);
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    fireEvent.click(screen.getByText("Quay lại"));
+
+    // Reopen the review and submit again: the abandoned run must not brick the button.
+    fireEvent.click(screen.getByText(/Hoàn thành|Về danh sách nộp/));
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(flushSpy).toHaveBeenCalledTimes(2);
+    expect(submitSpy).toHaveBeenCalledTimes(1);
+    expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(
+      h.go.mock.calls.filter(([target]) => target === "scoring"),
+    ).toHaveLength(1);
+
+    // The abandoned flush settles afterwards and must not navigate either.
+    await act(async () => {
+      resolveFlush({ failedQuestionKeys: [], storageUnreadable: false });
+      await flush();
+    });
+    expect(
+      h.go.mock.calls.filter(([target]) => target === "scoring"),
+    ).toHaveLength(1);
   });
 
   it("uploads a session-id recording under the real attempt once attempt.start answers", async () => {

@@ -1,7 +1,10 @@
+import { useEffect, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
+import { isAlreadySubmittedError, isBadRequestError } from "@/features/scoring/use-scoring-job";
 import { trpcClient } from "@/utils/trpc";
+import { flushAnswerUploads } from "./answer-uploads";
 import { MIN_WORDS } from "./data";
 import { CueCardPanel } from "./components/cue-card-panel";
 import { ExamControls } from "./components/exam-controls";
@@ -14,15 +17,110 @@ import { QuestionStage } from "./components/question-stage";
 import { useExamSession } from "./use-exam-session";
 import type { Part } from "./types";
 
+const MISSING_UPLOADS_MESSAGE = "Vẫn chưa tải lên được một số câu trả lời. Kiểm tra kết nối mạng rồi thử lại.";
+const PERMANENT_SUBMIT_MESSAGE = "Bài thi không thể nộp lúc này. Vui lòng thử lại hoặc liên hệ hỗ trợ nếu tiếp tục gặp lỗi.";
+const SUBMIT_NETWORK_MESSAGE = "Vẫn chưa nộp được bài. Kiểm tra kết nối mạng rồi thử lại.";
+
 export function ExamScreen() {
   const session = useExamSession();
   const { s, go, set, setPendingSubmission } = useApp();
   const { step, phase, answers, steps } = session;
 
+  // Submit pipeline for mock attempts: flush → submit → leave. `submitPhase`
+  // drives the modal's busy/error UI; `submitRunRef` invalidates a run whose
+  // flush was abandoned (modal closed mid-flush); `exitedRef` pins the whole
+  // pipeline down once the learner left the exam, so no late completion ever
+  // navigates in the background.
+  const [submitPhase, setSubmitPhase] = useState<"idle" | "flushing" | "submitting">("idle");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [storageWarning, setStorageWarning] = useState(false);
+  // Synchronous mirror of submitPhase: close/exit handlers must see the phase
+  // the pipeline actually moved to, even when the state update has not committed.
+  const submitPhaseRef = useRef<"idle" | "flushing" | "submitting">("idle");
+  const submitBusyRef = useRef(false);
+  const submitRunRef = useRef(0);
+  const exitedRef = useRef(false);
+  // Latest committed modal visibility, read when a submit settles.
+  const reviewOpenRef = useRef(session.review);
+
+  useEffect(() => {
+    reviewOpenRef.current = session.review;
+  });
+
+  const goPhase = (next: "idle" | "flushing" | "submitting") => {
+    submitPhaseRef.current = next;
+    setSubmitPhase(next);
+  };
+
   const ans = answers[step.key];
   const short = (k: string, p: Part) => (answers[k]?.words ?? 0) < MIN_WORDS[p];
   const flagged = steps.filter((st) => answers[st.key] && short(st.key, st.part));
   const doneCount = Object.keys(answers).length;
+
+  const doSubmit = async (attemptId: string) => {
+    goPhase("submitting");
+    setSubmitError(null);
+    setStorageWarning(false);
+    try {
+      await trpcClient.attempt.submit.mutate({ attemptId });
+    } catch (err) {
+      console.warn("Attempt submit failed:", err);
+      if (exitedRef.current) return;
+      if (!isAlreadySubmittedError(err)) {
+        goPhase("idle");
+        // The modal may have been closed mid-submit: the plan's discard
+        // contract keeps that failure silent instead of leaking into a later
+        // reopen. Errors only surface when the learner can still see the modal.
+        if (reviewOpenRef.current) {
+          setSubmitError(isBadRequestError(err) ? PERMANENT_SUBMIT_MESSAGE : SUBMIT_NETWORK_MESSAGE);
+        }
+        return;
+      }
+      // A lost response may hide a successful submit: the server already
+      // finalized this attempt, so treat the rejection as success below.
+    }
+    if (exitedRef.current) return;
+    goPhase("idle");
+    setSubmitError(null);
+    setStorageWarning(false);
+    setPendingSubmission(true);
+    go("scoring");
+  };
+
+  const beginRun = (body: (attemptId: string, runValid: () => boolean) => Promise<void>, attemptId: string) => {
+    if (submitBusyRef.current) return;
+    submitBusyRef.current = true;
+    const run = ++submitRunRef.current;
+    const runValid = () => submitRunRef.current === run;
+    void (async () => {
+      try {
+        await body(attemptId, runValid);
+      } finally {
+        if (runValid()) submitBusyRef.current = false;
+      }
+    })();
+  };
+
+  const flushThenSubmit = async (attemptId: string, runValid: () => boolean) => {
+    goPhase("flushing");
+    setSubmitError(null);
+    setStorageWarning(false);
+    const result = await flushAnswerUploads(attemptId);
+    if (!runValid()) return;
+    if (result.failedQuestionKeys.length > 0) {
+      goPhase("idle");
+      setSubmitError(MISSING_UPLOADS_MESSAGE);
+      return;
+    }
+    if (result.storageUnreadable) {
+      // Nothing proven missing — every upload this page knows about settled.
+      // Only the device copies could not be read, so submit is an informed choice.
+      goPhase("idle");
+      setStorageWarning(true);
+      return;
+    }
+    await doSubmit(attemptId);
+  };
 
   const submit = () => {
     if (session.attemptStatus === "pending") return;
@@ -35,18 +133,41 @@ export function ExamScreen() {
       return;
     }
     if (s.scoringAttempt) set({ scoringAttempt: null });
-    if (session.attemptId) {
-      void trpcClient.attempt.submit
-        .mutate({ attemptId: session.attemptId })
-        .catch((err) => {
-          console.warn("Attempt submit in background failed:", err);
-        });
+    if (!session.attemptId) {
+      // Offline/mock fallback (#94): no server attempt exists, so there is
+      // nothing to flush or submit — keep the old direct hand-off.
+      setPendingSubmission(true);
+      go("scoring");
+      return;
     }
-    setPendingSubmission(true);
-    go("scoring");
+    beginRun(flushThenSubmit, session.attemptId);
+  };
+
+  const submitAnyway = () => {
+    if (!session.attemptId) return;
+    beginRun(doSubmit, session.attemptId);
+  };
+
+  const abandonActiveRun = () => {
+    submitRunRef.current += 1;
+    submitBusyRef.current = false;
+    goPhase("idle");
+    setSubmitError(null);
+    setStorageWarning(false);
+  };
+
+  const closeReview = () => {
+    session.setReview(false);
+    // Closing mid-flush abandons the run: the attempt is still in_progress, so
+    // submitting again later just flushes and submits normally. Mid-submit the
+    // run must survive — the server may finalize while the modal is closed, and
+    // completion has to navigate (or discard) accordingly.
+    if (submitPhaseRef.current === "flushing") abandonActiveRun();
   };
 
   const exitExam = () => {
+    exitedRef.current = true;
+    if (submitPhaseRef.current === "flushing") abandonActiveRun();
     const target = s.practice ? "forecast" : "select";
     set({ practice: null });
     go(target);
@@ -120,7 +241,7 @@ export function ExamScreen() {
 
       <PreSubmitModal
         open={session.review}
-        onClose={() => session.setReview(false)}
+        onClose={closeReview}
         steps={steps}
         answers={answers}
         short={short}
@@ -128,6 +249,10 @@ export function ExamScreen() {
         onRetry={session.retryStep}
         onSubmit={submit}
         submitLocked={session.attemptStatus === "pending"}
+        submitPhase={submitPhase}
+        submitError={submitError}
+        allowSubmitAnyway={storageWarning}
+        onSubmitAnyway={submitAnyway}
       />
       <ExitExamModal open={session.exitOpen} onClose={() => session.setExitOpen(false)} onExit={exitExam} />
     </div>

@@ -91,7 +91,7 @@ function retryLimitMessage(err: unknown): string | null {
  * (e.g. an abandoned attempt) must surface as errors, not trigger a re-score.
  * tRPC client errors carry the server error code in `data.code`.
  */
-function isAlreadySubmittedError(err: unknown): boolean {
+export function isAlreadySubmittedError(err: unknown): boolean {
   if (!(err instanceof Error) || !("data" in err)) return false;
   const data = (err as { data?: unknown }).data;
   return (
@@ -100,6 +100,13 @@ function isAlreadySubmittedError(err: unknown): boolean {
     (data as { code?: unknown }).code === "BAD_REQUEST" &&
     err.message === ATTEMPT_ALREADY_SUBMITTED_MESSAGE
   );
+}
+
+/** True for any other tRPC BAD_REQUEST rejection — a permanent, non-network failure. */
+export function isBadRequestError(err: unknown): boolean {
+  if (!(err instanceof Error) || !("data" in err)) return false;
+  const data: unknown = err.data;
+  return typeof data === "object" && data !== null && "code" in data && data.code === "BAD_REQUEST";
 }
 
 const QUEUED: ScoringView = { kind: "in_progress", status: "queued" };
