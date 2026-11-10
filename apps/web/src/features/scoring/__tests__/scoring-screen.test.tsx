@@ -24,6 +24,7 @@ import { renderWithApp } from "@/test/harness";
 
 import { ScoringScreen } from "../scoring-screen";
 import {
+  ATTEMPT_ALREADY_SUBMITTED_MESSAGE,
   MAX_POLL_ERRORS,
   POLL_BACKOFF_INTERVAL_MS,
   POLL_INTERVAL_MS,
@@ -223,7 +224,9 @@ describe("ScoringScreen (forecast practice scoring)", () => {
   it("re-enqueues scoring when a resend finds the attempt already submitted", async () => {
     submitSpy
       .mockRejectedValueOnce(new Error("offline"))
-      .mockRejectedValueOnce(Object.assign(new Error("already submitted"), { data: { code: "BAD_REQUEST" } }));
+      .mockRejectedValueOnce(
+        Object.assign(new Error(ATTEMPT_ALREADY_SUBMITTED_MESSAGE), { data: { code: "BAD_REQUEST" } }),
+      );
     statusSpy.mockResolvedValueOnce(st("not_scored")).mockResolvedValue(st("queued"));
     retrySpy.mockResolvedValue(st("queued"));
 
@@ -233,6 +236,22 @@ describe("ScoringScreen (forecast practice scoring)", () => {
     await advance(0);
     expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
     expect(screen.getByTestId("scoring-progress")).toBeTruthy();
+  });
+
+  it("does not re-enqueue scoring for other BAD_REQUEST rejections of a resend", async () => {
+    submitSpy
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockRejectedValueOnce(Object.assign(new Error("Attempt is abandoned"), { data: { code: "BAD_REQUEST" } }));
+    statusSpy.mockResolvedValue(st("not_scored"));
+
+    const h = renderWithApp(<ScoringScreen />, { scoringAttempt: { attemptId: ATTEMPT, submitted: false } });
+    await advance(0);
+    fireEvent.click(screen.getByText("Gửi lại"));
+    await advance(0);
+    expect(retrySpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("scoring-submit-error")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("Vẫn chưa gửi được bài");
+    expect(h.state().scoringAttempt).toEqual({ attemptId: ATTEMPT, submitted: false });
   });
 
   it("continues polling when a submit error hides a submit that actually succeeded", async () => {

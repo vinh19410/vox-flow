@@ -63,11 +63,23 @@ export interface ScoringJobValue {
   resumePolling: () => void;
 }
 
-/** tRPC client errors carry the server error code in `data.code`. */
+/** Must match ATTEMPT_ALREADY_SUBMITTED_MESSAGE in packages/api/src/routers/attempt.ts. */
+export const ATTEMPT_ALREADY_SUBMITTED_MESSAGE = "Attempt is already submitted";
+
+/**
+ * True only for the server's "already submitted" rejection. Other BAD_REQUESTs
+ * (e.g. an abandoned attempt) must surface as errors, not trigger a re-score.
+ * tRPC client errors carry the server error code in `data.code`.
+ */
 function isAlreadySubmittedError(err: unknown): boolean {
-  if (typeof err !== "object" || err === null || !("data" in err)) return false;
+  if (!(err instanceof Error) || !("data" in err)) return false;
   const data = (err as { data?: unknown }).data;
-  return typeof data === "object" && data !== null && (data as { code?: unknown }).code === "BAD_REQUEST";
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { code?: unknown }).code === "BAD_REQUEST" &&
+    err.message === ATTEMPT_ALREADY_SUBMITTED_MESSAGE
+  );
 }
 
 const QUEUED: ScoringView = { kind: "in_progress", status: "queued" };

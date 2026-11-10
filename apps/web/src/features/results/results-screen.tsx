@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Flag, Loader2, Repeat, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, Flag, Loader2, Lock, Repeat, SearchX, Sparkles, TriangleAlert } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
@@ -103,6 +103,26 @@ export function ResultsScreen({
       );
     }
     if (remote.state === "error") {
+      const home = { label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" as const };
+      if (remote.reason === "not_found" || remote.reason === "forbidden") {
+        return (
+          <div className="py-6" data-testid={`results-${remote.reason.replace("_", "-")}`}>
+            <Card className="mt-6 p-8">
+              <EmptyState
+                size="lg"
+                icon={remote.reason === "forbidden" ? Lock : SearchX}
+                title={remote.reason === "forbidden" ? "Bạn không có quyền xem bài thi này" : "Không tìm thấy bài thi"}
+                description={
+                  remote.reason === "forbidden"
+                    ? "Bài thi này thuộc về một tài khoản khác. Hãy kiểm tra lại đường dẫn hoặc tài khoản đang đăng nhập."
+                    : "Bài thi không tồn tại hoặc đã bị xoá. Hãy kiểm tra lại đường dẫn."
+                }
+                action={{ label: "Về trang chủ", onClick: () => go("dashboard") }}
+              />
+            </Card>
+          </div>
+        );
+      }
       return (
         <div className="py-6" data-testid="results-error">
           <Card className="mt-6 p-8">
@@ -110,9 +130,13 @@ export function ResultsScreen({
               size="lg"
               icon={TriangleAlert}
               title="Không tải được kết quả"
-              description="Kết nối gặp sự cố. Bài thi của bạn vẫn được lưu, hãy thử tải lại."
+              description={
+                remote.reason === "unavailable"
+                  ? "Bài thi đã chấm xong nhưng chưa đọc được kết quả. Bài thi của bạn vẫn được lưu, hãy thử tải lại."
+                  : "Kết nối gặp sự cố. Bài thi của bạn vẫn được lưu, hãy thử tải lại."
+              }
               action={{ label: "Tải lại", onClick: remote.reload }}
-              secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
+              secondaryAction={home}
             />
           </Card>
         </div>

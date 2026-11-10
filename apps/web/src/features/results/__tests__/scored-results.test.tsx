@@ -177,6 +177,46 @@ describe("ResultsScreen with real scoring data", () => {
     expect(await screen.findByText("Bạn đạt band 6.5")).toBeTruthy();
   });
 
+  it.each([
+    ["NOT_FOUND", "results-not-found", "Không tìm thấy bài thi"],
+    ["FORBIDDEN", "results-forbidden", "Bạn không có quyền xem bài thi này"],
+  ])("shows a dedicated state without a useless reload for %s", async (code, testId, title) => {
+    statusSpy.mockRejectedValue(Object.assign(new Error(code), { data: { code } }));
+    getResultSpy.mockRejectedValue(Object.assign(new Error(code), { data: { code } }));
+    const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByTestId(testId)).toBeTruthy();
+    expect(screen.getByText(title)).toBeTruthy();
+    expect(screen.queryByText("Tải lại")).toBeNull();
+    expect(screen.queryByText(/Kết nối gặp sự cố/)).toBeNull();
+    fireEvent.click(screen.getByText("Về trang chủ"));
+    expect(h.go).toHaveBeenCalledWith("dashboard");
+  });
+
+  it("re-reads the result once when status is done but the parallel read missed it", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValueOnce(null).mockResolvedValueOnce(RESULT);
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByText("Bạn đạt band 6.5")).toBeTruthy();
+    expect(getResultSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows an error state, not placeholder data, when a done result stays unreadable", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue(null);
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByTestId("results-error")).toBeTruthy();
+    expect(screen.getByText(/đã chấm xong nhưng chưa đọc được kết quả/)).toBeTruthy();
+    expect(screen.queryByText(/Bạn đạt band/)).toBeNull();
+    expect(screen.queryByText("Tính năng chấm điểm AI sắp ra mắt")).toBeNull();
+
+    getResultSpy.mockResolvedValue(RESULT);
+    fireEvent.click(screen.getByText("Tải lại"));
+    expect(await screen.findByText("Bạn đạt band 6.5")).toBeTruthy();
+  });
+
   it("does not query scoring for the prototype latest view", () => {
     renderWithApp(<ResultsScreen attemptId="latest" />);
     expect(statusSpy).not.toHaveBeenCalled();
