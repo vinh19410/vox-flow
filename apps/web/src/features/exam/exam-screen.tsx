@@ -98,7 +98,10 @@ export function ExamScreen() {
       } finally {
         if (runValid()) submitBusyRef.current = false;
       }
-    })();
+    })().catch(() => {
+      // Bodies are total (doSubmit catches its own errors; flush never rejects);
+      // this keeps the contract explicit if that ever changes.
+    });
   };
 
   const flushThenSubmit = async (attemptId: string, runValid: () => boolean) => {
@@ -145,6 +148,9 @@ export function ExamScreen() {
 
   const submitAnyway = () => {
     if (!session.attemptId) return;
+    // Same hand-off hygiene as submit(): a stale scoring job (persisted across
+    // reloads) would hijack the scoring screen instead of this mock attempt.
+    if (s.scoringAttempt) set({ scoringAttempt: null });
     beginRun(doSubmit, session.attemptId);
   };
 

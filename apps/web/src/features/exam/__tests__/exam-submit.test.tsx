@@ -181,7 +181,11 @@ describe("ExamScreen submit", () => {
 
   it("offers submit anyway when the device storage cannot be read", async () => {
     startSpy.mockResolvedValue({ attemptId: "att-mock" });
-    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    const h = renderWithApp(<ExamScreen />, {
+      mode: "p1",
+      // A stale scoring job persists across reloads; the hand-off must not land on it.
+      scoringAttempt: { attemptId: "att-old", submitted: true },
+    });
     await flush();
 
     for (let k = 0; k < 4; k += 1) answerStep();
@@ -201,6 +205,7 @@ describe("ExamScreen submit", () => {
     await flush();
     expect(flushSpy).toHaveBeenCalledTimes(1);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: "att-mock" });
+    expect(h.state().scoringAttempt).toBeNull();
     expect(h.go).toHaveBeenCalledWith("scoring");
   });
 

@@ -53,9 +53,11 @@ Lệnh + kết quả:
 
 ```
 pnpm --filter web test src/features/exam/__tests__/exam-submit.test.tsx src/features/exam/components/__tests__/pre-submit-modal.test.tsx
-  → Test Files 2 passed, Tests 28 passed (26/26 trước khi thêm 2 test gap)
-pnpm --filter web test
-  → Test Files 38 passed, Tests 310 passed
+  → Test Files 2 passed, Tests 28 passed
+
+pnpm --filter web test   # trên head PR (đã merge #106/#97, có thêm test của #106)
+  → Test Files 38 passed, Tests 317 passed
+
 pnpm check-types
   → 7/7 tasks successful (web kèm vite build), exit 0
 ```
