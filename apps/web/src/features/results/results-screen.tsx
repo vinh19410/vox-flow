@@ -24,6 +24,22 @@ import type { CritKey, ResultData, ReviewItem } from "./types";
 import type { ExamItem } from "@/features/exam/types";
 import type { Attempt } from "@/features/history/types";
 
+/** Server-side exam mode (`scored.mode`) as a Vietnamese eyebrow label; unknown modes fall back to a neutral one. */
+function apiModeLabel(mode?: string): string {
+  switch (mode) {
+    case "full":
+      return "Thi thử Full Test";
+    case "part1":
+      return "Thi thử Part 1";
+    case "part2":
+      return "Thi thử Part 2";
+    case "part3":
+      return "Thi thử Part 3";
+    default:
+      return "Thi thử";
+  }
+}
+
 export function ResultsScreen({
   attemptId,
   resultData,
@@ -180,6 +196,28 @@ export function ResultsScreen({
         </div>
       );
     }
+    // Only submitted attempts can be scored on demand; in_progress/abandoned ones keep the neutral saved card below.
+    if (status.scorable && status.status === "not_scored" && status.attemptStatus === "submitted") {
+      return (
+        <div className="py-6" data-testid="results-not-scored">
+          <Card className="mt-6 p-8">
+            <EmptyState
+              size="lg"
+              icon={Sparkles}
+              title="Bài thi chưa được chấm điểm"
+              description="Bài thi của bạn đã được lưu đầy đủ. Bạn có thể yêu cầu chấm điểm AI ngay bây giờ."
+              action={{ label: retrying ? "Đang gửi yêu cầu…" : "Chấm điểm ngay", onClick: () => void retryScoring(), disabled: retrying }}
+              secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
+            />
+            {retryError && (
+              <p role="alert" className="mt-4 text-center text-sm font-medium text-bad">
+                {retryError}
+              </p>
+            )}
+          </Card>
+        </div>
+      );
+    }
   }
 
   if (!scored && !FEATURES.scoring) {
@@ -257,7 +295,9 @@ export function ResultsScreen({
   };
 
   const eyebrow = scored
-    ? `Kết quả · Luyện đề Forecast · ${new Date(scored.scoredAt).toLocaleDateString("vi-VN")}`
+    ? scored.topicId
+      ? `Kết quả · Luyện đề Forecast · ${new Date(scored.scoredAt).toLocaleDateString("vi-VN")}`
+      : `Kết quả · ${apiModeLabel(scored.mode)} · ${new Date(scored.scoredAt).toLocaleDateString("vi-VN")}`
     : active
     ? `Kết quả · ${active.topic} · ${new Date(active.date).toLocaleDateString("vi-VN")}`
     : `Kết quả · ${lastSession ? `Forecast: ${lastSession.title}` : s.practice ? `Forecast: ${s.practice.title}` : modeLabel(s.mode)} · ${new Date().toLocaleDateString("vi-VN")}`;

@@ -22,6 +22,7 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
     currentAttemptUserId: "user-1",
     attemptExists: true,
     attemptTopicId: null as string | null,
+    attemptMode: "full",
     attemptQuestionKey: null as string | null,
     existingAnswers: [] as Array<{ id: string; questionKey: string; sizeBytes: number; generation?: number; audioKey?: string }>,
     topicRow: null as { id: string; part: number; questions: unknown } | null,
@@ -32,7 +33,7 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
     ansRecord: {
       id: "ans-1",
       attemptId: "att-123",
-      audioKey: "users/user-1/attempts/att-123/p1_q1.webm",
+      audioKey: "users/user-1/attempts/att-123/p1-1.webm",
       mimeType: "audio/webm",
       generation: 0,
     },
@@ -72,6 +73,7 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
                     userId: mockState.currentAttemptUserId,
                     status: mockState.currentAttemptStatus,
                     topicId: mockState.attemptTopicId,
+                    mode: mockState.attemptMode,
                     questionKey: mockState.attemptQuestionKey,
                   }
                 : null;
@@ -132,6 +134,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     mockState.currentAttemptUserId = "user-1";
     mockState.attemptExists = true;
     mockState.attemptTopicId = null;
+    mockState.attemptMode = "full";
     mockState.attemptQuestionKey = null;
     mockState.existingAnswers = [];
     mockState.topicRow = null;
@@ -143,7 +146,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     mockState.upsertResult = [];
   });
 
-  const validUrl = "/api/attempts/att-123/answers/p1_q1/audio?part=1&order=0&durationMs=5000&questionText=Sample";
+  const validUrl = "/api/attempts/att-123/answers/p1-1/audio?part=1&order=0&durationMs=5000&questionText=Sample";
 
   it("returns 401 when unauthenticated", async () => {
     mockState.currentSessionUser = null;
@@ -278,7 +281,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
   });
 
   it("returns 400 for out-of-bounds query parameter part (e.g. part=0, part=4, part=abc)", async () => {
-    const resZero = await app.request("/api/attempts/att-123/answers/p1_q1/audio?part=0", {
+    const resZero = await app.request("/api/attempts/att-123/answers/p1-1/audio?part=0", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -288,7 +291,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     });
     expect(resZero.status).toBe(400);
 
-    const resFour = await app.request("/api/attempts/att-123/answers/p1_q1/audio?part=4", {
+    const resFour = await app.request("/api/attempts/att-123/answers/p1-1/audio?part=4", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -298,7 +301,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     });
     expect(resFour.status).toBe(400);
 
-    const resNaN = await app.request("/api/attempts/att-123/answers/p1_q1/audio?part=abc", {
+    const resNaN = await app.request("/api/attempts/att-123/answers/p1-1/audio?part=abc", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -310,7 +313,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
   });
 
   it("returns 400 for out-of-bounds query parameter order (e.g. order=-1, order=101)", async () => {
-    const resNeg = await app.request("/api/attempts/att-123/answers/p1_q1/audio?order=-1", {
+    const resNeg = await app.request("/api/attempts/att-123/answers/p1-1/audio?order=-1", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -320,7 +323,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     });
     expect(resNeg.status).toBe(400);
 
-    const resLarge = await app.request("/api/attempts/att-123/answers/p1_q1/audio?order=101", {
+    const resLarge = await app.request("/api/attempts/att-123/answers/p1-1/audio?order=101", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -332,7 +335,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
   });
 
   it("returns 400 for out-of-bounds durationMs (e.g. durationMs=-1, durationMs=1e3)", async () => {
-    const resNeg = await app.request("/api/attempts/att-123/answers/p1_q1/audio?durationMs=-1", {
+    const resNeg = await app.request("/api/attempts/att-123/answers/p1-1/audio?durationMs=-1", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -342,7 +345,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     });
     expect(resNeg.status).toBe(400);
 
-    const resExp = await app.request("/api/attempts/att-123/answers/p1_q1/audio?durationMs=1e3", {
+    const resExp = await app.request("/api/attempts/att-123/answers/p1-1/audio?durationMs=1e3", {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -355,7 +358,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
 
   it("returns 400 when questionText exceeds 2000 characters", async () => {
     const longText = "a".repeat(2001);
-    const res = await app.request(`/api/attempts/att-123/answers/p1_q1/audio?questionText=${longText}`, {
+    const res = await app.request(`/api/attempts/att-123/answers/p1-1/audio?questionText=${longText}`, {
       method: "POST",
       headers: {
         "content-length": "100",
@@ -393,10 +396,10 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { success: boolean; audioKey: string };
     expect(body.success).toBe(true);
-    expect(body.audioKey).toBe("users/user-1/attempts/att-123/p1_q1.0.webm");
+    expect(body.audioKey).toBe("users/user-1/attempts/att-123/p1-1.0.webm");
 
     expect(mockPut).toHaveBeenCalledWith(
-      "users/user-1/attempts/att-123/p1_q1.0.webm",
+      "users/user-1/attempts/att-123/p1-1.0.webm",
       expect.anything(),
       {
         httpMetadata: { contentType: "audio/webm" },
@@ -406,11 +409,11 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
       mockDb,
       expect.objectContaining({
         attemptId: "att-123",
-        questionKey: "p1_q1",
+        questionKey: "p1-1",
         questionText: "Sample",
         partNumber: 1,
         orderIndex: 0,
-        audioKey: "users/user-1/attempts/att-123/p1_q1.0.webm",
+        audioKey: "users/user-1/attempts/att-123/p1-1.0.webm",
         durationMs: 5000,
         mimeType: "audio/webm",
         generation: 0,
@@ -431,10 +434,10 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { success: boolean; audioKey: string };
     expect(body.success).toBe(true);
-    expect(body.audioKey).toBe("users/user-1/attempts/att-123/p1_q1.0.mp3");
+    expect(body.audioKey).toBe("users/user-1/attempts/att-123/p1-1.0.mp3");
 
     expect(mockPut).toHaveBeenCalledWith(
-      "users/user-1/attempts/att-123/p1_q1.0.mp3",
+      "users/user-1/attempts/att-123/p1-1.0.mp3",
       expect.anything(),
       {
         httpMetadata: { contentType: "audio/mpeg" },
@@ -444,8 +447,8 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
       mockDb,
       expect.objectContaining({
         attemptId: "att-123",
-        questionKey: "p1_q1",
-        audioKey: "users/user-1/attempts/att-123/p1_q1.0.mp3",
+        questionKey: "p1-1",
+        audioKey: "users/user-1/attempts/att-123/p1-1.0.mp3",
         mimeType: "audio/mpeg",
       }),
     );
@@ -469,9 +472,79 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(mockPut).not.toHaveBeenCalled();
   });
 
+  it("returns 400 when the mock key is not in the attempt mode's bank (part1 attempt)", async () => {
+    mockState.attemptMode = "part1";
+    mockState.attemptTopicId = null;
+
+    const res = await app.request(
+      "/api/attempts/att-123/answers/p3-1/audio?part=3&order=0&durationMs=5000&questionText=Sample",
+      {
+        method: "POST",
+        headers: {
+          "content-length": "100",
+          "content-type": "audio/webm",
+        },
+        body: new Uint8Array([1, 2, 3]),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Invalid question key for this attempt");
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for any key on an unknown mock mode (fail-closed)", async () => {
+    mockState.attemptMode = "daily-practice";
+
+    const res = await app.request(
+      "/api/attempts/att-123/answers/p1-1/audio?part=1&order=0&durationMs=5000&questionText=Sample",
+      {
+        method: "POST",
+        headers: {
+          "content-length": "100",
+          "content-type": "audio/webm",
+        },
+        body: new Uint8Array([1, 2, 3]),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Invalid question key for this attempt");
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when the mode cap is reached by legacy out-of-bank rows", async () => {
+    // Pre-cutover rows with arbitrary keys: the mock allowlist only gates the
+    // uploaded key, so the count guard must cap the attempt at 8 (full mode).
+    mockState.existingAnswers = Array.from({ length: 9 }, (_, i) => ({
+      id: `ans-legacy-${i}`,
+      questionKey: `key-${i}`,
+      sizeBytes: 100,
+    }));
+
+    const res = await app.request(
+      "/api/attempts/att-123/answers/p1-2/audio?part=1&order=1&durationMs=5000&questionText=Sample",
+      {
+        method: "POST",
+        headers: {
+          "content-length": "100",
+          "content-type": "audio/webm",
+        },
+        body: new Uint8Array([1, 2, 3]),
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("Question limit reached for this attempt");
+    expect(mockPut).not.toHaveBeenCalled();
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
   it("rejects an upload older than the stored generation without touching the bucket (fast-path 409)", async () => {
     mockState.existingAnswers = [
-      { id: "ans-gen-5", questionKey: "p1_q1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm", generation: 5 },
+      { id: "ans-gen-5", questionKey: "p1-1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1-1.5.webm", generation: 5 },
     ];
     const res = await app.request(`${validUrl}&generation=4`, {
       method: "POST",
@@ -542,7 +615,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
 
   it("returns 413 when the new upload would push total audio past 35MB", async () => {
     mockState.existingAnswers = [
-      { id: "ans-1", questionKey: "other-q", sizeBytes: 30 * 1024 * 1024 },
+      { id: "ans-1", questionKey: "p1-2", sizeBytes: 30 * 1024 * 1024 },
     ];
 
     const res = await app.request(validUrl, {
@@ -574,7 +647,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("Storage write failed: unverifiable object size");
-    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.0.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.0.webm");
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
@@ -590,15 +663,15 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
       body: new Uint8Array([1, 2, 3]),
     });
     expect(res.status).toBe(503);
-    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.0.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.0.webm");
     expect(mockUpsert).not.toHaveBeenCalled();
   });
 
   it("accepts an equal generation retry (idempotent) and passes generation to the helper", async () => {
     mockState.existingAnswers = [
-      { id: "ans-gen-5", questionKey: "p1_q1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm", generation: 5 },
+      { id: "ans-gen-5", questionKey: "p1-1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1-1.5.webm", generation: 5 },
     ];
-    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm" }];
+    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1-1.5.webm" }];
     const res = await app.request(`${validUrl}&generation=5`, {
       method: "POST",
       headers: {
@@ -611,7 +684,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     expect(mockPut).toHaveBeenCalledTimes(1);
     expect(mockUpsert).toHaveBeenCalledWith(
       mockDb,
-      expect.objectContaining({ questionKey: "p1_q1", generation: 5, audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm" }),
+      expect.objectContaining({ questionKey: "p1-1", generation: 5, audioKey: "users/user-1/attempts/att-123/p1-1.5.webm" }),
     );
   });
 
@@ -635,7 +708,7 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
 
   it("rejects a legacy upload (no generation param) when the stored row already has a newer generation", async () => {
     mockState.existingAnswers = [
-      { id: "ans-gen-new", questionKey: "p1_q1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1_q1.1731212345678.webm", generation: 1731212345678 },
+      { id: "ans-gen-new", questionKey: "p1-1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1-1.1731212345678.webm", generation: 1731212345678 },
     ];
     const res = await app.request(validUrl, {
       method: "POST",
@@ -698,26 +771,26 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
     const body = (await res.json()) as { error: string; storedGeneration: number };
     expect(body.error).toBe("stale_generation");
     expect(body.storedGeneration).toBe(7);
-    expect(mockPut).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.3.webm", expect.anything(), {
+    expect(mockPut).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.3.webm", expect.anything(), {
       httpMetadata: { contentType: "audio/webm" },
     });
-    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.3.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.3.webm");
   });
 
   it("deletes only blobs older than the winning generation via prefix listing", async () => {
     mockState.existingAnswers = [
-      { id: "ans-gen-5", questionKey: "p1_q1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1_q1.5.webm", generation: 5 },
+      { id: "ans-gen-5", questionKey: "p1-1", sizeBytes: 0, audioKey: "users/user-1/attempts/att-123/p1-1.5.webm", generation: 5 },
     ];
-    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1_q1.6.webm", generation: 6 }];
+    mockState.upsertResult = [{ audioKey: "users/user-1/attempts/att-123/p1-1.6.webm", generation: 6 }];
     // The listing sees a previous generation's blob, a legacy bare key, and a
     // HIGHER generation's blob from an upload still in flight — only the first
     // two may be deleted, never the in-flight newer one.
     mockList.mockResolvedValueOnce({
       objects: [
-        { key: "users/user-1/attempts/att-123/p1_q1.5.webm" },
-        { key: "users/user-1/attempts/att-123/p1_q1.6.webm" },
-        { key: "users/user-1/attempts/att-123/p1_q1.99.webm" },
-        { key: "users/user-1/attempts/att-123/p1_q1.webm" },
+        { key: "users/user-1/attempts/att-123/p1-1.5.webm" },
+        { key: "users/user-1/attempts/att-123/p1-1.6.webm" },
+        { key: "users/user-1/attempts/att-123/p1-1.99.webm" },
+        { key: "users/user-1/attempts/att-123/p1-1.webm" },
       ],
       truncated: false,
     });
@@ -730,11 +803,11 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
       body: new Uint8Array([1, 2, 3]),
     });
     expect(res.status).toBe(200);
-    expect(mockList).toHaveBeenCalledWith({ prefix: "users/user-1/attempts/att-123/p1_q1." });
+    expect(mockList).toHaveBeenCalledWith({ prefix: "users/user-1/attempts/att-123/p1-1." });
     expect(mockDelete).toHaveBeenCalledTimes(2);
-    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.5.webm");
-    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.webm");
-    expect(mockDelete).not.toHaveBeenCalledWith("users/user-1/attempts/att-123/p1_q1.99.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.5.webm");
+    expect(mockDelete).toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.webm");
+    expect(mockDelete).not.toHaveBeenCalledWith("users/user-1/attempts/att-123/p1-1.99.webm");
   });
 
   it("returns 403 when another user's attempt is targeted", async () => {

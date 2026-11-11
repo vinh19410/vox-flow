@@ -31,8 +31,10 @@ export type ScoredCriterion = z.infer<typeof scoredCriterionSchema>;
 export type ScoreStatusResult = {
   attemptId: string;
   status: ScoreStatus;
-  /** False when the attempt's mode is not scored (e.g. full mock exam in this beta). */
+  /** Kept for web backward compatibility: every attempt mode is scored now; `attemptStatus` gates resumability. */
   scorable: boolean;
+  /** Lifecycle of the underlying attempt ("Bài thi chưa được chấm điểm" applies only to `submitted`). */
+  attemptStatus: "in_progress" | "submitted" | "abandoned";
   /** Manual retries already spent on this attempt (0 without a score row). */
   manualRetries?: number;
   /** False when the learner has exhausted the per-attempt manual retry or daily quota. */
@@ -42,6 +44,8 @@ export type ScoreStatusResult = {
 export type ScoringResult = {
   attemptId: string;
   topicId: string | null;
+  /** Server-side exam mode (`full` / `part1` / `part2` / `part3`); present on every current attempt row. */
+  mode?: string;
   overall: number;
   oneLiner: string;
   criteria: ScoredCriterion[];

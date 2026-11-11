@@ -23,8 +23,8 @@ import {
 } from "@vox-flow/api/scoring/forecast-keys";
 import {
   maxAnswersForAttempt,
-  TOPIC_LESS_CAP,
 } from "@vox-flow/api/scoring/answer-limits";
+import { getValidMockQuestionKeys } from "@vox-flow/api/scoring/mock-exam-bank";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -191,8 +191,20 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
     if (!existingAnswer && existingAnswers.length >= maxCount) {
       return c.json({ error: "Question limit reached for this attempt" }, 400);
     }
-  } else if (!existingAnswer && existingAnswers.length >= TOPIC_LESS_CAP) {
-    return c.json({ error: "Question limit reached" }, 400);
+  } else {
+    // Topic-less (mock) attempt: only bank keys of the attempt's mode are
+    // accepted. Unknown modes resolve to an empty key set — fail-closed, every
+    // key is rejected.
+    const validMockKeys = getValidMockQuestionKeys(currentAttempt.mode);
+    if (!validMockKeys.has(questionKey)) {
+      return c.json({ error: "Invalid question key for this attempt" }, 400);
+    }
+    // The mode cap (8/4/1/3) counts every recorded answer; legacy pre-cutover
+    // rows out of the bank still count toward it.
+    const maxCount = maxAnswersForAttempt(currentAttempt, null);
+    if (!existingAnswer && existingAnswers.length >= maxCount) {
+      return c.json({ error: "Question limit reached for this attempt" }, 400);
+    }
   }
 
   // Upsert-aware accounting: re-recording replaces the previous size instead

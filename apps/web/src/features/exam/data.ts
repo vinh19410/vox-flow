@@ -1,3 +1,5 @@
+import { MOCK_EXAM_PROMPTS } from "@vox-flow/api/scoring/mock-exam-bank";
+
 import type { ExamItem, ExamModeOption, ExaminerVoice, Mode, Part, PartInfo } from "./types";
 
 export const MODES: ExamModeOption[] = [
@@ -13,67 +15,49 @@ export const VOICES: ExaminerVoice[] = [
   { id: "au-f", name: "Olivia", accent: "Úc · Nữ", tone: "Ngữ điệu lên xuống" },
 ];
 
-export const ITEMS: ExamItem[] = [
-  {
-    id: "p1-1",
-    part: 1,
-    text: "Let's talk about where you live. Do you live in a house or an apartment?",
+/** Demo answers for the exam room; the grading bank never carries sample speech. */
+const SAMPLE_ANSWERS: Record<string, { answer: string; followUpAnswer?: string }> = {
+  "p1-1": {
     answer:
       "I live in an apartment in District 3, it's on the eighth floor. It's quite small but it's really convenient because it's near my office. The only thing is it's quite noisy at night.",
-    followUp: {
-      text: "You mentioned it gets quite noisy. What do you usually do to deal with the noise?",
-      trigger: "quite noisy at night",
-      answer:
-        "Honestly I just use earplugs, and sometimes I play some rain sounds on my phone so I can fall asleep easier.",
-    },
+    followUpAnswer:
+      "Honestly I just use earplugs, and sometimes I play some rain sounds on my phone so I can fall asleep easier.",
   },
-  {
-    id: "p1-2",
-    part: 1,
-    text: "What do you like most about your neighbourhood?",
+  "p1-2": {
     answer:
       "I think the food. There are so many street food stalls, so I can eat pho or banh mi any time. Also people there is very friendly.",
   },
-  {
-    id: "p1-3",
-    part: 1,
-    text: "Do you prefer studying in the morning or in the evening?",
+  "p1-3": {
     answer:
       "Definitely the morning. My mind is much clearer after I wake up, whereas in the evening I'm usually exhausted after work.",
   },
-  {
-    id: "p2-1",
-    part: 2,
-    text: "Describe a time when you helped someone.",
-    cue: {
-      title: "Describe a time when you helped someone.",
-      points: ["who you helped", "how you helped them", "why you helped them"],
-      ending: "and explain how you felt about helping this person.",
-    },
+  "p2-1": {
     answer:
       "I'd like to talk about the time I helped my younger cousin prepare for her university entrance exam. It was about two years ago. She was really stressed because her maths score was not good, so I decided to tutor her every weekend for around three months. We usually studied at a coffee shop near her house. I explained the formulas in a simple way and gave her many practice tests. The reason I helped her is because I remember how stressful that exam was for me. In the end she passed with a high score and I felt really proud, maybe even more proud than when I passed my own exam.",
   },
-  {
-    id: "p3-1",
-    part: 3,
-    text: "Why do you think some people prefer not to ask others for help?",
+  "p3-1": {
     answer:
       "I think the main reason is pride. Many people, especially men, they think asking for help make them look weak. Another reason is they don't want to bother other people.",
-    followUp: {
-      text: "You said pride is a big factor. Do you think this differs between generations?",
-      trigger: "the main reason is pride",
-      answer:
-        "Yes, I believe so. Older generations tend to be more self-reliant, while young people are more open to talking about their problems, partly thanks to social media.",
-    },
+    followUpAnswer:
+      "Yes, I believe so. Older generations tend to be more self-reliant, while young people are more open to talking about their problems, partly thanks to social media.",
   },
-  {
-    id: "p3-2",
-    part: 3,
-    text: "Should schools encourage children to do volunteer work?",
+  "p3-2": {
     answer:
       "Absolutely. Volunteering teaches children empathy and responsibility, which are things you cannot really learn from textbooks. However, it should be voluntary, otherwise it becomes just another obligation.",
   },
-];
+};
+
+/** Question text, cue cards and follow-ups come from the canonical server bank; demo answers stay client-side. */
+export const ITEMS: ExamItem[] = MOCK_EXAM_PROMPTS.map((prompt) => ({
+  id: prompt.id,
+  part: prompt.part,
+  text: prompt.text,
+  answer: SAMPLE_ANSWERS[prompt.id]?.answer,
+  cue: prompt.cue,
+  followUp: prompt.followUp
+    ? { ...prompt.followUp, answer: SAMPLE_ANSWERS[prompt.id]?.followUpAnswer ?? "" }
+    : undefined,
+}));
 
 // Recommended minimum speaking length per part (feature D): Part 1 short answers stay valid.
 export const MIN_WORDS: Record<Part, number> = { 1: 12, 2: 90, 3: 22 };

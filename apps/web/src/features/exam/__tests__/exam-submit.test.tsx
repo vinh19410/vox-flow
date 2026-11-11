@@ -151,7 +151,7 @@ describe("ExamScreen submit", () => {
       resolveSubmit({ success: true });
       await flush();
     });
-    expect(h.state().scoringAttempt).toBeNull();
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-mock", submitted: true });
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(h.go).toHaveBeenCalledWith("scoring");
     expect(screen.getByText(/nộp & chấm/i)).toHaveProperty("disabled", false);
@@ -205,7 +205,7 @@ describe("ExamScreen submit", () => {
     await flush();
     expect(flushSpy).toHaveBeenCalledTimes(1);
     expect(submitSpy).toHaveBeenCalledWith({ attemptId: "att-mock" });
-    expect(h.state().scoringAttempt).toBeNull();
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-mock", submitted: true });
     expect(h.go).toHaveBeenCalledWith("scoring");
   });
 
@@ -222,6 +222,7 @@ describe("ExamScreen submit", () => {
     await flush();
 
     expect(h.go).toHaveBeenCalledWith("scoring");
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: "att-mock", submitted: true });
     expect(h.setPendingSubmission).toHaveBeenCalledWith(true);
     expect(screen.queryByText(/Vẫn chưa nộp được bài/)).toBeNull();
   });
@@ -258,6 +259,24 @@ describe("ExamScreen submit", () => {
     for (let k = 0; k < 4; k += 1) answerStep();
     submitSpy.mockRejectedValueOnce(
       Object.assign(new Error("Attempt is abandoned"), { data: { code: "BAD_REQUEST" } }),
+    );
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(
+      screen.getByText("Bài thi không thể nộp lúc này. Vui lòng thử lại hoặc liên hệ hỗ trợ nếu tiếp tục gặp lỗi."),
+    ).toBeTruthy();
+  });
+
+  it("surfaces the permanent submit error instead of navigating when the attempt has no answers", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    submitSpy.mockRejectedValueOnce(
+      Object.assign(new Error("Attempt has no recorded answers"), { data: { code: "BAD_REQUEST" } }),
     );
     fireEvent.click(screen.getByText(/nộp & chấm/i));
     await flush();

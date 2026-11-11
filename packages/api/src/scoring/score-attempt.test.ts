@@ -842,4 +842,94 @@ describe("scoreAttempt", () => {
       expect(firstBodyText()).not.toContain("(question unavailable)");
     });
   });
+
+  describe("mock exam scoring (topicId = null)", () => {
+    /** Seeds a submitted mock attempt (`topicId: null`, mode `full`) with the given answers. */
+    async function seedMockAttempt(
+      answers: Array<{ questionKey: string; questionText: string; partNumber: number; orderIndex: number }>,
+    ) {
+      await ctx.db.insert(user).values({ id: USER_ID, name: "Learner", email: "learner@voxflow.vn" });
+      await ctx.db.insert(attempt).values({
+        id: ATTEMPT_ID,
+        userId: USER_ID,
+        mode: "full",
+        status: "submitted",
+        topicId: null,
+      });
+      await ctx.db.insert(attemptAnswer).values(
+        answers.map((a) => ({
+          id: `ans-${a.questionKey}`,
+          attemptId: ATTEMPT_ID,
+          questionKey: a.questionKey,
+          questionText: a.questionText,
+          partNumber: a.partNumber,
+          orderIndex: a.orderIndex,
+          audioKey: audioKey(a.questionKey),
+          durationMs: 15000,
+          mimeType: "audio/webm",
+        })),
+      );
+      await ctx.db.insert(attemptScore).values({ attemptId: ATTEMPT_ID, userId: USER_ID, status: "queued" });
+    }
+
+    function firstBodyText(): string {
+      return JSON.parse(client.chatBodies[0]!).messages[1].content[0].text as string;
+    }
+
+    it("grades a full mock attempt with canonical bank text, never client text", async () => {
+      await seedMockAttempt([
+        { questionKey: "p1-1", questionText: "HACKED", partNumber: 1, orderIndex: 0 },
+        { questionKey: "p1-1-f", questionText: "HACKED", partNumber: 1, orderIndex: 1 },
+        { questionKey: "p2-1", questionText: "HACKED", partNumber: 2, orderIndex: 0 },
+        { questionKey: "p3-1", questionText: "HACKED", partNumber: 3, orderIndex: 0 },
+      ]);
+
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+
+      const text = firstBodyText();
+      // Canonical prompts come from the server-side mock bank only.
+      expect(text).toContain("Let's talk about where you live. Do you live in a house or an apartment?");
+      expect(text).toContain("You mentioned it gets quite noisy. What do you usually do to deal with the noise?");
+      expect(text).toContain("Describe a time when you helped someone. You should say:");
+      expect(text).toContain("who you helped, how you helped them, why you helped them");
+      expect(text).toContain("and explain how you felt about helping this person.");
+      expect(text).toContain("Why do you think some people prefer not to ask others for help?");
+      expect(text).not.toContain("HACKED");
+    });
+
+    it("grades an out-of-bank key with the placeholder and no client text", async () => {
+      await seedMockAttempt([
+        { questionKey: "q-unknown", questionText: "HACKED unknown question", partNumber: 1, orderIndex: 0 },
+      ]);
+
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+
+      const text = firstBodyText();
+      expect(text).toContain("(question unavailable)");
+      expect(text).not.toContain("HACKED");
+    });
+
+    it("fails a mock attempt whose answer count exceeds the mode cap before transcribing", async () => {
+      // Pre-cutover data could hold legacy out-of-bank rows: every valid
+      // full-test key plus one legacy row is 9 answers > the full-mode cap 8.
+      // (part2's cap equals its key set, so it can never exceed via counting.)
+      const bankKeys = ["p1-1", "p1-1-f", "p1-2", "p1-3", "p2-1", "p3-1", "p3-1-f", "p3-2"];
+      await seedMockAttempt([
+        ...bankKeys.map((questionKey, i) => ({
+          questionKey,
+          questionText: `Question ${i}`,
+          partNumber: Number(questionKey[1]),
+          orderIndex: i,
+        })),
+        { questionKey: "legacy-key", questionText: "Legacy question", partNumber: 1, orderIndex: 8 },
+      ]);
+
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("failed");
+
+      const score = await loadScore(ctx.db);
+      expect(score.status).toBe("failed");
+      expect(score.lastError).toContain("ANSWER_COUNT_EXCEEDED");
+      expect(client.transcribeCalls).toHaveLength(0);
+    });
+  });
 });

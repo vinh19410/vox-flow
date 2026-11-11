@@ -74,7 +74,11 @@ const RESULT: ScoringResult = {
   scoredAt: Date.UTC(2026, 10, 9),
 };
 
-const status = (s: string, scorable = true) => ({ attemptId: ATTEMPT, status: s, scorable });
+const status = (
+  s: string,
+  scorable = true,
+  attemptStatus: "in_progress" | "submitted" | "abandoned" = "submitted",
+) => ({ attemptId: ATTEMPT, status: s, scorable, attemptStatus });
 
 describe("ResultsScreen with real scoring data", () => {
   beforeEach(() => {
@@ -158,13 +162,54 @@ describe("ResultsScreen with real scoring data", () => {
     expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
   });
 
-  it("keeps the saved-attempt state for attempts that are not scored", async () => {
+  it("offers Chấm điểm ngay when a submitted attempt is not_scored yet", async () => {
+    statusSpy.mockResolvedValue(status("not_scored", true));
+    getResultSpy.mockResolvedValue(null);
+    retrySpy.mockResolvedValue(status("queued"));
+    const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByTestId("results-not-scored")).toBeTruthy();
+    fireEvent.click(screen.getByText("Chấm điểm ngay"));
+    await waitFor(() => expect(h.go).toHaveBeenCalledWith("scoring"));
+    expect(retrySpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
+    expect(h.state().scoringAttempt).toEqual({ kind: "attempt", attemptId: ATTEMPT, submitted: true });
+  });
+
+  it("keeps the saved-attempt fallback when the server marks an attempt non-scorable", async () => {
     statusSpy.mockResolvedValue(status("not_scored", false));
     getResultSpy.mockResolvedValue(null);
     renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
 
     expect(await screen.findByText("Tính năng chấm điểm AI sắp ra mắt")).toBeTruthy();
     expect(screen.queryByText(/Bạn đạt band/)).toBeNull();
+  });
+
+  it("keeps the neutral saved-attempt card for an in-progress attempt without a score", async () => {
+    statusSpy.mockResolvedValue(status("not_scored", true, "in_progress"));
+    getResultSpy.mockResolvedValue(null);
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByText("Tính năng chấm điểm AI sắp ra mắt")).toBeTruthy();
+    expect(screen.queryByTestId("results-not-scored")).toBeNull();
+  });
+
+  it("labels a scored forecast result with the Luyện đề Forecast eyebrow", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue(RESULT);
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByText(/Kết quả · Luyện đề Forecast ·/)).toBeTruthy();
+  });
+
+  it.each([
+    ["full", "Thi thử Full Test"],
+    ["part2", "Thi thử Part 2"],
+  ])("labels a scored mock %s result with the Thi thử eyebrow", async (mode, label) => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue({ ...RESULT, topicId: null, mode });
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+
+    expect(await screen.findByText(new RegExp(`Kết quả · ${label} ·`))).toBeTruthy();
   });
 
   it("shows a load error with reload instead of a blank page", async () => {

@@ -91,13 +91,15 @@ describe("scoringRouter", () => {
         attemptId: "att-forecast",
         status: "not_scored",
         scorable: true,
+        attemptStatus: "submitted",
         manualRetries: 0,
         canRetry: true,
       });
       await expect(caller.scoring.status({ attemptId: "att-full" })).resolves.toEqual({
         attemptId: "att-full",
         status: "not_scored",
-        scorable: false,
+        scorable: true,
+        attemptStatus: "submitted",
         manualRetries: 0,
         canRetry: true,
       });
@@ -130,7 +132,13 @@ describe("scoringRouter", () => {
       });
 
       const res = await callerFor("owner").scoring.retry({ attemptId: "att-forecast" });
-      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true, manualRetries: 1 });
+      expect(res).toEqual({
+        attemptId: "att-forecast",
+        status: "queued",
+        scorable: true,
+        attemptStatus: "submitted",
+        manualRetries: 1,
+      });
       expect(queue.sent).toEqual([{ attemptId: "att-forecast" }]);
       expect(queue.options).toEqual([{ delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS }]);
 
@@ -148,7 +156,13 @@ describe("scoringRouter", () => {
 
     it("creates and enqueues a score for a submitted forecast attempt without a score row", async () => {
       const res = await callerFor("owner").scoring.retry({ attemptId: "att-forecast" });
-      expect(res).toEqual({ attemptId: "att-forecast", status: "queued", scorable: true, manualRetries: 0 });
+      expect(res).toEqual({
+        attemptId: "att-forecast",
+        status: "queued",
+        scorable: true,
+        attemptStatus: "submitted",
+        manualRetries: 0,
+      });
       expect(queue.sent).toEqual([{ attemptId: "att-forecast" }]);
       const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-forecast"));
       expect(row).toMatchObject({ status: "queued", tries: 0, userId: "owner" });
@@ -160,15 +174,33 @@ describe("scoringRouter", () => {
       expect(queue.sent).toHaveLength(1);
     });
 
-    it("rejects the unscored rescue path for unsubmitted or non-forecast attempts", async () => {
+    it("rescues a submitted mock attempt without a score row, exempt from retry quotas", async () => {
+      const res = await callerFor("owner").scoring.retry({ attemptId: "att-full" });
+      expect(res).toEqual({
+        attemptId: "att-full",
+        status: "queued",
+        scorable: true,
+        attemptStatus: "submitted",
+        manualRetries: 0,
+      });
+      expect(queue.sent).toEqual([{ attemptId: "att-full" }]);
+      const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-full"));
+      expect(row).toMatchObject({ status: "queued", manualRetries: 0, userId: "owner" });
+
+      // The second call sees a queued row and is rejected without enqueueing again.
+      await expect(callerFor("owner").scoring.retry({ attemptId: "att-full" })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+      expect(queue.sent).toHaveLength(1);
+    });
+
+    it("rejects the unscored rescue path for unsubmitted attempts", async () => {
       await ctx.db
         .insert(attempt)
         .values({ id: "att-draft", userId: "owner", mode: "part1", status: "in_progress", topicId: "topic-1" });
-      for (const attemptId of ["att-draft", "att-full"]) {
-        await expect(callerFor("owner").scoring.retry({ attemptId })).rejects.toMatchObject({
-          code: "BAD_REQUEST",
-        });
-      }
+      await expect(callerFor("owner").scoring.retry({ attemptId: "att-draft" })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
       expect(queue.sent).toHaveLength(0);
       expect(await ctx.db.select().from(attemptScore)).toHaveLength(0);
     });
@@ -221,7 +253,13 @@ describe("scoringRouter", () => {
         const caller = callerFor("owner", true, { now: () => new Date(nowMs) });
 
         const res = await caller.scoring.retry({ attemptId: "att-r1" });
-        expect(res).toEqual({ attemptId: "att-r1", status: "queued", scorable: true, manualRetries: 1 });
+        expect(res).toEqual({
+          attemptId: "att-r1",
+          status: "queued",
+          scorable: true,
+          attemptStatus: "submitted",
+          manualRetries: 1,
+        });
 
         const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "att-r1"));
         expect(row).toMatchObject({
@@ -420,6 +458,7 @@ describe("scoringRouter", () => {
       expect(result).toEqual({
         attemptId: "att-forecast",
         topicId: "topic-1",
+        mode: "part1",
         overall: 6.5,
         oneLiner: "Khá tốt",
         criteria: CRITERIA,
@@ -435,6 +474,24 @@ describe("scoringRouter", () => {
           },
         ],
         scoredAt: scoredAt.getTime(),
+      });
+    });
+
+    it("returns the attempt mode for mock exam results (topicId null)", async () => {
+      const scoredAt = new Date("2026-11-10T03:00:00.000Z");
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-full",
+        userId: "owner",
+        status: "done",
+        overall: 7,
+        criteriaJson: JSON.stringify(CRITERIA),
+        scoredAt,
+      });
+
+      await expect(callerFor("owner").scoring.getResult({ attemptId: "att-full" })).resolves.toMatchObject({
+        attemptId: "att-full",
+        topicId: null,
+        mode: "full",
       });
     });
 
@@ -463,8 +520,23 @@ describe("attempt.submit scoring enqueue", () => {
   const caller = (env: Record<string, unknown>) =>
     appRouter.createCaller({ db: ctx.db, session: makeSession("owner"), env });
 
+  /** Audio uploads go through the Hono route; answers are seeded directly here. */
+  const seedAnswer = (attemptId: string, questionKey: string) =>
+    ctx.db.insert(attemptAnswer).values({
+      id: `ans-${attemptId}-${questionKey}`,
+      attemptId,
+      questionKey,
+      questionText: "Where do you live?",
+      partNumber: 1,
+      orderIndex: 0,
+      audioKey: `users/owner/attempts/${attemptId}/${questionKey}.webm`,
+      durationMs: 5000,
+      mimeType: "audio/webm",
+    });
+
   it("creates a queued score and enqueues forecast attempts exactly once", async () => {
     await ctx.db.insert(attempt).values({ id: "att-f", userId: "owner", mode: "part1", topicId: "topic-1" });
+    await seedAnswer("att-f", "topic-1-0");
 
     await caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" });
     expect(queue.sent).toEqual([{ attemptId: "att-f" }]);
@@ -496,6 +568,7 @@ describe("attempt.submit scoring enqueue", () => {
 
   it("leaves the attempt in progress when the score row cannot be written", async () => {
     await ctx.db.insert(attempt).values({ id: "att-f", userId: "owner", mode: "part1", topicId: "topic-1" });
+    await seedAnswer("att-f", "topic-1-0");
     // Make the score insert fail inside the batch.
     await ctx.d1.prepare("DROP TABLE attempt_score").run();
 
@@ -507,18 +580,39 @@ describe("attempt.submit scoring enqueue", () => {
 
   it("does not enqueue when a score row already exists", async () => {
     await ctx.db.insert(attempt).values({ id: "att-f", userId: "owner", mode: "part1", topicId: "topic-1" });
+    await seedAnswer("att-f", "topic-1-0");
     await ctx.db.insert(attemptScore).values({ attemptId: "att-f", userId: "owner", status: "processing" });
 
     await caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-f" });
     expect(queue.sent).toHaveLength(0);
   });
 
-  it("never scores non-forecast attempts", async () => {
-    await ctx.db.insert(attempt).values({ id: "att-full", userId: "owner", mode: "full" });
+  it.each(["full", "part1", "part2", "part3"] as const)(
+    "creates a queued score row and enqueues scoring for mock exam attempts across all modes (%s)",
+    async (mode) => {
+      await ctx.db.insert(attempt).values({ id: `att-${mode}`, userId: "owner", mode });
+      await seedAnswer(`att-${mode}`, "p1-1");
 
-    await caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-full" });
-    expect(queue.sent).toHaveLength(0);
+      await caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: `att-${mode}` });
+
+      expect(queue.sent).toEqual([{ attemptId: `att-${mode}` }]);
+      expect(queue.options).toEqual([{ delaySeconds: SCORING_ENQUEUE_DELAY_SECONDS }]);
+      const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, `att-${mode}`));
+      expect(row).toMatchObject({ status: "queued", userId: "owner", tries: 0 });
+    },
+  );
+
+  it("rejects a zero-answer submit with 400 before marking submitted", async () => {
+    await ctx.db.insert(attempt).values({ id: "att-empty", userId: "owner", mode: "full" });
+
+    await expect(caller({ SCORING_QUEUE: queue }).attempt.submit({ attemptId: "att-empty" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Attempt has no recorded answers",
+    });
+    const [row] = await ctx.db.select().from(attempt).where(eq(attempt.id, "att-empty"));
+    expect(row).toMatchObject({ status: "in_progress", submittedAt: null });
     expect(await ctx.db.select().from(attemptScore)).toHaveLength(0);
+    expect(queue.sent).toHaveLength(0);
   });
 
   it("still submits when the queue binding is missing or the send fails", async () => {
@@ -526,6 +620,8 @@ describe("attempt.submit scoring enqueue", () => {
       { id: "att-a", userId: "owner", mode: "part1", topicId: "topic-1" },
       { id: "att-b", userId: "owner", mode: "part1", topicId: "topic-1" },
     ]);
+    await seedAnswer("att-a", "topic-1-0");
+    await seedAnswer("att-b", "topic-1-0");
 
     await expect(caller({}).attempt.submit({ attemptId: "att-a" })).resolves.toMatchObject({ success: true });
     const failing: ScoringQueue = {

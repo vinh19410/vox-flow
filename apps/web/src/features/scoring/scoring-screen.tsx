@@ -80,7 +80,7 @@ export function ScoringScreen() {
   );
 }
 
-/** Unscored modes and no-job entry: a saved unscored attempt on the server, or no attempt at all (e.g. deep link). */
+/** Direct `/scoring` entry without a job (deep link), or the version-skew fallback when the server marks the attempt `not_scorable`. */
 function RecordedState({ onHome, onMore }: { onHome: () => void; onMore: () => void }) {
   return (
     <EmptyState
