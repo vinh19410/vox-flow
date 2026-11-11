@@ -39,15 +39,15 @@ Hai lỗi đã kiểm chứng ở `packages/api/src/data-registry.ts` (phát hi�
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Hardening data-registry export & D1 bind limit](./phase-01-start.md) | Pending |
+| 1 | [Phase 1: Hardening data-registry export & D1 bind limit](./phase-01-start.md) | Completed |
 
 ## Success Criteria
 
-- [ ] `attempt_score` export trả đúng 7 trường: `attemptId`, `status`, `overall`, `criteriaJson`, `oneLiner`, `createdAt`, `scoredAt`.
-- [ ] `data.score_run` trong payload export luôn rỗng; `eraseUserData` vẫn xóa vật lý mọi row `score_run` của user.
-- [ ] Cả 4 chỗ IN-list thay bằng subquery `attempt_id IN (SELECT id FROM attempt WHERE user_id = ?)`; helper `userAttemptIds` bị xóa (không còn caller).
-- [ ] Test mới: fixture ≥ 120 attempts (seed `user` trước vì FK); mọi captured query qua recordingD1 (wrap `prepare`/`bind` tầng driver) assert `params.length <= 100` (cả export lẫn erase); assert shape export mới; erase sạch với >100 attempts.
-- [ ] `pnpm --filter @vox-flow/api test src/data-registry.test.ts` pass; `pnpm check-types` pass.
+- [x] `attempt_score` export trả đúng 7 trường: `attemptId`, `status`, `overall`, `criteriaJson`, `oneLiner`, `createdAt`, `scoredAt`.
+- [x] `data.score_run` trong payload export luôn rỗng; `eraseUserData` vẫn xóa vật lý mọi row `score_run` của user.
+- [x] Cả 4 chỗ IN-list thay bằng subquery `attempt_id IN (SELECT id FROM attempt WHERE user_id = ?)`; helper `userAttemptIds` bị xóa (không còn caller).
+- [x] Test mới: fixture ≥ 120 attempts (seed `user` trước vì FK); mọi captured query qua recordingD1 (wrap `prepare`/`bind` tầng driver) assert `params.length <= 100` (cả export lẫn erase); assert shape export mới; erase sạch với >100 attempts.
+- [x] `pnpm --filter @vox-flow/api test src/data-registry.test.ts` pass; `pnpm check-types` pass.
 
 ## Known Limitations
 

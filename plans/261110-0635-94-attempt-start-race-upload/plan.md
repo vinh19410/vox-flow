@@ -41,9 +41,9 @@ Hướng sửa (phương án 1 của issue #94; kongming advise 2 checkpoint; re
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Registry pending + drain đồng bộ trong use-exam-session (TDD)](./phase-01-start.md) | Pending |
-| 2 | [attemptStatus + chặn nộp khi đang đồng bộ (TDD)](./phase-02-submit-gate.md) | Pending |
-| 3 | [Regression gates toàn exam/scoring + check-types](./phase-03-regression.md) | Pending |
+| 1 | [Registry pending + drain đồng bộ trong use-exam-session (TDD)](./phase-01-start.md) | Completed |
+| 2 | [attemptStatus + chặn nộp khi đang đồng bộ (TDD)](./phase-02-submit-gate.md) | Completed |
+| 3 | [Regression gates toàn exam/scoring + check-types](./phase-03-regression.md) | Completed |
 
 ## Non-goals (Advisor Scope Lock) — follow-up đã ghi nhận
 
@@ -57,15 +57,15 @@ Hướng sửa (phương án 1 của issue #94; kongming advise 2 checkpoint; re
 
 ## Acceptance Criteria
 
-- [ ] AC1: Trả lời xong khi `attemptId` còn null, sau đó `attempt.start` resolve → đúng 1 lần track dưới id thật, record resolve dưới id thật; xoá session copy **đúng 1 lần, dưới session id** (assert chính xác), chỉ sau khi track resolve `true`.
-- [ ] AC2: Encode race — encode resolve sau khi id về → track dưới id thật, không qua registry, không save session copy.
-- [ ] AC3: Offline/mock (`attempt.start` không bao giờ resolve) → không track/POST, bản ghi device-only.
-- [ ] AC4: Nhánh `attempt.getActive` (resume) cũng drain registry — test runtime riêng.
-- [ ] AC5: Hai take cùng câu pending → registry last-write-wins, chỉ take MỚI được track (test khóa).
-- [ ] AC6: Nộp ngay khi id vừa về → đăng ký backfill đã chạy trước handler submit (drain đồng bộ trước `setAttemptId`; test khóa `trackUploadSpy` đã gọi sau click).
-- [ ] AC7: Tri-state — `pending`: nút nộp khoá "Đang đồng bộ phiên thi…" + click vô hiệu; `ready`: mở khoá, hai path (practice/mock) nộp bình thường; `failed`: nút mở khoá với nhãn thường, nộp theo fall-through cũ (không regression offline).
-- [ ] AC8: Unmount khi còn pending → chỉ clear registry in-memory, KHÔNG xoá device copy session.
-- [ ] AC9: `pnpm check-types` pass; toàn bộ test `src/features/exam` và `src/features/scoring` pass.
+- [x] AC1: Trả lời xong khi `attemptId` còn null, sau đó `attempt.start` resolve → đúng 1 lần track dưới id thật, record resolve dưới id thật; xoá session copy **đúng 1 lần, dưới session id** (assert chính xác), chỉ sau khi track resolve `true`.
+- [x] AC2: Encode race — encode resolve sau khi id về → track dưới id thật, không qua registry, không save session copy.
+- [x] AC3: Offline/mock (`attempt.start` không bao giờ resolve) → không track/POST, bản ghi device-only.
+- [x] AC4: Nhánh `attempt.getActive` (resume) cũng drain registry — test runtime riêng.
+- [x] AC5: Hai take cùng câu pending → registry last-write-wins, chỉ take MỚI được track (test khóa).
+- [x] AC6: Nộp ngay khi id vừa về → đăng ký backfill đã chạy trước handler submit (drain đồng bộ trước `setAttemptId`; test khóa `trackUploadSpy` đã gọi sau click).
+- [x] AC7: Tri-state — `pending`: nút nộp khoá "Đang đồng bộ phiên thi…" + click vô hiệu; `ready`: mở khoá, hai path (practice/mock) nộp bình thường; `failed`: nút mở khoá với nhãn thường, nộp theo fall-through cũ (không regression offline).
+- [x] AC8: Unmount khi còn pending → chỉ clear registry in-memory, KHÔNG xoá device copy session.
+- [x] AC9: `pnpm check-types` pass; toàn bộ test `src/features/exam` và `src/features/scoring` pass.
 
 ## Validation Log
 

@@ -1,7 +1,7 @@
 ---
 phase: 4
 title: "Routes, router provider bridge + app shell"
-status: pending
+status: completed
 priority: P1
 effort: "2h"
 dependencies: [2, 3]

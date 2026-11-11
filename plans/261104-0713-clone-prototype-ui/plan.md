@@ -83,22 +83,22 @@ apps/web/
 ## Phases
 | # | Phase | Depends | Status |
 |---|---|---|---|
-| 1 | [Foundation: test harness, tokens, fonts, layout split](phase-01-foundation.md) | – | pending |
-| 2 | [Design-system primitives + hooks + lib](phase-02-primitives.md) | 1 | pending |
-| 3 | [App state store + mock data split](phase-03-state-data.md) | 1 | pending |
-| 4 | [Routes, router provider bridge + app shell](phase-04-routes-shell.md) | 2, 3 | pending |
-| 5 | [Screens → feature components](phase-05-screens.md) | 4 | pending |
-| 6 | [Verification, visual parity + cleanup](phase-06-verify.md) | 5 | pending |
+| 1 | [Foundation: test harness, tokens, fonts, layout split](phase-01-foundation.md) | – | completed |
+| 2 | [Design-system primitives + hooks + lib](phase-02-primitives.md) | 1 | completed |
+| 3 | [App state store + mock data split](phase-03-state-data.md) | 1 | completed |
+| 4 | [Routes, router provider bridge + app shell](phase-04-routes-shell.md) | 2, 3 | completed |
+| 5 | [Screens → feature components](phase-05-screens.md) | 4 | completed |
+| 6 | [Verification, visual parity + cleanup](phase-06-verify.md) | 5 | completed |
 
 Phases 2 and 3 own strictly disjoint paths (`components/ds + hooks + lib` vs `features/*/types|data|store`) and have zero router type dependency on Phase 4.
 
 ## Acceptance criteria
-- [ ] `pnpm test && pnpm check-types && pnpm build` exit 0 at repo root.
-- [ ] Every one of the 12 prototype screens is reachable by URL and via in-app navigation; full flow `/` → `/auth` → `/onboarding` → `/app/dashboard` → `/app/select` → `/exam` → `/scoring` → `/app/history/$attemptId` → paywall/payment → `/app/billing` → `/app/privacy` → `/app/history` works end to end.
-- [ ] Legacy `/login` and `/dashboard` (`_app-legacy/_auth/dashboard`) remain functional with `Header` and `ThemeProvider`, without leaking `html.dark` onto `_proto` routes.
-- [ ] Side-by-side headless browser screenshots (prototype vs `apps/web`) at `390x844` and `1280x900` across all 12 screens show visual parity, recorded in `plans/261104-0713-clone-prototype-ui/reports/visual-parity-report.md`.
-- [ ] Zero production `.ts`/`.tsx` files in `apps/web/src/{features,layouts,components/ds}` exceed 200 lines (`FNR>200` check); zero unrenamed `accent` or `muted` Tailwind token utilities in ported files.
-- [ ] Zero changes under `packages/ui`, `packages/api`, `packages/db`, `packages/auth`, `packages/config`, `packages/infra`, or `apps/server`.
+- [x] `pnpm test && pnpm check-types && pnpm build` exit 0 at repo root.
+- [x] Every one of the 12 prototype screens is reachable by URL and via in-app navigation; full flow `/` → `/auth` → `/onboarding` → `/app/dashboard` → `/app/select` → `/exam` → `/scoring` → `/app/history/$attemptId` → paywall/payment → `/app/billing` → `/app/privacy` → `/app/history` works end to end.
+- [x] Legacy `/login` and `/dashboard` (`_app-legacy/_auth/dashboard`) remain functional with `Header` and `ThemeProvider`, without leaking `html.dark` onto `_proto` routes.
+- [x] Side-by-side headless browser screenshots (prototype vs `apps/web`) at `390x844` and `1280x900` across all 12 screens show visual parity, recorded in `plans/261104-0713-clone-prototype-ui/reports/visual-parity-report.md`.
+- [x] Zero production `.ts`/`.tsx` files in `apps/web/src/{features,layouts,components/ds}` exceed 200 lines (`FNR>200` check); zero unrenamed `accent` or `muted` Tailwind token utilities in ported files.
+- [x] Zero changes under `packages/ui`, `packages/api`, `packages/db`, `packages/auth`, `packages/config`, `packages/infra`, or `apps/server`.
 
 ## Risks
 - Token rename misses opacity/gradient/SVG variants (`to-accent`, `fill-muted`, `group-hover:text-accent`, `bg-accent/15`): mitigated by comprehensive regex grep gate in Phases 2, 4, 5, and 6.

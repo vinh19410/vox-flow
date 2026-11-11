@@ -1,7 +1,7 @@
 ---
 title: "Khắc phục triệt để lỗi hiển thị input ngày thi trên iOS Safari khi đã chọn và chưa chọn ngày"
 description: "Thêm appearance: none, -webkit-appearance: none, và reset pseudo-element ::-webkit-date-and-time-value cho input temporal trong @layer base, kèm text-base mobile trên trang profile nhằm ngăn chặn WebKit MenulistButton intrinsic min-width và tràn viền"
-status: in_progress
+status: completed
 priority: P1
 effort: "XS"
 tags: [profile, ui, fix, mobile, ios-safari, webkit, css]
@@ -37,7 +37,7 @@ Giải pháp chuẩn kỹ thuật của WebKit:
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Reset CSS appearance và styling cho date input](./phase-01-ios-date-appearance-reset.md) | In Progress |
+| 1 | [Phase 1: Reset CSS appearance và styling cho date input](./phase-01-ios-date-appearance-reset.md) | Completed |
 
 ## Success Criteria
 

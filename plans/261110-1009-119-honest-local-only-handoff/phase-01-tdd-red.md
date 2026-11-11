@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: TDD — test đỏ cho local_only hand-off và shape union"
-status: pending
+status: completed
 priority: P1
 effort: "1h"
 dependencies: []

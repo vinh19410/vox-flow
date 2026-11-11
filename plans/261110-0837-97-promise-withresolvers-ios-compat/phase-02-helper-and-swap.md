@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Phase 2: Helper + thay 6 call-site (green + verify)"
-status: pending
+status: completed
 priority: P1
 effort: "1h"
 dependencies: [1]

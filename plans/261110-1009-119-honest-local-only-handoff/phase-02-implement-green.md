@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: Implement — union ScoringJob + LocalOnlyState đến toàn bộ xanh"
-status: pending
+status: completed
 priority: P1
 effort: "1h"
 dependencies: ["phase-01-tdd-red"]

@@ -50,7 +50,7 @@ Cấu hình Cloudflare Queue chấm điểm có một nguồn sự thật duy nh
 |---|-------|------|-------------|--------|
 | 1 | Cấu hình queue một nguồn + maxConcurrency | [phase-01-queue-config.md](phase-01-queue-config.md) | `packages/infra/alchemy.run.ts`, `packages/api/src/scoring/config.ts`, `apps/server/src/queue.ts` + tests | Done |
 | 2 | Câu hỏi nguồn server + audio instruction | [phase-02-server-questions.md](phase-02-server-questions.md) | `packages/api/src/**` | Done |
-| 3 | Review độc lập, PR vào `dev` | [phase-03-review-ship.md](phase-03-review-ship.md) | — | Pending |
+| 3 | Review độc lập, PR vào `dev` | [phase-03-review-ship.md](phase-03-review-ship.md) | — | Done |
 
 ## Acceptance Criteria
 - [x] `maxRetries` chỉ khai báo value ở `alchemy.run.ts`, không override được qua deploy-env; server parse chặt (rỗng/sai → 3 + warn), đọc lười trong handler; test chứng minh last-delivery theo env mock "2".

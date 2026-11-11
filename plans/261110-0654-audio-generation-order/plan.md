@@ -58,21 +58,21 @@ Server luôn giữ bản ghi có generation cao nhất cho mỗi câu. Upload tr
 | 2 | Client: generation timestamp, phân loại 409, bỏ mustResend | `apps/web/**` | Done |
 
 ## Acceptance Criteria (theo checklist kongming + red-team)
-- [ ] Generation dựa trên thời gian, chặn tăng dần, gán NGAY LÚC TẠO record trong `use-exam-session` (helper `withGeneration`, cả hai nhánh có/không `attemptId`); nằm trong `AudioBlobRecord`; retry/flush gửi lại đúng giá trị.
-- [ ] Device copy legacy (trước deploy, thiếu generation) được chuẩn hoá về **0** lúc flush — không bao giờ được đóng dấu timestamp mới.
-- [ ] Sau reload hoặc resume (đồng hồ đơn điệu), ghi âm lại một câu đã có trên server thì được 200, không bị 409.
-- [ ] Thứ tự route: auth → pre-read → put (key có generation) → upsert điều kiện `stored <= excluded.generation` kèm returning → thua thì delete blob + 409 `stale_generation`.
-- [ ] `generation > Date.now() + 24 giờ` → `400` (trần server clock — deviation đã ghi: 5 phút quá chật cho thiết bị lệch giờ; ownership check chặn cross-user).
-- [ ] Gửi cùng generation hai lần: cả hai 200; row phản ánh payload lần cuối.
-- [ ] Không gửi param = generation 0: nhận nếu row 0, 409 `stale_generation` nếu row đã > 0.
-- [ ] Hai request cùng câu theo thứ tự ngược (gen cao trước, gen thấp sau): row cuối là gen cao, blob gen thấp đã bị xoá — chứng minh bằng test composite chạy route + SQLite thật (Miniflare), không chỉ mock.
-- [ ] Row có sẵn trước migration default 0 còn đọc được; key cũ vẫn qua `isValidAudioKey` sau khi nới regex (`(\.\d+)?`); key mới `<qk>.<gen>.<ext>` không xung đột key legacy.
-- [ ] Bản thắng xoá blob của generation bị thay thế; bản thua xoá blob của chính nó.
-- [ ] Erasure xoá theo prefix, loop pagination (`truncated`/`cursor`); `list` bắt buộc; có test chứng minh blob generation cũ bị xoá và truncated được xử lý.
-- [ ] tRPC `attempt.uploadAnswer` đã xoá cùng test của nó.
-- [ ] Client: `409 stale` = settled (clearFailed, không fail ở flush lúc submit, GIỮ device copy); `mustResend`/`settleSuperseded` đã xoá, test thay thế chứng minh hành vi mới.
-- [ ] Test upsert điều kiện chạy trên SQLite thật (Miniflare D1), chứng minh `returning()` về 0 row khi điều kiện sai.
-- [ ] Gate: `pnpm --filter @vox-flow/api test`, `pnpm --filter server test`, `pnpm --filter web test src/features/exam/__tests__/answer-uploads.test.ts`, `pnpm check-types` — tất cả pass.
+- [x] Generation dựa trên thời gian, chặn tăng dần, gán NGAY LÚC TẠO record trong `use-exam-session` (helper `withGeneration`, cả hai nhánh có/không `attemptId`); nằm trong `AudioBlobRecord`; retry/flush gửi lại đúng giá trị.
+- [x] Device copy legacy (trước deploy, thiếu generation) được chuẩn hoá về **0** lúc flush — không bao giờ được đóng dấu timestamp mới.
+- [x] Sau reload hoặc resume (đồng hồ đơn điệu), ghi âm lại một câu đã có trên server thì được 200, không bị 409.
+- [x] Thứ tự route: auth → pre-read → put (key có generation) → upsert điều kiện `stored <= excluded.generation` kèm returning → thua thì delete blob + 409 `stale_generation`.
+- [x] `generation > Date.now() + 24 giờ` → `400` (trần server clock — deviation đã ghi: 5 phút quá chật cho thiết bị lệch giờ; ownership check chặn cross-user).
+- [x] Gửi cùng generation hai lần: cả hai 200; row phản ánh payload lần cuối.
+- [x] Không gửi param = generation 0: nhận nếu row 0, 409 `stale_generation` nếu row đã > 0.
+- [x] Hai request cùng câu theo thứ tự ngược (gen cao trước, gen thấp sau): row cuối là gen cao, blob gen thấp đã bị xoá — chứng minh bằng test composite chạy route + SQLite thật (Miniflare), không chỉ mock.
+- [x] Row có sẵn trước migration default 0 còn đọc được; key cũ vẫn qua `isValidAudioKey` sau khi nới regex (`(\.\d+)?`); key mới `<qk>.<gen>.<ext>` không xung đột key legacy.
+- [x] Bản thắng xoá blob của generation bị thay thế; bản thua xoá blob của chính nó.
+- [x] Erasure xoá theo prefix, loop pagination (`truncated`/`cursor`); `list` bắt buộc; có test chứng minh blob generation cũ bị xoá và truncated được xử lý.
+- [x] tRPC `attempt.uploadAnswer` đã xoá cùng test của nó.
+- [x] Client: `409 stale` = settled (clearFailed, không fail ở flush lúc submit, GIỮ device copy); `mustResend`/`settleSuperseded` đã xoá, test thay thế chứng minh hành vi mới.
+- [x] Test upsert điều kiện chạy trên SQLite thật (Miniflare D1), chứng minh `returning()` về 0 row khi điều kiện sai.
+- [x] Gate: `pnpm --filter @vox-flow/api test`, `pnpm --filter server test`, `pnpm --filter web test src/features/exam/__tests__/answer-uploads.test.ts`, `pnpm check-types` — tất cả pass.
 
 ## Failure Protocol
 Xem `## Failure Protocol` trong từng `phase-NN-*.md`. Khi một bước Verify không đạt pass condition: DỪNG phase, không tự sửa cho qua, escalate theo protocol (kongming hoặc báo user).

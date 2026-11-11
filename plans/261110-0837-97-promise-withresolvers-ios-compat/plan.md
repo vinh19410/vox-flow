@@ -41,8 +41,8 @@ Học viên trên iOS Safari < 17.4 (và Chrome < 119 / Firefox < 121) ghi âm, 
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Regression tests tương thích (red)](./phase-01-regression-tests.md) | Pending |
-| 2 | [Helper + thay 6 call-site (green + verify)](./phase-02-helper-and-swap.md) | Pending |
+| 1 | [Regression tests tương thích (red)](./phase-01-regression-tests.md) | Completed |
+| 2 | [Helper + thay 6 call-site (green + verify)](./phase-02-helper-and-swap.md) | Completed |
 
 ## Acceptance Criteria
 

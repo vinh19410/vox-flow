@@ -1,6 +1,6 @@
 ---
 title: "Phase 2: attemptStatus + chặn nộp khi đang đồng bộ (TDD)"
-status: done
+status: completed
 ---
 
 # Phase 2: attemptStatus + chặn nộp khi đang đồng bộ (TDD)

@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Implement timer + gates xanh"
-status: pending
+status: completed
 priority: P1
 effort: "45m"
 dependencies: [1]
@@ -72,10 +72,10 @@ Thêm timer 15s vào effect bootstrap của `useExamSession`: hết hạn mà ch
 
 ## Requirements
 
-- [ ] Timer 15s một lần duy nhất cho cả chuỗi bootstrap (không đặt timer riêng cho từng request)
-- [ ] Callback guard `pending`-only
-- [ ] Clear timer ở `.finally` + cleanup
-- [ ] Không đổi API/UI khác
+- [x] Timer 15s một lần duy nhất cho cả chuỗi bootstrap (không đặt timer riêng cho từng request)
+- [x] Callback guard `pending`-only
+- [x] Clear timer ở `.finally` + cleanup
+- [x] Không đổi API/UI khác
 
 ## Security Considerations
 

@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Registry pending + drain đồng bộ trong use-exam-session (TDD)"
-status: done
+status: completed
 ---
 
 # Phase 1: Registry pending + drain đồng bộ trong use-exam-session (TDD)

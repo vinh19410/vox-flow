@@ -65,22 +65,22 @@ Thông báo lỗi (tiếng Việt, khớp giọng codebase):
 
 | # | Phase | Status | File |
 |---|-------|--------|------|
-| 1 | TDD — test đỏ cho thứ tự flush→submit và các nhánh lỗi | Pending | [phase-01-tdd-red.md](./phase-01-tdd-red.md) |
-| 2 | Hiện thực submit state machine + modal busy/error | Pending | [phase-02-implement-green.md](./phase-02-implement-green.md) |
+| 1 | TDD — test đỏ cho thứ tự flush→submit và các nhánh lỗi | Completed | [phase-01-tdd-red.md](./phase-01-tdd-red.md) |
+| 2 | Hiện thực submit state machine + modal busy/error | Completed | [phase-02-implement-green.md](./phase-02-implement-green.md) |
 
 ## Acceptance Criteria
 
-- [ ] Nhánh mock (`attemptId` truthy): `flushAnswerUploads` được gọi và hoàn tất **trước** `attempt.submit`; `attempt.submit` hoàn tất **trước** khi `go("scoring")` (thứ tự được assert trong test).
-- [ ] `failedQuestionKeys > 0` → không submit, không nav; modal hiện lỗi + "Thử lại" chạy lại flush→submit thành công; nút "Vẫn nộp" không render.
-- [ ] `storageUnreadable` đơn thuần → cảnh báo + nút "Vẫn nộp"; "Vẫn nộp" gọi thẳng submit (flushSpy đúng 1 lần), submit → nav.
-- [ ] Submit trả "Attempt is already submitted" → coi là thành công → nav.
-- [ ] Submit BAD_REQUEST khác ("Attempt is abandoned") → không nav, message riêng không dán nhãn lỗi mạng.
-- [ ] Submit lỗi khác → không nav, lỗi trong modal, retry được.
-- [ ] Đóng modal giữa FLUSHING → discard, không nav; giữa SUBMITTING + submit thành công → vẫn nav scoring; + thất bại → discard im lặng.
-- [ ] Thoát exam ở bất kỳ pha → không bao giờ nav về scoring nền, không set `pendingSubmission`.
-- [ ] Nút "Nói lại" disabled khi busy; "Quay lại" luôn enabled.
-- [ ] Path `attemptStatus` failed và path forecast: hành vi giữ nguyên, test cũ giữ xanh (trừ test pin bug được viết lại).
-- [ ] `pnpm --filter web test` toàn bộ xanh; `pnpm check-types` exit 0.
+- [x] Nhánh mock (`attemptId` truthy): `flushAnswerUploads` được gọi và hoàn tất **trước** `attempt.submit`; `attempt.submit` hoàn tất **trước** khi `go("scoring")` (thứ tự được assert trong test).
+- [x] `failedQuestionKeys > 0` → không submit, không nav; modal hiện lỗi + "Thử lại" chạy lại flush→submit thành công; nút "Vẫn nộp" không render.
+- [x] `storageUnreadable` đơn thuần → cảnh báo + nút "Vẫn nộp"; "Vẫn nộp" gọi thẳng submit (flushSpy đúng 1 lần), submit → nav.
+- [x] Submit trả "Attempt is already submitted" → coi là thành công → nav.
+- [x] Submit BAD_REQUEST khác ("Attempt is abandoned") → không nav, message riêng không dán nhãn lỗi mạng.
+- [x] Submit lỗi khác → không nav, lỗi trong modal, retry được.
+- [x] Đóng modal giữa FLUSHING → discard, không nav; giữa SUBMITTING + submit thành công → vẫn nav scoring; + thất bại → discard im lặng.
+- [x] Thoát exam ở bất kỳ pha → không bao giờ nav về scoring nền, không set `pendingSubmission`.
+- [x] Nút "Nói lại" disabled khi busy; "Quay lại" luôn enabled.
+- [x] Path `attemptStatus` failed và path forecast: hành vi giữ nguyên, test cũ giữ xanh (trừ test pin bug được viết lại).
+- [x] `pnpm --filter web test` toàn bộ xanh; `pnpm check-types` exit 0.
 
 ## Red Team Review
 

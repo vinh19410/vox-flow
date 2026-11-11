@@ -1,6 +1,6 @@
 ---
 title: "Phase 3: Regression gates toàn exam/scoring + check-types"
-status: done
+status: completed
 ---
 
 # Phase 3: Regression gates toàn exam/scoring + check-types

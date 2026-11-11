@@ -57,16 +57,16 @@ Recovery qua `applyAttemptId` chỉ sống khi ExamScreen còn mounted (`use-exa
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Test đỏ — timeout attempt sync](./phase-01-start.md) | Pending |
-| 2 | [Implement timer + gates xanh](./phase-02-implement-timer.md) | Pending |
+| 1 | [Test đỏ — timeout attempt sync](./phase-01-start.md) | Completed |
+| 2 | [Implement timer + gates xanh](./phase-02-implement-timer.md) | Completed |
 
 ## Acceptance Criteria
 
-- [ ] AC1: `start`/`getActive` không phản hồi → sau 15s `attemptStatus` chuyển `"failed"`; nút trong pre-submit modal chuyển từ "Đang đồng bộ phiên thi…" (disabled) sang enabled với label khớp `/nộp & chấm/i` (biến thể "Vẫn nộp & chấm" khi có câu ngắn — fixture test dùng câu ngắn), submit đi tiếp `go("scoring")` không gọi `attempt.submit`.
-- [ ] AC2: Id attempt về muộn **sau mốc 15s nhưng trước khi user rời màn thi** vẫn áp dụng: trước `resolve` phải thấy nút đã unlocked (assert đỏ trước fix), sau resolve `attemptStatus` → `"ready"`, bản ghi pending được `trackAnswerUpload` dưới attempt thật, submit practice tạo `scoringAttempt` với id đó. (Ngoài cửa sổ mounted: xem "Biên phục hồi id muộn".)
-- [ ] AC3: Bootstrap settle thành công (id về sớm) → timer được clear/guard chặn, `attemptStatus` giữ `"ready"` qua mốc 15s (kiểm chứng bằng hook-probe test — UI không phân biệt ready/failed).
-- [ ] AC4: Không regression: toàn bộ suite web `pnpm --filter web test` pass (gồm `slice-c.test.tsx`, `forecast-flow.test.tsx` — cũng mount ExamScreen với fake timers).
-- [ ] AC5: `pnpm check-types` exit 0.
+- [x] AC1: `start`/`getActive` không phản hồi → sau 15s `attemptStatus` chuyển `"failed"`; nút trong pre-submit modal chuyển từ "Đang đồng bộ phiên thi…" (disabled) sang enabled với label khớp `/nộp & chấm/i` (biến thể "Vẫn nộp & chấm" khi có câu ngắn — fixture test dùng câu ngắn), submit đi tiếp `go("scoring")` không gọi `attempt.submit`.
+- [x] AC2: Id attempt về muộn **sau mốc 15s nhưng trước khi user rời màn thi** vẫn áp dụng: trước `resolve` phải thấy nút đã unlocked (assert đỏ trước fix), sau resolve `attemptStatus` → `"ready"`, bản ghi pending được `trackAnswerUpload` dưới attempt thật, submit practice tạo `scoringAttempt` với id đó. (Ngoài cửa sổ mounted: xem "Biên phục hồi id muộn".)
+- [x] AC3: Bootstrap settle thành công (id về sớm) → timer được clear/guard chặn, `attemptStatus` giữ `"ready"` qua mốc 15s (kiểm chứng bằng hook-probe test — UI không phân biệt ready/failed).
+- [x] AC4: Không regression: toàn bộ suite web `pnpm --filter web test` pass (gồm `slice-c.test.tsx`, `forecast-flow.test.tsx` — cũng mount ExamScreen với fake timers).
+- [x] AC5: `pnpm check-types` exit 0.
 
 ## Verification (tổng)
 

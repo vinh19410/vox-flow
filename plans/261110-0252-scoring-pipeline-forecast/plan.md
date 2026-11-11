@@ -1,6 +1,6 @@
 ---
 title: "Scoring pipeline (beta) cho luyện forecast"
-status: done
+status: completed
 issue: 90
 branch: feat/scoring-pipeline-forecast
 related: [17, 24]
