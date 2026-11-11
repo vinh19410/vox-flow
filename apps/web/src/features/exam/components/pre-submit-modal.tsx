@@ -3,6 +3,7 @@ import { ArrowRight, Check, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ds/button";
 import { Modal } from "@/components/ds/modal";
 import { cx } from "@/lib/cx";
+import { mmss } from "@/lib/format";
 
 import type { Part } from "../types";
 import type { ExamAnswer, ExamStep } from "../use-exam-session";
@@ -75,7 +76,7 @@ export function PreSubmitModal({
                   </div>
                   <div className="truncate text-sm font-medium">{st.text}</div>
                 </div>
-                <span className="tnum text-xs text-subtle">{a ? `${a.words} từ` : "—"}</span>
+                <span className="tnum text-xs text-subtle">{a ? mmss(a.secs) : "—"}</span>
                 {bad && (
                   <button
                     disabled={busy}

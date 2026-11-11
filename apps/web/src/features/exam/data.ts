@@ -1,6 +1,6 @@
 import { MOCK_EXAM_PROMPTS } from "@vox-flow/api/scoring/mock-exam-bank";
 
-import type { ExamItem, ExamModeOption, ExaminerVoice, Mode, Part, PartInfo } from "./types";
+import type { ExamAnswer, ExamItem, ExamModeOption, ExaminerVoice, Mode, Part, PartInfo } from "./types";
 
 export const MODES: ExamModeOption[] = [
   { id: "full", title: "Full Test", sub: "Đủ 3 part như thi thật", time: "11–14 phút", parts: [1, 2, 3] },
@@ -59,8 +59,12 @@ export const ITEMS: ExamItem[] = MOCK_EXAM_PROMPTS.map((prompt) => ({
     : undefined,
 }));
 
-// Recommended minimum speaking length per part (feature D): Part 1 short answers stay valid.
-export const MIN_WORDS: Record<Part, number> = { 1: 12, 2: 90, 3: 22 };
+// Recommended minimum speaking time per part, in seconds (feature D): Part 1 short answers stay valid.
+// Measured on the real recording length; there is no live transcript to count words from.
+export const MIN_SECS: Record<Part, number> = { 1: 6, 2: 45, 3: 12 };
+
+export const isShortAnswer = (ans: ExamAnswer | undefined, part: Part): boolean =>
+  !!ans && ans.secs < MIN_SECS[part];
 
 export const PART_INFO: Record<Part, PartInfo> = {
   1: {

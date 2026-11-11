@@ -5,7 +5,7 @@ import { PreSubmitModal } from "../pre-submit-modal";
 import type { ExamAnswer, ExamStep } from "../../use-exam-session";
 
 const steps: ExamStep[] = [{ key: "p1-0", part: 1, text: "Are you a tidy person?", answer: "Yes I am quite tidy." }];
-const answers: Record<string, ExamAnswer> = { "p1-0": { secs: 4, words: 5 } };
+const answers: Record<string, ExamAnswer> = { "p1-0": { secs: 4 } };
 
 function renderModal(overrides: Partial<Parameters<typeof PreSubmitModal>[0]> = {}) {
   const handlers = {

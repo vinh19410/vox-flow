@@ -47,7 +47,6 @@ export type ExamPhase = "intro" | "asking" | "ready" | "prep" | "recording" | "a
 
 export interface ExamAnswer {
   secs: number;
-  words: number;
   durationMs?: number;
   audioKey?: string;
   blob?: Blob;

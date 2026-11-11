@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { LiveTranscript } from "../live-transcript";
 import type { ExamAnswer } from "../../use-exam-session";
 
-const ans: ExamAnswer = { secs: 32, words: 5, durationMs: 32_000 };
+const ans: ExamAnswer = { secs: 32, durationMs: 32_000 };
 
 describe("LiveTranscript honesty (#127)", () => {
   it("labels recording honestly and never renders sample-answer text or a word counter", () => {

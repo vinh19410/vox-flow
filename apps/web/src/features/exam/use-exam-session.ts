@@ -13,7 +13,6 @@ import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./typ
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
 const ATTEMPT_SYNC_TIMEOUT_MS = 15_000; // hung attempt.start/getActive must not lock submit forever (#106)
-const WPS = 2.6; // simulated words-per-second; feeds only the min-words heuristic (#127 removed the live display)
 
 export interface ExamSessionValue {
   parts: Part[];
@@ -149,7 +148,6 @@ export function useExamSession(): ExamSessionValue {
             for (const a of activeAttempt.answers) {
               rehydrated[a.questionKey] = {
                 secs: Math.round(a.durationMs / 1000),
-                words: 20,
                 durationMs: a.durationMs,
                 audioKey: a.audioKey,
               };
@@ -181,8 +179,6 @@ export function useExamSession(): ExamSessionValue {
   }, []);
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
-  const words = step?.answer ? step.answer.split(" ").filter(Boolean) : [];
-  const spoken = words.length > 0 ? Math.min(words.length, Math.floor(recT * WPS)) : Math.floor(recT * WPS);
   const maxRec = step?.part === 2 ? 120 : step?.part === 3 ? 60 : 40;
   // All exam timers pause while the exit or pre-submit modal is open.
   const paused = exitOpen || review;
@@ -237,12 +233,10 @@ export function useExamSession(): ExamSessionValue {
 
   function stopRec() {
     const currentRecT = recT;
-    const currentSpoken = spoken;
     setAnswers((a) => ({
       ...a,
       [step.key]: {
-        secs: currentRecT,
-        words: currentSpoken,
+        secs: Math.round(currentRecT),
         durationMs: Math.round(currentRecT * 1000),
       },
     }));
@@ -256,9 +250,8 @@ export function useExamSession(): ExamSessionValue {
       setAnswers((a) => ({
         ...a,
         [step.key]: {
-          secs: currentRecT,
-          words: currentSpoken,
-          durationMs,
+          secs: Math.round(currentRecT),
+            durationMs,
           blob: audio.blob,
         },
       }));
