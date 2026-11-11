@@ -65,7 +65,8 @@ export const scoringRouter = router({
       return {
         attemptId: input.attemptId,
         status: score?.status ?? "not_scored",
-        scorable: owned.topicId !== null,
+        scorable: true,
+        attemptStatus: owned.status,
         manualRetries,
         // No score row: retry goes through the quota-exempt rescue path.
         canRetry: score
@@ -84,14 +85,15 @@ export const scoringRouter = router({
       // Both branches are conditional writes, so concurrent retries enqueue once.
       let changed: Array<{ attemptId: string; manualRetries?: number }>;
       if (!existing) {
-        // Rescue path: a submitted forecast attempt whose score row was never
-        // created (e.g. submit's enqueue step failed). Deliberately exempt from
-        // the manual-retry and daily quotas: this restores lost server state,
-        // it does not give the learner another grading run.
-        if (owned.topicId === null || owned.status !== "submitted") {
+        // Rescue path: a submitted attempt (mock or forecast) whose score row
+        // was never created (e.g. submit's enqueue step failed, or the attempt
+        // predates the all-modes cutover). Deliberately exempt from the
+        // manual-retry and daily quotas: this restores lost server state, it
+        // does not give the learner another grading run.
+        if (owned.status !== "submitted") {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: "Only a submitted forecast practice attempt can be scored",
+            message: "Only a submitted attempt can be scored",
           });
         }
         changed = await ctx.db
@@ -168,7 +170,8 @@ export const scoringRouter = router({
       return {
         attemptId: input.attemptId,
         status: "queued",
-        scorable: owned.topicId !== null,
+        scorable: true,
+        attemptStatus: owned.status,
         manualRetries: changed[0]?.manualRetries ?? 0,
       };
     }),
@@ -215,6 +218,7 @@ export const scoringRouter = router({
       return {
         attemptId: input.attemptId,
         topicId: owned.topicId,
+        mode: owned.mode,
         overall: score.overall,
         oneLiner: score.oneLiner ?? "",
         criteria: criteria.data,

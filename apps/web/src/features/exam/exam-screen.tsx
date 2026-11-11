@@ -83,6 +83,9 @@ export function ExamScreen() {
     goPhase("idle");
     setSubmitError(null);
     setStorageWarning(false);
+    // Mock attempts are scored: hand the real scoring job to the scoring screen
+    // so it starts polling immediately instead of submitting a second time.
+    set({ scoringAttempt: { kind: "attempt", attemptId, submitted: true } });
     setPendingSubmission(true);
     go("scoring");
   };

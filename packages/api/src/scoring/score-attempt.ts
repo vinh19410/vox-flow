@@ -8,6 +8,7 @@ import { isValidAudioKey } from "../audio";
 import { resolveCanonicalQuestionText, type CanonicalQuestionTopic } from "../forecast/questions";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { findAnswerLimitViolation } from "./answer-limits";
+import { resolveCanonicalMockQuestionText } from "./mock-exam-bank";
 import { computeCostUsd, type ScoringConfig } from "./config";
 import { OpenAIRequestError, type ScoringOpenAIClient } from "./openai-client";
 import {
@@ -140,10 +141,10 @@ export async function markScoreFailed(
 }
 
 /**
- * Scores one forecast-practice attempt end to end. Idempotent and resumable:
- * transcripts already saved and runs already stored are reused, so calling it
- * again after a partial failure only pays for the missing work, and calling it
- * on a `done` row is a no-op.
+ * Scores one attempt end to end (forecast topic or mock exam). Idempotent and
+ * resumable: transcripts already saved and runs already stored are reused, so
+ * calling it again after a partial failure only pays for the missing work, and
+ * calling it on a `done` row is a no-op.
  */
 export async function scoreAttempt(
   deps: ScoreAttemptDeps,
@@ -239,9 +240,6 @@ async function runPipeline(
   if (!attemptRow) {
     throw new NonRetriableScoringError("Attempt not found");
   }
-  if (!attemptRow.topicId) {
-    throw new NonRetriableScoringError("Attempt is not a forecast practice attempt");
-  }
 
   const answerRows = await db
     .select()
@@ -259,19 +257,24 @@ async function runPipeline(
 
   // Authoritative count/bytes guard from #91, re-run at scoring time: a row
   // uploaded after submit snapshotted answers must never be graded.
-  // Canonical question source (from #93): the forecast bank, keyed by
-  // (topicId, questionKey). The client-supplied questionText stored on the
-  // answer row never enters the grading prompt. One topic row serves both.
-  const [topicRow] = await db
-    .select({
-      id: forecastTopic.id,
-      title: forecastTopic.title,
-      part: forecastTopic.part,
-      questions: forecastTopic.questions,
-    })
-    .from(forecastTopic)
-    .where(eq(forecastTopic.id, attemptRow.topicId))
-    .limit(1);
+  // Canonical question source (from #93): the forecast bank keyed by
+  // (topicId, questionKey), or the static mock exam bank for topic-less
+  // attempts. The client-supplied questionText stored on the answer row never
+  // enters the grading prompt. One topic row serves both guard and lookup.
+  let topicRow: { id: string; title: string; part: number; questions: string | unknown } | null = null;
+  if (attemptRow.topicId) {
+    const [row] = await db
+      .select({
+        id: forecastTopic.id,
+        title: forecastTopic.title,
+        part: forecastTopic.part,
+        questions: forecastTopic.questions,
+      })
+      .from(forecastTopic)
+      .where(eq(forecastTopic.id, attemptRow.topicId))
+      .limit(1);
+    topicRow = row ?? null;
+  }
   const limitViolation = findAnswerLimitViolation(attemptRow, topicRow ?? null, answerRows);
   if (limitViolation) {
     throw new NonRetriableScoringError(`Attempt answers rejected: ${limitViolation}`);
@@ -359,12 +362,13 @@ async function runPipeline(
   const answers: GradingAnswer[] = answerRows.map((row) => {
     const indexInPart = (partCounters.get(row.partNumber) ?? 0) + 1;
     partCounters.set(row.partNumber, indexInPart);
-    // Follow-up (-f) keys have no server-side source today: the web never
-    // calls getFollowUp. If that flow is wired in later, design a real
-    // persistence for generated questions — do NOT fall back to the
-    // client-supplied questionText here.
+    // Canonical text only: the forecast bank when the attempt has a topic,
+    // otherwise the static mock bank for the attempt's mode. Unknown keys
+    // grade with the placeholder — never the client-supplied questionText,
+    // and generated follow-ups stay unpersisted by design (see #93).
     const questionText =
       (bankTopic && resolveCanonicalQuestionText(bankTopic, row.questionKey)) ??
+      (!attemptRow.topicId ? resolveCanonicalMockQuestionText(row.questionKey, attemptRow.mode) : null) ??
       "(question unavailable)";
     return {
       questionKey: row.questionKey,
