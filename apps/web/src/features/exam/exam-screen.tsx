@@ -204,7 +204,7 @@ export function ExamScreen() {
           <div key={step.key} className="flex flex-1 animate-rise flex-col">
             <QuestionStage voice={session.voice} phase={phase} typed={session.typed} step={step} />
 
-            {step.cue && (
+            {step.cue && phase !== "examiner-thinking" && (
               <CueCardPanel
                 cue={step.cue}
                 prep={phase === "prep"}
@@ -214,7 +214,7 @@ export function ExamScreen() {
               />
             )}
 
-            {(phase === "recording" || phase === "answered") && (
+            {(phase === "recording" || phase === "answered" || phase === "examiner-thinking") && (
               <LiveTranscript phase={phase} ans={ans} />
             )}
 
