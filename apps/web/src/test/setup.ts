@@ -1,16 +1,30 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
+import { cancelSpeech, clearSpeechPrefetchCache } from "@/lib/speech";
+
 (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
 
 afterEach(() => {
   cleanup();
+  cancelSpeech();
+  clearSpeechPrefetchCache();
   try {
     globalThis.sessionStorage?.clear();
   } catch {
     // ignore storage errors in restricted environments
   }
 });
+
+if (typeof URL !== "undefined") {
+  if (typeof URL.createObjectURL !== "function") {
+    let nextBlobId = 0;
+    URL.createObjectURL = () => `blob:vox-flow-test/${++nextBlobId}`;
+  }
+  if (typeof URL.revokeObjectURL !== "function") {
+    URL.revokeObjectURL = () => {};
+  }
+}
 
 if (typeof window !== "undefined") {
   window.scrollTo = () => {};

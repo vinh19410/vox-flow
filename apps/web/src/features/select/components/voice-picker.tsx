@@ -5,9 +5,10 @@ import { Card } from "@/components/ds/card";
 import { useApp } from "@/features/app-state/types";
 import { VOICES } from "@/features/exam/data";
 import { cancelSpeech, speakText } from "@/lib/speech";
+import { buildPreviewTtsUrl } from "@/lib/tts-url";
 import { cx } from "@/lib/cx";
 
-const PREVIEW_MS = 3000;
+const PREVIEW_MS = 8000;
 
 export function VoicePicker() {
   const { s, set } = useApp();
@@ -31,8 +32,15 @@ export function VoicePicker() {
     }
     setPreview(id);
     speakText(`Hello, my name is ${v.name}. I will be your examiner today.`, {
+      audioUrl: buildPreviewTtsUrl(v.id),
       lang: id.startsWith("uk") ? "en-GB" : id.startsWith("au") ? "en-AU" : "en-US",
-      onEnd: () => setPreview(null),
+      onEnd: () => {
+        if (previewTimer.current !== null) {
+          window.clearTimeout(previewTimer.current);
+          previewTimer.current = null;
+        }
+        setPreview((p) => (p === id ? null : p));
+      },
     });
     previewTimer.current = window.setTimeout(() => setPreview((p) => (p === id ? null : p)), PREVIEW_MS);
   };

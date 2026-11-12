@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -272,23 +272,84 @@ describe("SelectScreen", () => {
   });
 
 
-  it("previews voices through speech synthesis and cancels on unmount", () => {
+  it("previews voices through /api/tts/preview/:voice Audio and cancels on unmount", async () => {
+    const originalAudio = globalThis.Audio;
+    const originalFetch = globalThis.fetch;
+    const audioInstances: Array<{
+      src: string;
+      onended: (() => void) | null;
+      onerror: (() => void) | null;
+      play: ReturnType<typeof vi.fn>;
+      pause: ReturnType<typeof vi.fn>;
+      removeAttribute: ReturnType<typeof vi.fn>;
+    }> = [];
+
+    class MockPreviewAudio {
+      src: string;
+      onended: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      play = vi.fn(() => Promise.resolve());
+      pause = vi.fn();
+      removeAttribute = vi.fn();
+      constructor(src = "") {
+        this.src = src;
+        audioInstances.push(this);
+      }
+    }
+
+    const fetchSpy = vi.fn<typeof fetch>(async () =>
+      new Response(new Blob([new Uint8Array([0xff, 0xfb, 0x90, 0x64])], { type: "audio/mpeg" }), {
+        status: 200,
+        headers: { "Content-Type": "audio/mpeg" },
+      }),
+    );
+    (globalThis as Record<string, unknown>).Audio = MockPreviewAudio;
+    vi.stubGlobal("fetch", fetchSpy);
+
     const speakSpy = vi.spyOn(globalThis.speechSynthesis, "speak");
     const cancelSpy = vi.spyOn(globalThis.speechSynthesis, "cancel");
-    const { unmount } = renderWithApp(<SelectScreen />);
 
-    expect(screen.getAllByRole("button", { name: /Nghe thử/ })).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "Nghe thử Emma" }));
-    expect(speakSpy).toHaveBeenCalledTimes(1);
-    const utterance = speakSpy.mock.calls[0]?.[0] as { text: string } | undefined;
-    expect(utterance?.text).toContain("Hello, my name is Emma");
+    try {
+      const { unmount } = renderWithApp(<SelectScreen />);
 
-    cancelSpy.mockClear();
-    unmount();
-    expect(cancelSpy).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByRole("button", { name: /Nghe thử/ })).toHaveLength(3);
+      fireEvent.click(screen.getByRole("button", { name: "Nghe thử Emma" }));
 
-    speakSpy.mockRestore();
-    cancelSpy.mockRestore();
+      await waitFor(() => expect(audioInstances).toHaveLength(1));
+      expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/api/tts/preview/uk-f");
+      expect(audioInstances[0]!.play).toHaveBeenCalledTimes(1);
+      expect(speakSpy).not.toHaveBeenCalled();
+
+      cancelSpy.mockClear();
+      unmount();
+      expect(audioInstances[0]!.pause).toHaveBeenCalledTimes(1);
+      expect(cancelSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      speakSpy.mockRestore();
+      cancelSpy.mockRestore();
+      (globalThis as Record<string, unknown>).Audio = originalAudio;
+      (globalThis as Record<string, unknown>).fetch = originalFetch;
+    }
+  });
+
+  it("falls back to browser speechSynthesis when /api/tts/preview/:voice returns 503", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response("Unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const speakSpy = vi.spyOn(globalThis.speechSynthesis, "speak");
+
+    try {
+      renderWithApp(<SelectScreen />);
+      fireEvent.click(screen.getByRole("button", { name: "Nghe thử Emma" }));
+
+      await waitFor(() => expect(speakSpy).toHaveBeenCalledTimes(1));
+      expect(String(fetchSpy.mock.calls[0]?.[0])).toContain("/api/tts/preview/uk-f");
+      const utterance = speakSpy.mock.calls[0]?.[0] as { text: string } | undefined;
+      expect(utterance?.text).toContain("Hello, my name is Emma");
+    } finally {
+      speakSpy.mockRestore();
+      (globalThis as Record<string, unknown>).fetch = originalFetch;
+    }
   });
 });
 
