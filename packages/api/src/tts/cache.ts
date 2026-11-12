@@ -14,6 +14,7 @@ export type TtsAudioBucketObject = {
 };
 
 export type TtsAudioBucket = {
+  head?: (key: string) => Promise<{ readonly size: number } | null>;
   get: (key: string) => Promise<TtsAudioBucketObject | null>;
   put: (
     key: string,
@@ -221,7 +222,15 @@ export async function prewarmTopicAudio({
         const job = jobs[idx];
         if (!job) break;
         try {
-          await getOrCreateTtsAudio({
+          if (typeof bucket.head === "function") {
+            const { r2Key } = await buildTtsCacheKey({ voice: job.voice, text: job.text, env });
+            const headed = await bucket.head(r2Key);
+            if (headed && headed.size > 0) {
+              succeeded++;
+              continue;
+            }
+          }
+          const created = await getOrCreateTtsAudio({
             bucket,
             env,
             voice: job.voice,
@@ -229,6 +238,12 @@ export async function prewarmTopicAudio({
             fetchImpl,
             timeoutMs,
           });
+          if (created.cacheHit && created.body && typeof created.body === "object") {
+            const maybeCancel = (created.body as { cancel?: () => Promise<unknown> }).cancel;
+            if (typeof maybeCancel === "function") {
+              await maybeCancel.call(created.body).catch(() => {});
+            }
+          }
           succeeded++;
         } catch (err) {
           failed++;

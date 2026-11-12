@@ -428,10 +428,15 @@ async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: s
   try {
     const { r2Key, etag } = await buildTtsCacheKey({ voice, text, env: envRecord });
     if (matchesIfNoneMatch(c.req.header("if-none-match"), etag)) {
+      const headFn = (bucket as Partial<Pick<R2Bucket, "head">>).head;
       const existing =
-        typeof bucket.head === "function" ? await bucket.head(r2Key) : await bucket.get(r2Key);
-      if (existing && "body" in existing && existing.body) {
-        await existing.body.cancel().catch(() => {});
+        typeof headFn === "function" ? await headFn.call(bucket, r2Key) : await bucket.get(r2Key);
+      const maybeStream =
+        existing && typeof existing === "object" && "body" in existing
+          ? (existing as { body?: { cancel?: () => Promise<unknown> } }).body
+          : undefined;
+      if (maybeStream && typeof maybeStream.cancel === "function") {
+        await maybeStream.cancel().catch(() => {});
       }
       if (existing && existing.size > 0) {
         c.header("ETag", etag);
