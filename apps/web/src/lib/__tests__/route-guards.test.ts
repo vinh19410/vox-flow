@@ -43,7 +43,7 @@ import { Route as AdminForecastRoute } from "@/routes/admin/forecast";
 describe("Protected proto routes beforeLoad", () => {
   beforeEach(() => {
     clearOnboardedUserCache();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   const routes = [
@@ -119,7 +119,7 @@ describe("Protected proto routes beforeLoad", () => {
 describe("/_proto/auth route", () => {
   beforeEach(() => {
     clearOnboardedUserCache();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe("validateSearch", () => {
@@ -255,15 +255,9 @@ describe("/_proto/auth route", () => {
     });
 
     it("does not redirect when search.error is present even if user is onboarded", async () => {
-      getSessionSpy.mockResolvedValueOnce({
-        data: { user: { id: "usr_err_stay", name: "Onboarded User" } },
-      });
-      profileGetSpy.mockResolvedValueOnce({
-        userId: "usr_err_stay",
-        targetBand: 7.0,
-        examDate: null,
-        onboardedAt: 1730000000000,
-      });
+      // beforeLoad returns early on search.error without touching auth at all,
+      // so no mock values are queued here (a queued-but-unconsumed
+      // mockResolvedValueOnce would leak into later tests).
       if (!beforeLoad) throw new Error("beforeLoad is undefined");
 
       await expect(
@@ -279,7 +273,7 @@ describe("/_proto/auth route", () => {
 describe("Admin routes beforeLoad", () => {
   beforeEach(() => {
     clearOnboardedUserCache();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   const adminRoutes = [
