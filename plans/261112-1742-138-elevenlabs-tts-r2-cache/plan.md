@@ -1,7 +1,7 @@
 ---
 title: "Tích hợp ElevenLabs TTS & Lưu trữ tái sử dụng Audio câu hỏi trên R2"
 description: "Chuyển giọng đọc của 3 giám khảo (uk-f, us-m, au-f) sang audio tổng hợp từ ElevenLabs lưu content-addressed SHA-256 trên AUDIO_BUCKET (tts/v1/...), pre-warm nền khi Admin publish đề mới, read-through cho kho đề sẵn có và tự động fallback sang giọng trình duyệt khi lỗi."
-status: in_progress
+status: completed
 priority: P1
 effort: 3h
 branch: feat/138-elevenlabs-tts-cache
@@ -53,14 +53,14 @@ Khi sau này bổ sung hoặc chuyển sang nhà cung cấp TTS thứ hai (ví d
 
 | # | Phase | Sở hữu file | Phụ thuộc | Status |
 |---|---|---|---|---|
-| 1 | [Backend: Cấu hình Infra, lõi TTS + R2 Cache, route `/api/tts` & Admin Pre-warm](./phase-01-backend-tts-r2-cache.md) | `packages/infra/**`, `packages/api/**`, `apps/server/**` | – | Pending |
-| 2 | [Frontend: Trình phát Audio, Prefetch phòng thi, Fallback trình duyệt & Tests](./phase-02-web-audio-playback.md) | `apps/web/**` | – | Pending |
+| 1 | [Backend: Cấu hình Infra, lõi TTS + R2 Cache, route `/api/tts` & Admin Pre-warm](./phase-01-backend-tts-r2-cache.md) | `packages/infra/**`, `packages/api/**`, `apps/server/**` | – | Completed |
+| 2 | [Frontend: Trình phát Audio, Prefetch phòng thi, Fallback trình duyệt & Tests](./phase-02-web-audio-playback.md) | `apps/web/**` | – | Completed |
 
 ## Acceptance Criteria (Done means)
 
-- [ ] DM-1: `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_UK_F`, `ELEVENLABS_VOICE_US_M`, `ELEVENLABS_VOICE_AU_F` được khai báo trong `packages/infra/alchemy.run.ts`, `apps/server/.env.schema` và `packages/api/src/context.ts`.
-- [ ] DM-2: `GET /api/tts/...` chỉ nhận tham chiếu chuẩn (`preview`, `mock`, `published forecast`), từ chối `400`/`404` với tham chiếu sai hoặc đề `draft`; lần đầu gọi ElevenLabs đúng 1 lần và ghi `tts/v1/<voice>/<sha256>.mp3` vào `AUDIO_BUCKET`, các lần sau đọc thẳng từ R2 với 0 lượt gọi thêm tới ElevenLabs, hai câu trùng nội dung dùng chung 1 object R2.
-- [ ] DM-3: `forecastAdmin.publish` (và `updateDraft` trên đề đang `published`) kích hoạt pre-warm nền 3 giọng vào `AUDIO_BUCKET` mà không chặn thao tác khi ElevenLabs lỗi `429`/`500`/timeout.
-- [ ] DM-4: `VoicePicker` và `useExamSession` phát audio từ `/api/tts/...` (kèm prefetch bước câu hỏi trong phòng thi), dừng phát ngay khi gọi `cancelSpeech()`, và tự fallback sang `window.speechSynthesis` khi tải/phát audio thất bại.
-- [ ] DM-5: `DATA_REGISTRY` khi xoá tài khoản người dùng chỉ xoá `users/<userId>/...` và giữ nguyên toàn bộ object dưới `tts/v1/...` trong `AUDIO_BUCKET`.
-- [ ] DM-6: Toàn bộ test liên quan, `pnpm check-types` chạy xanh; PR mở vào `dev` kèm comment POT đầy đủ trên issue `#138`.
+- [x] DM-1: `ELEVENLABS_API_KEY`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_VOICE_UK_F`, `ELEVENLABS_VOICE_US_M`, `ELEVENLABS_VOICE_AU_F` được khai báo trong `packages/infra/alchemy.run.ts`, `packages/infra/.env.schema`, `apps/server/.env.schema`, `.github/workflows/deploy-beta.yml` và `packages/api/src/context.ts`.
+- [x] DM-2: `GET /api/tts/...` chỉ nhận tham chiếu chuẩn (`preview`, `mock`, `published forecast`), từ chối `400`/`404` với tham chiếu sai hoặc đề `draft`; lần đầu gọi ElevenLabs đúng 1 lần và ghi `tts/v1/<voice>/<sha256>.mp3` vào `AUDIO_BUCKET`, các lần sau đọc thẳng từ R2 với 0 lượt gọi thêm tới ElevenLabs, hai câu trùng nội dung dùng chung 1 object R2.
+- [x] DM-3: `forecastAdmin.publish` (và `updateDraft` trên đề đang `published`) kích hoạt pre-warm nền 3 giọng vào `AUDIO_BUCKET` mà không chặn thao tác khi ElevenLabs lỗi `429`/`500`/timeout.
+- [x] DM-4: `VoicePicker` và `useExamSession` phát audio từ `/api/tts/...` (kèm prefetch bước câu hỏi trong phòng thi), dừng phát ngay khi gọi `cancelSpeech()`, và tự fallback sang `window.speechSynthesis` khi tải/phát audio thất bại.
+- [x] DM-5: `DATA_REGISTRY` khi xoá tài khoản người dùng chỉ xoá `users/<userId>/...` và giữ nguyên toàn bộ object dưới `tts/v1/...` trong `AUDIO_BUCKET`.
+- [x] DM-6: Toàn bộ test liên quan, `pnpm check-types` chạy xanh; PR mở vào `dev` kèm comment POT đầy đủ trên issue `#138`.

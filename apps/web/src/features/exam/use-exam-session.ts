@@ -188,10 +188,13 @@ export function useExamSession(): ExamSessionValue {
   // All exam timers pause while the exit or pre-submit modal is open.
   const paused = exitOpen || review;
   const practiceTopicId = s.practice?.topicId?.trim();
-  const stepAudioUrl = (targetStep: ExamStep): string =>
-    practiceTopicId
-      ? buildForecastTtsUrl(voice.id, practiceTopicId, targetStep.key, targetStep.text)
-      : buildMockTtsUrl(voice.id, targetStep.key, targetStep.text);
+  const stepAudioUrl = (targetStep: ExamStep): string | undefined => {
+    if (practiceTopicId) {
+      if (targetStep.follow) return undefined;
+      return buildForecastTtsUrl(voice.id, practiceTopicId, targetStep.key, targetStep.text);
+    }
+    return buildMockTtsUrl(voice.id, targetStep.key, targetStep.text);
+  };
 
   useEffect(() => {
     cancelSpeech();
@@ -201,10 +204,10 @@ export function useExamSession(): ExamSessionValue {
   // Prefetch current and next examiner prompts so audio is warm before "asking" starts.
   useEffect(() => {
     if (muted || steps.length === 0) return;
-    const current = steps[idx];
-    if (current) void prefetchSpeech(stepAudioUrl(current));
-    const upcoming = steps[idx + 1];
-    if (upcoming) void prefetchSpeech(stepAudioUrl(upcoming));
+    const currentUrl = steps[idx] ? stepAudioUrl(steps[idx]) : undefined;
+    if (currentUrl) void prefetchSpeech(currentUrl);
+    const upcomingUrl = steps[idx + 1] ? stepAudioUrl(steps[idx + 1]) : undefined;
+    if (upcomingUrl) void prefetchSpeech(upcomingUrl);
   }, [idx, muted, steps, practiceTopicId, voice.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Examiner reads the question aloud while the text reveals char by char.

@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Frontend: Trình phát Audio, Prefetch phòng thi, Fallback trình duyệt & Tests"
-status: pending
+status: completed
 parallel: true
 owns:
   - apps/web/src/lib/tts-url.ts

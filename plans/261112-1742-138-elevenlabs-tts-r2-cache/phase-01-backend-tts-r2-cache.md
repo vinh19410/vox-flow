@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Backend: Cấu hình Infra, lõi TTS + R2 Cache, route /api/tts & Admin Pre-warm"
-status: pending
+status: completed
 parallel: true
 owns:
   - packages/infra/alchemy.run.ts

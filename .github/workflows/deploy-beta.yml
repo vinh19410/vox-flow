@@ -79,6 +79,11 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_MODEL_ID: ${{ vars.ELEVENLABS_MODEL_ID || 'eleven_multilingual_v2' }}
+          ELEVENLABS_VOICE_UK_F: ${{ vars.ELEVENLABS_VOICE_UK_F || '' }}
+          ELEVENLABS_VOICE_US_M: ${{ vars.ELEVENLABS_VOICE_US_M || '' }}
+          ELEVENLABS_VOICE_AU_F: ${{ vars.ELEVENLABS_VOICE_AU_F || '' }}
           LAUNCH_OPEN: ${{ vars.LAUNCH_OPEN || 'false' }}
           LAUNCH_ALLOWED_EMAILS: ${{ vars.LAUNCH_ALLOWED_EMAILS || '' }}
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS || '' }}

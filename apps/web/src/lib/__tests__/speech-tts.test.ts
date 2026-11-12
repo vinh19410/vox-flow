@@ -75,15 +75,15 @@ describe("tts-url builders", () => {
       "http://localhost:3000/api/tts/mock/uk-f/p1-1",
     );
 
-    const fUrl1 = buildForecastTtsUrl("uk-f", "f-home", "f-home:q:0", "Where is your hometown?");
+    const fUrl1 = buildForecastTtsUrl("uk-f", "f-home", "f-home-0", "Where is your hometown?");
     const fUrl2 = buildForecastTtsUrl(
       "uk-f",
       "f-home",
-      "f-home:q:0",
+      "f-home-0",
       "How has your hometown changed recently?",
     );
-    expect(fUrl1).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home%3Aq%3A0?v=${v1}`);
-    expect(fUrl2).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home%3Aq%3A0?v=${v2}`);
+    expect(fUrl1).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home-0?v=${v1}`);
+    expect(fUrl2).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home-0?v=${v2}`);
     expect(fUrl1).not.toBe(fUrl2);
   });
 });
@@ -169,7 +169,7 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
   });
 
   it("reuses prefetched audio Blob with zero extra fetch calls when speakText runs", async () => {
-    const audioUrl = "http://localhost:3000/api/tts/forecast/us-m/t-1/t-1%3Aq%3A0?v=11223344";
+    const audioUrl = "http://localhost:3000/api/tts/forecast/us-m/t-1/t-1-0?v=11223344";
     fetchSpy.mockResolvedValueOnce(createMp3Response());
 
     const prefetched = await prefetchSpeech(audioUrl);
@@ -336,8 +336,8 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
         title: "Hometown",
         kind: "p1",
         items: [
-          { id: "f-hometown:q:0", part: 1, text: "Where is your hometown?" },
-          { id: "f-hometown:q:1", part: 1, text: "Do you like living there?" },
+          { id: "f-hometown-0", part: 1, text: "Where is your hometown?" },
+          { id: "f-hometown-1", part: 1, text: "Do you like living there?" },
         ],
       },
     });
@@ -347,10 +347,10 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
     });
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
     expect(String(fetchSpy.mock.calls[0]![0])).toContain(
-      "/api/tts/forecast/us-m/f-hometown/f-hometown%3Aq%3A0?v=",
+      "/api/tts/forecast/us-m/f-hometown/f-hometown-0?v=",
     );
     expect(String(fetchSpy.mock.calls[1]![0])).toContain(
-      "/api/tts/forecast/us-m/f-hometown/f-hometown%3Aq%3A1?v=",
+      "/api/tts/forecast/us-m/f-hometown/f-hometown-1?v=",
     );
 
     fetchSpy.mockClear();

@@ -3,6 +3,12 @@ import { normalizeTtsText } from "./resolver";
 const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 export const DEFAULT_TTS_TIMEOUT_MS = 15_000;
 
+export function redactTtsErrorMessage(raw: string): string {
+  return raw
+    .replace(/(?:sk_|sk-|xi-)[A-Za-z0-9_-]{8,}/g, "[REDACTED_KEY]")
+    .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]");
+}
+
 export class TtsUnavailableError extends Error {
   readonly status?: number;
 
@@ -69,7 +75,7 @@ export async function synthesizeWithElevenLabs({
   }
 
   if (!res.ok) {
-    const detail = (await res.text().catch(() => "")).slice(0, 300);
+    const detail = redactTtsErrorMessage((await res.text().catch(() => "")).slice(0, 300));
     throw new TtsUnavailableError(`ElevenLabs TTS returned ${res.status}: ${detail}`, {
       status: res.status,
     });

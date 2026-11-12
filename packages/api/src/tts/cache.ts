@@ -232,9 +232,12 @@ export async function prewarmTopicAudio({
           succeeded++;
         } catch (err) {
           failed++;
+          const rawMsg = err instanceof Error ? err.message : String(err);
           console.warn(
             `[tts] Background pre-warm failed for voice=${job.voice}:`,
-            err instanceof Error ? err.message : err,
+            rawMsg
+              .replace(/(?:sk_|sk-|xi-)[A-Za-z0-9_-]{8,}/g, "[REDACTED_KEY]")
+              .replace(/Bearer\s+\S+/gi, "Bearer [REDACTED]"),
           );
         }
       }

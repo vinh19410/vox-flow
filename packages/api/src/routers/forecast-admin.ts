@@ -294,7 +294,7 @@ export const forecastAdminRouter = router({
       }
       if (
         topic.status === "published" &&
-        (input.questions !== undefined || input.title !== undefined)
+        (input.questions !== undefined || input.title !== undefined || input.part !== undefined)
       ) {
         scheduleTopicAudioPrewarm(ctx, topic);
       }

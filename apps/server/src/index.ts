@@ -428,7 +428,11 @@ async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: s
   try {
     const { r2Key, etag } = await buildTtsCacheKey({ voice, text, env: envRecord });
     if (matchesIfNoneMatch(c.req.header("if-none-match"), etag)) {
-      const existing = await bucket.get(r2Key);
+      const existing =
+        typeof bucket.head === "function" ? await bucket.head(r2Key) : await bucket.get(r2Key);
+      if (existing && "body" in existing && existing.body) {
+        await existing.body.cancel().catch(() => {});
+      }
       if (existing && existing.size > 0) {
         c.header("ETag", etag);
         c.header("Cache-Control", TTS_CACHE_CONTROL);
@@ -460,6 +464,7 @@ async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: s
 app.get("/api/tts/preview/:voice", async (c) => {
   const voice = c.req.param("voice");
   if (!isValidExaminerVoice(voice)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "Invalid examiner voice" }, 400);
   }
   const text = resolvePreviewTtsText(voice);
@@ -469,14 +474,17 @@ app.get("/api/tts/preview/:voice", async (c) => {
 app.get("/api/tts/mock/:voice/:questionKey", async (c) => {
   const voice = c.req.param("voice");
   if (!isValidExaminerVoice(voice)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "Invalid examiner voice" }, 400);
   }
   const questionKey = c.req.param("questionKey");
   if (!TTS_PARAM_RE.test(questionKey)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "Invalid question key" }, 400);
   }
   const text = resolveMockTtsText(questionKey);
   if (!text) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "TTS prompt not found" }, 404);
   }
   return serveCanonicalTts(c, voice, text);
@@ -485,11 +493,13 @@ app.get("/api/tts/mock/:voice/:questionKey", async (c) => {
 app.get("/api/tts/forecast/:voice/:topicId/:questionKey", async (c) => {
   const voice = c.req.param("voice");
   if (!isValidExaminerVoice(voice)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "Invalid examiner voice" }, 400);
   }
   const topicId = c.req.param("topicId");
   const questionKey = c.req.param("questionKey");
   if (!TTS_PARAM_RE.test(topicId) || !TTS_PARAM_RE.test(questionKey)) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "Invalid question key" }, 400);
   }
 
@@ -501,6 +511,7 @@ app.get("/api/tts/forecast/:voice/:topicId/:questionKey", async (c) => {
     return c.json({ error: "TTS service unavailable" }, 503);
   }
   if (!text) {
+    c.header("Cache-Control", "no-store");
     return c.json({ error: "TTS prompt not found" }, 404);
   }
   return serveCanonicalTts(c, voice, text);
