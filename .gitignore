@@ -56,7 +56,7 @@ coverage
 .cache
 tmp
 temp
-
+packages/infra/.env.schema
 # Scoring evaluation (OQ-5)
 scripts/scoring-eval/audio/
 scripts/scoring-eval/results/
