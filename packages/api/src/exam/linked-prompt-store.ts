@@ -1,7 +1,20 @@
-import type { R2Bucket } from "@cloudflare/workers-types";
 import { z } from "zod";
 
 import { QUESTION_KEY_RE } from "../audio";
+
+export type LinkedPromptBucketObject = {
+  text(): Promise<string>;
+};
+
+export type LinkedPromptBucket = {
+  get(key: string): Promise<LinkedPromptBucketObject | null>;
+  put(
+    key: string,
+    value: string,
+    options?: { httpMetadata?: { contentType?: string } },
+  ): Promise<unknown>;
+  delete(key: string): Promise<unknown>;
+};
 
 export const LinkedPromptSchema = z.object({
   questionText: z.string().min(5).max(300),
@@ -51,7 +64,7 @@ export type LinkedPromptKeyParams = {
  * Validates and persists a linked prompt JSON object in R2.
  */
 export async function saveLinkedPrompt(
-  bucket: R2Bucket,
+  bucket: LinkedPromptBucket,
   params: LinkedPromptKeyParams & { prompt: LinkedPrompt },
 ): Promise<void> {
   const key = buildLinkedPromptKey(params.userId, params.attemptId, params.questionKey);
@@ -66,7 +79,7 @@ export async function saveLinkedPrompt(
  * Fails safe by returning `null` when missing, unreadable, invalid JSON, or invalid schema.
  */
 export async function loadLinkedPrompt(
-  bucket: R2Bucket,
+  bucket: LinkedPromptBucket,
   params: LinkedPromptKeyParams,
 ): Promise<LinkedPrompt | null> {
   const key = buildLinkedPromptKey(params.userId, params.attemptId, params.questionKey);
@@ -89,7 +102,7 @@ export async function loadLinkedPrompt(
  * Deletes a linked prompt object from R2 after key validation.
  */
 export async function deleteLinkedPrompt(
-  bucket: R2Bucket,
+  bucket: LinkedPromptBucket,
   params: LinkedPromptKeyParams,
 ): Promise<void> {
   const key = buildLinkedPromptKey(params.userId, params.attemptId, params.questionKey);

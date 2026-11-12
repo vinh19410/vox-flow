@@ -8,6 +8,11 @@ export type TranscribeOptions = {
 
 const WHISPER_URL = "https://api.openai.com/v1/audio/transcriptions";
 
+function toAudioBlob(audioBuffer: ArrayBuffer | Uint8Array, type: string): Blob {
+  const bytes = audioBuffer instanceof Uint8Array ? new Uint8Array(audioBuffer) : audioBuffer;
+  return new Blob([bytes], { type });
+}
+
 /** Non-OK HTTP response from the transcription API; `status` lets callers decide on retries. */
 export class TranscriptionApiError extends Error {
   readonly status: number;
@@ -46,7 +51,7 @@ export async function transcribeAudioStrict(options: TranscribeStrictOptions): P
   const formData = new FormData();
   formData.append(
     "file",
-    new Blob([audioBuffer], { type: normalized }),
+    toAudioBlob(audioBuffer, normalized),
     `audio.${getAudioExtension(normalized)}`,
   );
   formData.append("model", "whisper-1");
@@ -80,7 +85,7 @@ export async function transcribeAudio(options: TranscribeOptions): Promise<{ tex
 
   try {
     const filename = mimeType.includes("mp4") ? "audio.mp4" : "audio.webm";
-    const blob = new Blob([audioBuffer], { type: mimeType });
+    const blob = toAudioBlob(audioBuffer, mimeType);
     const formData = new FormData();
     formData.append("file", blob, filename);
     formData.append("model", "whisper-1");

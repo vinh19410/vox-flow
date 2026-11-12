@@ -1,4 +1,3 @@
-import type { R2Bucket } from "@cloudflare/workers-types";
 import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -6,7 +5,7 @@ import type { Database } from "@vox-flow/db";
 import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@vox-flow/db/schema";
 
 import { isValidAudioKey } from "../audio";
-import { loadLinkedPrompt } from "../exam/linked-prompt-store";
+import { loadLinkedPrompt, type LinkedPromptBucket } from "../exam/linked-prompt-store";
 import { resolveCanonicalQuestionText, type CanonicalQuestionTopic } from "../forecast/questions";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { findAnswerLimitViolation } from "./answer-limits";
@@ -367,20 +366,22 @@ async function runPipeline(
     return { row, indexInPart };
   });
 
-  const linkedBucket =
+  const linkedBucket: LinkedPromptBucket | null =
     deps.audioBucket && attemptRow.topicId
-      ? ({
+      ? {
           get: async (key: string) => {
             const obj = await deps.audioBucket!.get(key);
             if (!obj) return null;
             if (typeof obj.text === "function") {
-              return obj;
+              return { text: () => obj.text!() };
             }
             return {
               text: async () => new TextDecoder().decode(await obj.arrayBuffer()),
             };
           },
-        } as unknown as R2Bucket)
+          put: async () => undefined,
+          delete: async () => undefined,
+        }
       : null;
 
   const answers: GradingAnswer[] = await Promise.all(
