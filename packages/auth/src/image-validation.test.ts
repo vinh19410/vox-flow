@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_USER_IMAGE_LENGTH, validateUserImage } from "./index";
+import {
+  MAX_USER_IMAGE_LENGTH,
+  MAX_USER_NAME_LENGTH,
+  validateUserImage,
+  validateUserName,
+} from "./index";
 
 describe("validateUserImage", () => {
   it("accepts undefined and null (giữ nguyên / xóa avatar)", () => {
@@ -28,9 +33,20 @@ describe("validateUserImage", () => {
     expect(validateUserImage({})).toBe(false);
   });
 
-  it("rejects images exceeding the size cap", () => {
-    const huge = `data:image/webp;base64,${"A".repeat(MAX_USER_IMAGE_LENGTH)}`;
-    expect(validateUserImage(huge)).toBe(false);
+  it("accepts images at exact MAX_USER_IMAGE_LENGTH (32_000) and rejects 32_001", () => {
+    const httpsPrefix = "https://example.com/";
+    const exactHttps =
+      httpsPrefix + "a".repeat(MAX_USER_IMAGE_LENGTH - httpsPrefix.length);
+    expect(exactHttps.length).toBe(MAX_USER_IMAGE_LENGTH);
+    expect(validateUserImage(exactHttps)).toBeUndefined();
+    expect(validateUserImage(`${exactHttps}a`)).toBe(false);
+
+    const dataPrefix = "data:image/webp;base64,";
+    const exactDataUrl =
+      dataPrefix + "A".repeat(MAX_USER_IMAGE_LENGTH - dataPrefix.length);
+    expect(exactDataUrl.length).toBe(MAX_USER_IMAGE_LENGTH);
+    expect(validateUserImage(exactDataUrl)).toBeUndefined();
+    expect(validateUserImage(`${exactDataUrl}A`)).toBe(false);
   });
 
   it("rejects script-bearing SVG data URLs and other schemes", () => {
@@ -73,5 +89,43 @@ describe("web preset avatars pass server-side image validation", () => {
     expect(
       validateUserImage("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="),
     ).toBe(false);
+  });
+});
+
+describe("validateUserName", () => {
+  it("returns undefined when name is undefined (giữ nguyên tên hiện có)", () => {
+    expect(validateUserName(undefined)).toBeUndefined();
+  });
+
+  it("trims surrounding whitespace and returns normalized name", () => {
+    expect(validateUserName("  Lan  ")).toEqual({ data: { name: "Lan" } });
+  });
+
+  it("accepts names of length 1 and exact MAX_USER_NAME_LENGTH (50)", () => {
+    expect(MAX_USER_NAME_LENGTH).toBe(50);
+    expect(validateUserName("A")).toEqual({ data: { name: "A" } });
+
+    const exact50 = "A".repeat(MAX_USER_NAME_LENGTH);
+    expect(validateUserName(exact50)).toEqual({ data: { name: exact50 } });
+    expect(validateUserName(`  ${exact50}  `)).toEqual({
+      data: { name: exact50 },
+    });
+  });
+
+  it("rejects names exceeding MAX_USER_NAME_LENGTH (51 chars after trim)", () => {
+    expect(validateUserName("A".repeat(MAX_USER_NAME_LENGTH + 1))).toBe(false);
+  });
+
+  it("rejects empty and whitespace-only strings", () => {
+    expect(validateUserName("")).toBe(false);
+    expect(validateUserName("   \t\n  ")).toBe(false);
+  });
+
+  it("rejects non-string values", () => {
+    expect(validateUserName(null)).toBe(false);
+    expect(validateUserName(123)).toBe(false);
+    expect(validateUserName({})).toBe(false);
+    expect(validateUserName([])).toBe(false);
+    expect(validateUserName(true)).toBe(false);
   });
 });

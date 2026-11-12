@@ -830,6 +830,22 @@ describe("POST /api/attempts/:attemptId/answers/:questionKey/audio", () => {
 });
 
 describe("GET /api/attempts/:attemptId/answers/:answerId/audio", () => {
+  beforeEach(() => {
+    mockState.currentSessionUser = {
+      id: "user-1",
+      email: "test@example.com",
+    };
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    mockState.currentSessionUser = null;
+    const res = await app.request("/api/attempts/att-123/answers/ans-1/audio", {
+      method: "GET",
+    });
+    expect(res.status).toBe(401);
+    expect(await res.text()).toBe("Unauthorized");
+  });
+
   it("includes X-Content-Type-Options: nosniff in audio response", async () => {
     const res = await app.request("/api/attempts/att-123/answers/ans-1/audio", {
       method: "GET",
