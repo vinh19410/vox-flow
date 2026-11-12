@@ -29,6 +29,9 @@ export async function upsertAnswerRecording(db: Database, values: UpsertValues) 
         mimeType: values.mimeType,
         generation: values.generation,
         sizeBytes: values.sizeBytes,
+        // Strictly newer recordings invalidate stale transcripts from older generations,
+        // while equal-generation retries keep the existing transcript intact.
+        transcript: sql`CASE WHEN ${attemptAnswer.generation} < excluded.generation THEN excluded.transcript ELSE ${attemptAnswer.transcript} END`,
       },
       setWhere: sql`${attemptAnswer.generation} <= excluded.generation`,
     })
