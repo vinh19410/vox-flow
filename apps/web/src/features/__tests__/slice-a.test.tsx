@@ -1,3 +1,4 @@
+import { isRedirect } from "@tanstack/react-router";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,8 @@ import { PLANS } from "@/features/billing/data";
 import { LandingScreen } from "@/features/landing/landing-screen";
 import { OnboardingScreen } from "@/features/onboarding/onboarding-screen";
 import { authClient } from "@/lib/auth-client";
+import { clearOnboardedUserCache, redirectIfOnboarded } from "@/lib/auth-guard";
+import type * as AuthGuardModule from "@/lib/auth-guard";
 import { trpcClient } from "@/utils/trpc";
 
 vi.mock("@/lib/auth-client", () => ({
@@ -23,8 +26,22 @@ vi.mock("@/lib/auth-client", () => ({
     },
     signOut: vi.fn(),
     getSession: vi.fn(),
+    useSession: vi.fn(() => ({ data: null, isPending: false, error: null })),
   },
 }));
+
+const markUserOnboardedSpy = vi.fn();
+
+vi.mock("@/lib/auth-guard", async (importOriginal) => {
+  const actual: typeof AuthGuardModule = await importOriginal();
+  return {
+    ...actual,
+    markUserOnboarded: (userId: string) => {
+      markUserOnboardedSpy(userId);
+      actual.markUserOnboarded(userId);
+    },
+  };
+});
 
 const profileUpsertSpy = vi.fn().mockResolvedValue({ targetBand: 6.5, examDate: null });
 const profileCompleteSpy = vi.fn().mockResolvedValue({ onboardedAt: new Date() });
@@ -440,6 +457,75 @@ describe("OnboardingScreen", () => {
       expect(go).not.toHaveBeenCalled();
     });
   });
+
+  it("marks the active session user u1 as onboarded in auth-guard cache upon finishing onboarding", async () => {
+    clearOnboardedUserCache();
+    markUserOnboardedSpy.mockClear();
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: { user: { id: "u1", name: "User One", email: "u1@example.com" } },
+      isPending: false,
+      error: null,
+    } as never);
+    micLevelMock.mockImplementation((active: boolean): MockMicReturn => ({
+      level: active ? 0.7 : 0,
+      real: active ? true : null,
+      status: active ? "listening" : "idle",
+      denied: false,
+    }));
+
+    try {
+      const { go } = renderWithApp(<OnboardingScreen />);
+      fireEvent.click(screen.getByRole("button", { name: "Bỏ qua ngày thi" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Kiểm tra micro & môi trường")).toBeTruthy();
+      });
+
+      vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+      fireEvent.click(screen.getByRole("button", { name: "Ghi thử 5 giây" }));
+
+      act(() => {
+        vi.advanceTimersByTime(5200);
+      });
+
+      vi.useRealTimers();
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Micro ổn, tiếp tục" })).toBeTruthy();
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Micro ổn, tiếp tục" }));
+
+      await waitFor(() => {
+        expect(profileCompleteSpy).toHaveBeenCalled();
+        expect(markUserOnboardedSpy).toHaveBeenCalledWith("u1");
+        expect(go).toHaveBeenCalledWith("dashboard");
+      });
+
+      vi.mocked(authClient.getSession).mockResolvedValueOnce({
+        data: {
+          user: { id: "u1", name: "User One", email: "u1@example.com" },
+          session: { id: "sess_u1", userId: "u1" },
+        },
+        error: null,
+      } as never);
+      vi.mocked(trpcClient.profile.get.query).mockClear();
+
+      try {
+        await redirectIfOnboarded("/app/dashboard");
+        expect.unreachable("Expected redirectIfOnboarded to throw redirect for cached user u1");
+      } catch (err) {
+        expect(isRedirect(err)).toBe(true);
+      }
+      expect(trpcClient.profile.get.query).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(authClient.useSession).mockReturnValue({
+        data: null,
+        isPending: false,
+        error: null,
+      } as never);
+      clearOnboardedUserCache();
+    }
+  });
 });
 
 
@@ -656,6 +742,48 @@ describe("AuthScreen", () => {
       });
       expect(assignSpy).not.toHaveBeenCalled();
     });
+
+    it("renders display name input with maxLength 50 in sign-up mode", () => {
+      renderWithApp(<AuthScreen search={{}} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+      const nameInput = screen.getByLabelText("Tên hiển thị");
+      expect(nameInput.getAttribute("maxLength")).toBe("50");
+    });
+
+    it("shows rate-limit message when signIn.email returns status 429", async () => {
+      vi.mocked(authClient.signIn.email).mockResolvedValueOnce({
+        data: null,
+        error: { status: 429, code: "TOO_MANY_REQUESTS", message: "Too many requests" },
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fillAndSubmit({ email: "user@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."),
+        ).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it("shows invalid display name message when signUp.email returns code INVALID_NAME", async () => {
+      vi.mocked(authClient.signUp.email).mockResolvedValueOnce({
+        data: null,
+        error: { status: 400, code: "INVALID_NAME", message: "INVALID_NAME" },
+      } as never);
+
+      renderWithApp(<AuthScreen search={{}} />);
+      fireEvent.click(screen.getByRole("button", { name: "Chưa có tài khoản? Đăng ký" }));
+      fillAndSubmit({ name: "x".repeat(51), email: "user@example.com", password: "Password123!" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("Tên hiển thị không hợp lệ (1–50 ký tự)."),
+        ).toBeTruthy();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
   });
 
   it("invokes authClient.signIn.social with Google provider on button click", async () => {
@@ -671,8 +799,9 @@ describe("AuthScreen", () => {
     expect(authClient.signIn.social).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "google",
-        callbackURL: expect.stringContaining("/app/dashboard"),
-        errorCallbackURL: expect.stringMatching(/\/auth$/),
+        callbackURL: `${window.location.origin}/app/dashboard`,
+        newUserCallbackURL: `${window.location.origin}/onboarding`,
+        errorCallbackURL: `${window.location.origin}/auth`,
       }),
     );
   });
@@ -690,7 +819,8 @@ describe("AuthScreen", () => {
     expect(authClient.signIn.social).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "google",
-        callbackURL: expect.stringContaining("/app/history/att-123"),
+        callbackURL: `${window.location.origin}/app/history/att-123`,
+        newUserCallbackURL: `${window.location.origin}/app/history/att-123`,
         errorCallbackURL: expect.stringContaining(
           encodeURIComponent("/app/history/att-123"),
         ),
@@ -710,8 +840,9 @@ describe("AuthScreen", () => {
     expect(authClient.signIn.social).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "google",
-        callbackURL: expect.stringMatching(/\/app\/dashboard$/),
-        errorCallbackURL: expect.stringMatching(/\/auth$/),
+        callbackURL: `${window.location.origin}/app/dashboard`,
+        newUserCallbackURL: `${window.location.origin}/onboarding`,
+        errorCallbackURL: `${window.location.origin}/auth`,
       }),
     );
   });
@@ -758,6 +889,28 @@ describe("AuthScreen", () => {
     await waitFor(() => {
       expect(
         screen.getByText("Đăng nhập Google không thành công. Vui lòng thử lại."),
+      ).toBeTruthy();
+    });
+    expect(googleBtn.getAttribute("disabled")).toBeNull();
+  });
+
+  it("shows rate-limit message when Google sign-in initiation returns status 429", async () => {
+    vi.mocked(authClient.signIn.social).mockResolvedValueOnce({
+      data: null,
+      error: {
+        status: 429,
+        statusText: "Too Many Requests",
+        message: "Too many requests",
+      },
+    } as never);
+
+    renderWithApp(<AuthScreen />);
+    const googleBtn = screen.getByRole("button", { name: /Tiếp tục với Google/i });
+    fireEvent.click(googleBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."),
       ).toBeTruthy();
     });
     expect(googleBtn.getAttribute("disabled")).toBeNull();

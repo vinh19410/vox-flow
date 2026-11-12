@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import { useApp } from "@/features/app-state/types";
+import { authClient } from "@/lib/auth-client";
+import { markUserOnboarded } from "@/lib/auth-guard";
 import { trpcClient } from "@/utils/trpc";
 
 import { GoalStep } from "./components/goal-step";
@@ -9,6 +11,7 @@ import { OnboardingFrame } from "./components/onboarding-frame";
 
 export function OnboardingScreen() {
   const { go } = useApp();
+  const sessionUserId = authClient.useSession?.()?.data?.user?.id;
   const [step, setStep] = useState(0);
   const [chosenDate, setChosenDate] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -20,6 +23,14 @@ export function OnboardingScreen() {
     try {
       if (trpcClient?.profile?.completeOnboarding?.mutate) {
         await trpcClient.profile.completeOnboarding.mutate();
+      }
+      if (sessionUserId) {
+        markUserOnboarded(sessionUserId);
+      } else if (authClient.getSession) {
+        const sess = await authClient.getSession()?.catch(() => null);
+        if (sess?.data?.user?.id) {
+          markUserOnboarded(sess.data.user.id);
+        }
       }
       go("dashboard");
     } catch {

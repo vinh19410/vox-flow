@@ -19,6 +19,7 @@ const MOBILE_QUERY = "(max-width: 1023.98px)";
 vi.mock("@/lib/auth-guard", () => ({
   requireOnboarded: vi.fn().mockResolvedValue({ onboarded: true }),
   requireSession: vi.fn().mockResolvedValue({ session: null }),
+  redirectIfOnboarded: vi.fn().mockResolvedValue(undefined),
   markUserOnboarded: vi.fn(),
   clearOnboardedUserCache: vi.fn(),
 }));

@@ -68,3 +68,38 @@ export async function requireOnboarded(redirectPath?: string) {
 
   return { session };
 }
+
+/**
+ * Route guard for /auth that redirects already-onboarded users away from the
+ * sign-in screen while allowing unauthenticated or un-onboarded users (or
+ * unexpected profile fetch errors) to remain on /auth.
+ */
+export async function redirectIfOnboarded(
+  redirectTo: string = "/app/dashboard",
+): Promise<void> {
+  const session = await authClient.getSession?.()?.catch(() => null);
+  const userId = session?.data?.user?.id;
+  if (!session?.data?.user) {
+    return;
+  }
+
+  if (userId && onboardedUserCache.has(userId)) {
+    throw redirect({ to: redirectTo });
+  }
+
+  try {
+    if (trpcClient?.profile?.get?.query) {
+      const profile = await trpcClient.profile.get.query();
+      if (profile?.onboardedAt) {
+        if (userId) {
+          onboardedUserCache.add(userId);
+        }
+        throw redirect({ to: redirectTo });
+      }
+    }
+  } catch (err) {
+    if (isRedirect(err)) {
+      throw err;
+    }
+  }
+}
