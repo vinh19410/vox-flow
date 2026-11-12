@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_USER_IMAGE_LENGTH,
   MAX_USER_NAME_LENGTH,
+  normalizeOAuthUserName,
   validateUserImage,
   validateUserName,
 } from "./index";
@@ -127,5 +128,31 @@ describe("validateUserName", () => {
     expect(validateUserName({})).toBe(false);
     expect(validateUserName([])).toBe(false);
     expect(validateUserName(true)).toBe(false);
+  });
+});
+
+describe("normalizeOAuthUserName", () => {
+  it("keeps valid Google names within 1..50 chars after trimming", () => {
+    expect(normalizeOAuthUserName("  Nguyễn Minh Anh  ", "anh@example.com")).toBe(
+      "Nguyễn Minh Anh",
+    );
+  });
+
+  it("truncates Google names longer than 50 chars and always passes validateUserName", () => {
+    const longGoogleName = `${"N".repeat(48)}   Khoa CNTT Đại học Quốc gia Hà Nội`;
+    const normalized = normalizeOAuthUserName(longGoogleName, "sv@vnu.edu.vn");
+    expect(normalized.length).toBeLessThanOrEqual(MAX_USER_NAME_LENGTH);
+    expect(normalized.length).toBeGreaterThan(0);
+    expect(validateUserName(normalized)).toEqual({ data: { name: normalized } });
+  });
+
+  it("falls back to email local-part or 'Học viên' when Google name is empty", () => {
+    expect(normalizeOAuthUserName("", "hocvien.ielts@example.com")).toBe(
+      "hocvien.ielts",
+    );
+    expect(normalizeOAuthUserName("   ", "")).toBe("Học viên");
+    expect(validateUserName(normalizeOAuthUserName(undefined, undefined))).toEqual({
+      data: { name: "Học viên" },
+    });
   });
 });

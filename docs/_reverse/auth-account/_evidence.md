@@ -61,7 +61,7 @@
 |------|---------|----------------|--------------|-------------------|------|
 | Đích mặc định đăng nhập | đăng nhập thành công | `/app/dashboard` | có (apps/web/src/features/__tests__/slice-a.test.tsx:501-503) | apps/web/src/features/auth/auth-screen.tsx:20,73 | ✅ |
 | Đích mặc định đăng ký | đăng ký thành công | `/onboarding` | có (apps/web/src/features/__tests__/slice-a.test.tsx:582-586) | apps/web/src/features/auth/auth-screen.tsx:21,74 | ✅ |
-| Chống open redirect | mọi nơi dùng redirect | tiền tố bị chặn: `//`, `/\`, `/auth`, `/login` | có (slice-a.test.tsx:612-643,700-717) · chưa có test cho `/\`, `/auth`, `/login` | apps/web/src/features/auth/auth-screen.tsx:27-39 | ✅ |
+| Chống open redirect | mọi nơi dùng redirect | tiền tố bị chặn: `//`, `/\`, `/auth`, `/login` | có (`slice-a.test.tsx:612-643,700-717` cho `//`; `route-guards.test.ts:244` cho `//`, `/auth`, `/login`) | apps/web/src/features/auth/auth-screen.tsx:27-39 | ✅ |
 | Tự đăng nhập sau đăng ký | đăng ký | `autoSignIn: true` | có (packages/api/src/test/auth.test.ts:59-65) | packages/auth/src/index.ts:36 | ✅ |
 | Cookie phiên | mọi phản hồi cấp phiên | SameSite=None, Secure, HttpOnly | có (packages/api/src/test/auth.test.ts:157-164) | packages/auth/src/index.ts:117-121 | ✅ |
 | Origin tin cậy | mọi yêu cầu auth | `CORS_ORIGIN` bỏ "/" cuối (đã gỡ `desktopOrigins` ở #134) | có (packages/api/src/test/auth.test.ts:41-42) | packages/auth/src/index.ts:68,82 | ✅ |

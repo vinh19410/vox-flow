@@ -26,3 +26,23 @@ export function validateUserName(
 
   return { data: { name: trimmed } };
 }
+
+/**
+ * Chuẩn hóa tên từ hồ sơ OAuth ngoài (vd Google ID token có thể rỗng hoặc dài > 50 ký tự)
+ * để luôn thỏa mãn ràng buộc `1..50` ký tự của `validateUserName`.
+ */
+export function normalizeOAuthUserName(
+  name: unknown,
+  email?: unknown,
+): string {
+  const raw = typeof name === "string" ? name.trim() : "";
+  if (raw.length > 0) {
+    return raw.slice(0, MAX_USER_NAME_LENGTH).trim() || "Học viên";
+  }
+  const emailLocal =
+    typeof email === "string" ? (email.split("@")[0]?.trim() ?? "") : "";
+  if (emailLocal.length > 0) {
+    return emailLocal.slice(0, MAX_USER_NAME_LENGTH).trim() || "Học viên";
+  }
+  return "Học viên";
+}

@@ -22,7 +22,7 @@ updated: 2026-11-12
 1. Người dùng bấm "Tiếp tục với Google"; nút đổi thành "Đang kết nối...", form bị khóa. ✅
 2. Hệ thống tính đích thành công (`callbackURL`), đích cho tài khoản mới (`newUserCallbackURL` = `safeRedirect ?? "/onboarding"`) và đích lỗi từ redirect hợp lệ. ✅
 3. Hệ thống chuyển trình duyệt sang Google. ✅
-4. Người dùng đồng ý tại Google; trình duyệt trở về đích tương ứng — tài khoản mới vào thẳng `/onboarding`, tài khoản cũ vào đích đăng nhập. ✅ (cơ chế callback của `better-auth@1.7.12`; redirect URI máy chủ xác nhận ở packages/api/src/test/auth.test.ts)
+4. Người dùng đồng ý tại Google; với tài khoản mới, máy chủ chuẩn hóa tên hồ sơ Google về `1..50` ký tự (`normalizeOAuthUserName`) trước khi tạo user; trình duyệt trở về đích tương ứng — tài khoản mới vào thẳng `/onboarding`, tài khoản cũ vào đích đăng nhập. ✅ (cơ chế callback của `better-auth@1.7.12`; redirect URI và `mapProfileToUser` xác nhận ở `packages/api/src/test/auth.test.ts`)
 
 **f. Luồng thay thế:**
 - 4a. Người dùng hủy hoặc Google lỗi: về `/auth?error=...`; giá trị khác `account_not_linked` hiển thị E-auth-account-007. ✅

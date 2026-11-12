@@ -74,6 +74,12 @@ export async function requireOnboarded(redirectPath?: string) {
  * sign-in screen while allowing unauthenticated or un-onboarded users (or
  * unexpected profile fetch errors) to remain on /auth.
  */
+function buildRouterRedirect(redirectTo: string) {
+  return redirectTo.includes("?") || redirectTo.includes("#")
+    ? redirect({ href: redirectTo })
+    : redirect({ to: redirectTo });
+}
+
 export async function redirectIfOnboarded(
   redirectTo: string = "/app/dashboard",
 ): Promise<void> {
@@ -84,7 +90,7 @@ export async function redirectIfOnboarded(
   }
 
   if (userId && onboardedUserCache.has(userId)) {
-    throw redirect({ to: redirectTo });
+    throw buildRouterRedirect(redirectTo);
   }
 
   try {
@@ -94,7 +100,7 @@ export async function redirectIfOnboarded(
         if (userId) {
           onboardedUserCache.add(userId);
         }
-        throw redirect({ to: redirectTo });
+        throw buildRouterRedirect(redirectTo);
       }
     }
   } catch (err) {

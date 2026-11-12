@@ -1,7 +1,7 @@
 ---
 issue: 134
 branch: feat/auth-account-srs-hardening
-status: in-progress
+status: completed
 created: 2026-11-12
 ---
 

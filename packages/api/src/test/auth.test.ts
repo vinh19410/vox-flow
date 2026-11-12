@@ -349,6 +349,54 @@ describe("Better Auth with Google provider (WI-07)", () => {
     expect(updatedSession?.user.name).toBe(exact50Update);
   });
 
+  it("normalizes empty or >50-char Google OAuth profile names via mapProfileToUser so user creation succeeds", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+    const mapProfile = auth.options.socialProviders?.google?.mapProfileToUser;
+    expect(mapProfile).toBeTypeOf("function");
+
+    const longMapped = await mapProfile!({
+      sub: "google-long-1",
+      email: "long-google@example.com",
+      email_verified: true,
+      name: "Nguyễn Hoàng Minh Tuấn - Khoa Công nghệ thông tin Đại học Quốc gia",
+      given_name: "Tuấn",
+      family_name: "Nguyễn",
+      picture: "https://lh3.googleusercontent.com/a/photo",
+      aud: "aud",
+      azp: "azp",
+      exp: 9999999999,
+      iat: 1700000000,
+      iss: "https://accounts.google.com",
+    });
+    expect(longMapped?.name).toBeDefined();
+    expect(longMapped!.name!.length).toBeLessThanOrEqual(MAX_USER_NAME_LENGTH);
+
+    const emptyMapped = await mapProfile!({
+      sub: "google-empty-1",
+      email: "empty-name-oauth@example.com",
+      email_verified: true,
+      name: "",
+      given_name: "",
+      family_name: "",
+      picture: "https://lh3.googleusercontent.com/a/photo",
+      aud: "aud",
+      azp: "azp",
+      exp: 9999999999,
+      iat: 1700000000,
+      iss: "https://accounts.google.com",
+    });
+    expect(emptyMapped?.name).toBe("empty-name-oauth");
+
+    const created = await auth.api.signUpEmail({
+      body: {
+        email: "long-google@example.com",
+        password: "Password123!",
+        name: longMapped!.name!,
+      },
+    });
+    expect(created.user.name).toBe(longMapped!.name);
+  });
+
   it("enforces in-memory rate limit per cf-connecting-ip when enableRateLimit is true", async () => {
     const defaultAuth = createAuth(authConfig, testCtx.db);
     expect(defaultAuth.options.rateLimit?.enabled).toBe(false);

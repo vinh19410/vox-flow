@@ -50,8 +50,8 @@ stateDiagram-v2
 | Trạng thái | Ý nghĩa | Vào bằng | Ra bằng | Nguồn | Nhãn |
 |-----------|---------|----------|---------|-------|------|
 | KhongPhien | Chỉ vào được `/auth` và các trang công khai (landing, terms); route bảo vệ chuyển `/auth` | Chưa đăng nhập | Đăng nhập | apps/web/src/lib/auth-guard.ts:25-31 | ✅ |
-| ChuaOnboarding | Chỉ vào được `/onboarding`; `/app/*`, `/exam`, `/scoring` chuyển `/onboarding` | Đăng nhập khi hồ sơ rỗng hoặc `onboardedAt` rỗng | Hoàn tất onboarding (do feature `onboarding-profile`) | apps/web/src/lib/auth-guard.ts:50-56 | ✅ |
-| DaOnboarding | Vào được `/app/*`, `/exam`, `/scoring`; `/onboarding` chuyển `/app/dashboard` | `onboardedAt` có giá trị (ghi nhớ trong bộ nhớ trình duyệt) | Đăng xuất | apps/web/src/lib/auth-guard.ts:45-59; apps/web/src/routes/_proto/onboarding.tsx:14-17 | ✅ |
+| ChuaOnboarding | Vào được `/onboarding` và vẫn mở được `/auth` (để giữ nút "Quay lại" từ bước 1 đổi tài khoản); `/app/*`, `/exam`, `/scoring` chuyển `/onboarding` | Đăng nhập khi hồ sơ rỗng hoặc `onboardedAt` rỗng | Hoàn tất onboarding (do feature `onboarding-profile`) hoặc đăng xuất | apps/web/src/lib/auth-guard.ts:50-56,77-105 | ✅ |
+| DaOnboarding | Vào được `/app/*`, `/exam`, `/scoring`; `/onboarding` chuyển `/app/dashboard`; `/auth` (khi không có `?error=`) chuyển `safeRedirect ?? "/app/dashboard"` | `onboardedAt` có giá trị (ghi nhớ trong bộ nhớ trình duyệt) | Đăng xuất | apps/web/src/lib/auth-guard.ts:45-59,77-105; apps/web/src/routes/_proto/auth.tsx:19-22 | ✅ |
 | QuanTri | Vào thêm được `/admin/disputes`, `/admin/forecast` | Email thuộc danh sách admin | Đổi cấu hình ADMIN_EMAILS | apps/web/src/routes/admin/disputes.tsx:16-24; packages/api/src/index.ts:31-38 | ✅ |
 | (vòng đời cache onboarding) | Ghi nhớ theo mã người dùng, không lẫn người giữa các phiên | Guard đọc hồ sơ thành công, hoặc ngay khi hoàn tất onboarding (`markUserOnboarded`) | Đăng xuất thành công xóa toàn bộ (`clearOnboardedUserCache`, #134) | apps/web/src/lib/auth-guard.ts; apps/web/src/hooks/use-sign-out.ts | ✅ |
 

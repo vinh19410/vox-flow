@@ -357,4 +357,25 @@ describe("redirectIfOnboarded", () => {
     }
     expect(trpcClient.profile.get.query).not.toHaveBeenCalled();
   });
+
+  it("uses redirect({ href }) when redirectTo contains query params or hash so TanStack Router parses them cleanly", async () => {
+    markUserOnboarded("u-query");
+    vi.mocked(authClient.getSession).mockResolvedValue({
+      data: {
+        user: { id: "u-query", email: "uq@voxflow.vn", name: "Query User" },
+        session: { id: "sess_q", userId: "u-query" },
+      },
+      error: null,
+    });
+
+    try {
+      await redirectIfOnboarded("/app/dashboard?utm_source=email#summary");
+      expect.unreachable("Expected redirectIfOnboarded to throw href redirect");
+    } catch (err) {
+      expect(isRedirect(err)).toBe(true);
+      if (isRedirect(err)) {
+        expect(err.options.href).toBe("/app/dashboard?utm_source=email#summary");
+      }
+    }
+  });
 });

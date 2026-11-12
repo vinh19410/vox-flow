@@ -26,7 +26,7 @@ updated: 2026-11-12
 5. Hệ thống tải lại toàn trang tới đích. ✅
 
 **f. Luồng thay thế:**
-- 3a. Trình duyệt chặn gửi khi thiếu trường, email sai định dạng, mật khẩu ngoài 8..128 hoặc tên vượt 50 ký tự — câu chữ HTML5 do trình duyệt sinh, theo ngôn ngữ trình duyệt của người dùng (E-auth-account-014). ✅
+- 3a. Trình duyệt chặn gửi khi thiếu trường, email sai định dạng hoặc mật khẩu ngắn hơn 8 ký tự (`minLength=8`; ô tên giới hạn nhập `maxLength=50`, còn mật khẩu vượt 128 ký tự do máy chủ từ chối và hiển thị E-auth-account-004) — câu chữ HTML5 do trình duyệt sinh theo ngôn ngữ trình duyệt của người dùng (E-auth-account-014). ✅
 - 5a. Có tham số redirect hợp lệ: đích là redirect thay vì `/onboarding` (BR-auth-account-001, BR-auth-account-002). ✅
 - 5b. Tham số redirect không hợp lệ (vd "//evil.com/hack"): bỏ qua, đích `/onboarding`. ✅
 

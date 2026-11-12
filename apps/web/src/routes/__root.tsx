@@ -38,8 +38,7 @@ function RootComponent() {
     <>
       <HeadContent />
       <Outlet />
-      {/* One Toaster serves both trees; proto forces light (see _proto/route.tsx),
-          and legacy has its own ThemeProvider below, so pin the chrome to light. */}
+      {/* Pin Toaster chrome to light to match the app's light surface (see _proto/route.tsx). */}
       <Toaster richColors theme="light" />
       <TanStackRouterDevtools position="bottom-left" />
       <ReactQueryDevtools position="bottom" buttonPosition="bottom-right" />

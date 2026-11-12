@@ -136,7 +136,10 @@ sequenceDiagram
     participant G as Google OAuth
     K->>W: Bam Tiep tuc voi Google
     W->>S: Yeu cau dang nhap social, callback = dich hop le hoac /app/dashboard, newUserCallbackURL = dich hop le hoac /onboarding, errorCallback = /auth (kem redirect hop le)
-    alt Loi tra ve ngay
+    alt Qua gioi han toc do (HTTP 429)
+        S-->>W: HTTP 429
+        W-->>K: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây. (E-015)
+    else Loi tra ve ngay khac
         S-->>W: Loi
         W-->>K: Đăng nhập Google không thành công. Vui lòng thử lại. (E-006)
     else Ngoai le mang
@@ -146,6 +149,7 @@ sequenceDiagram
         W->>G: Chuyen huong trinh duyet
         alt Nguoi dung dong y
             G->>S: Goi lai callback google
+            Note over S: Ho so Google moi duoc chuan hoa ten 1..50 ky tu (normalizeOAuthUserName) va kiem tra qua hook user.create
             S-->>W: Chuyen ve dich: callbackURL (tai khoan cu) hoac newUserCallbackURL = /onboarding (tai khoan moi), kem phien dang nhap
         else Huy hoac loi
             G->>S: Loi
@@ -164,7 +168,8 @@ flowchart TD
     B -->|Khong| C["Hien Đang kết nối..., khoa form"]
     C --> D["Tinh callbackURL, newUserCallbackURL va errorCallbackURL tu redirect hop le"]
     D --> E{"Ket qua khoi tao"}
-    E -->|"Loi tra ve"| E1["Hien: Đăng nhập Google không thành công. Vui lòng thử lại."]
+    E -->|"HTTP 429"| E0["Hien: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."]
+    E -->|"Loi tra ve khac"| E1["Hien: Đăng nhập Google không thành công. Vui lòng thử lại."]
     E -->|"Ngoai le"| E2["Hien: Không thể kết nối đến máy chủ xác thực."]
     E -->|"Thanh cong"| F["Chuyen sang Google"]
     F --> G{"Quay lai"}
@@ -217,7 +222,7 @@ flowchart TD
 
 ## Flow 5: Bảo vệ route theo phiên và onboarding
 
-> Nguồn ✅: apps/web/src/lib/auth-guard.ts:24-70; apps/web/src/routes/_proto/app/route.tsx:7; apps/web/src/routes/_proto/onboarding.tsx:7-26; apps/web/src/lib/__tests__/auth-guard.test.ts; apps/web/src/lib/__tests__/route-guards.test.ts. Liên quan FR-019..023.
+> Nguồn ✅: apps/web/src/lib/auth-guard.ts:24-105; apps/web/src/routes/_proto/auth.tsx:19-22; apps/web/src/routes/_proto/app/route.tsx:7; apps/web/src/routes/_proto/onboarding.tsx:7-26; apps/web/src/features/onboarding/onboarding-screen.tsx:27-34; apps/web/src/lib/__tests__/auth-guard.test.ts; apps/web/src/lib/__tests__/route-guards.test.ts. Liên quan FR-015, FR-019..023.
 
 ### Sequence — Guard route
 
@@ -250,7 +255,7 @@ sequenceDiagram
             end
         end
     end
-    Note over R: /onboarding chi kiem tra phien, neu da onboarding thi chuyen /app/dashboard
+    Note over R: /onboarding chi kiem tra phien, neu da onboarding thi chuyen /app/dashboard; hoan tat goi markUserOnboarded. /auth (khong co ?error=) goi redirectIfOnboarded chuyen nguoi da onboarding ve safeRedirect ?? /app/dashboard, nguoi chua onboard o lai /auth.
 ```
 
 ### Activity — Guard route
@@ -259,10 +264,13 @@ sequenceDiagram
 flowchart TD
     A["Vao route duoc bao ve"] --> B{"Co phien?"}
     B -->|"Khong hoac loi mang"| B1["Chuyen /auth kem redirect = dia chi hien tai"]
-    B -->|Co| C{"Route la onboarding?"}
-    C -->|Co| D{"Da onboarding?"}
+    B -->|Co| C{"Loai route?"}
+    C -->|"/auth (khong co ?error=)"| CA{"Da onboarding (cache hoac profile.get)?"}
+    CA -->|Co| CA1["Chuyen safeRedirect ?? /app/dashboard"]
+    CA -->|"Chua hoac loi doc"| CA2["O lai /auth (cho phep doi tai khoan)"]
+    C -->|"/onboarding"| D{"Da onboarding?"}
     D -->|Co| D1["Chuyen /app/dashboard"]
-    D -->|"Chua hoac loi doc"| D2["Cho vao onboarding"]
+    D -->|"Chua hoac loi doc"| D2["Cho vao onboarding (hoan tat goi markUserOnboarded)"]
     C -->|"Khong (app, exam, scoring)"| E{"User da co trong bo nho dem?"}
     E -->|Co| E1["Cho vao"]
     E -->|Khong| F["Doc ho so"]
@@ -318,37 +326,48 @@ flowchart TD
     D -->|Co| E["Vao man hinh quan tri"]
 ```
 
-## Flow 7: Hợp lệ hóa ảnh đại diện khi tạo/cập nhật tài khoản
+## Flow 7: Hợp lệ hóa tên hiển thị và ảnh đại diện khi tạo/cập nhật tài khoản
 
-> Nguồn ✅: packages/auth/src/image-validation.ts:17-31; packages/auth/src/index.ts:46-72; packages/api/src/test/auth.test.ts:89-193. Liên quan FR-028, BR-009..017, E-012. Chỉ phần kiểm tra — luồng chọn/nén avatar thuộc `onboarding-profile`.
+> Nguồn ✅: packages/auth/src/name-validation.ts; packages/auth/src/image-validation.ts; packages/auth/src/index.ts:31-61,103-112; packages/api/src/test/auth.test.ts:89-193,251-350. Liên quan FR-001, FR-028, BR-003, BR-009..017, E-012, E-016. Chỉ phần kiểm tra tại hook — luồng chọn/nén avatar thuộc `onboarding-profile`.
 
-### Sequence — Hợp lệ hóa ảnh
+### Sequence — Hợp lệ hóa tên và ảnh
 
 ```mermaid
 sequenceDiagram
-    actor N as Nguoi dung
-    participant S as May chu xac thuc
+    actor N as Nguoi dung hoac OAuth
+    participant S as May chu xac thuc (databaseHooks.user)
     participant D as CSDL D1
-    N->>S: Dang ky hoac cap nhat user (co the kem anh)
-    alt Khong gui truong anh
-        S->>D: Luu, giu nguyen anh
-    else Anh null
-        S->>D: Xoa anh
-    else Anh khong phai chuoi, rong, qua 32000 ky tu hoac dinh dang cam
-        S-->>N: BAD_REQUEST INVALID_IMAGE
+    N->>S: Tao hoac cap nhat user (co the kem name va/hoac image)
+    alt Co truong name nhung khong phai chuoi hoac sau trim ngoai 1..50 ky tu
+        S-->>N: BAD_REQUEST INVALID_NAME (E-016)
         Note over D: Khong ghi, du lieu cu giu nguyen
-    else Anh https, data URL webp jpeg png hoac /avatars/
-        S->>D: Luu anh
-        S-->>N: Thanh cong
+    else Ten hop le hoac khong gui truong name
+        alt Khong gui truong image
+            S->>D: Luu ten da trim (neu co), giu nguyen anh
+            S-->>N: Thanh cong
+        else image la null
+            S->>D: Luu ten da trim (neu co), xoa anh
+            S-->>N: Thanh cong
+        else image khong phai chuoi, rong, qua 32000 ky tu hoac dinh dang cam
+            S-->>N: BAD_REQUEST INVALID_IMAGE (E-012)
+            Note over D: Khong ghi, du lieu cu giu nguyen
+        else image https, data URL webp jpeg png hoac /avatars/
+            S->>D: Luu ten da trim (neu co) va anh
+            S-->>N: Thanh cong
+        end
     end
 ```
 
-### Activity — Hợp lệ hóa ảnh
+### Activity — Hợp lệ hóa tên và ảnh
 
 ```mermaid
 flowchart TD
-    A["Yeu cau tao hoac cap nhat user"] --> B{"Co truong image?"}
-    B -->|Khong| B1["Bo qua kiem tra, giu nguyen"]
+    A["Yeu cau tao hoac cap nhat user"] --> N0{"Co truong name?"}
+    N0 -->|Khong| B{"Co truong image?"}
+    N0 -->|Co| N1{"La chuoi va trim() dai 1..50?"}
+    N1 -->|Khong| XN["Tu choi INVALID_NAME"]
+    N1 -->|Co| N2["Ghi nhan name da trim"] --> B
+    B -->|Khong| OK["Chap nhan va luu"]
     B -->|Co| C{"image la null?"}
     C -->|Co| C1["Chap nhan, xoa anh"]
     C -->|Khong| D{"La chuoi khac rong?"}
@@ -356,7 +375,7 @@ flowchart TD
     D -->|Co| E{"Do dai tren 32000?"}
     E -->|Co| X
     E -->|Khong| F{"Bat dau bang https://?"}
-    F -->|Co| OK["Chap nhan"]
+    F -->|Co| OK
     F -->|Khong| G{"data:image webp, jpeg hoac png base64?"}
     G -->|Co| OK
     G -->|Khong| H{"Bat dau bang /avatars/?"}

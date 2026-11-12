@@ -5,7 +5,7 @@ import * as schema from "@vox-flow/db/schema/auth";
 import { betterAuth } from "better-auth";
 
 import { validateUserImage } from "./image-validation";
-import { validateUserName } from "./name-validation";
+import { normalizeOAuthUserName, validateUserName } from "./name-validation";
 
 export {
   MAX_USER_IMAGE_LENGTH,
@@ -13,6 +13,7 @@ export {
 } from "./image-validation";
 export {
   MAX_USER_NAME_LENGTH,
+  normalizeOAuthUserName,
   validateUserName,
 } from "./name-validation";
 
@@ -96,6 +97,9 @@ export function createAuth(
       google: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET,
+        mapProfileToUser: (profile) => ({
+          name: normalizeOAuthUserName(profile.name, profile.email),
+        }),
       },
     },
     secret: env.BETTER_AUTH_SECRET,
