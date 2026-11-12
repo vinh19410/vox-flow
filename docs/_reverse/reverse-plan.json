@@ -6,8 +6,7 @@
     "packages/api/src/routers/index.ts (healthCheck, privateData)",
     "apps/web/src/features/app-state",
     "apps/web/src/layouts",
-    "packages/ui",
-    "apps/web/src/routes/_app-legacy (nghi dead code)"
+    "packages/ui"
   ],
   "features": [
     {
@@ -15,8 +14,8 @@
       "sources": [
         "packages/auth/src/index.ts",
         "apps/web/src/features/auth/auth-screen.tsx",
-        "apps/web/src/components/sign-in-form.tsx",
-        "apps/web/src/components/sign-up-form.tsx",
+        "packages/auth/src/name-validation.ts",
+        "apps/web/src/routes/_proto/auth.tsx",
         "apps/web/src/lib/auth-guard.ts",
         "packages/db/src/schema/auth.ts"
       ],

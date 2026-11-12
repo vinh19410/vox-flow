@@ -1,12 +1,12 @@
 ---
 type: reverse-srs-flows
 feature: auth-account
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # auth-account — Flows tái lập (reverse)
 
-> Chỉ vẽ bước CÓ trong code. Bước suy đoán chú thích 🟡. Nguồn mỗi flow nằm dưới tiêu đề (đường dẫn repo đầy đủ). Chi tiết lỗi: `auth-account-reverse-spec.md` Mục 6.
+> **Đã duyệt (#134).** Chỉ vẽ bước CÓ trong code (kèm quyết định đã chốt ở `reverse-gaps.md`). Nguồn mỗi flow nằm dưới tiêu đề (đường dẫn repo đầy đủ). Chi tiết lỗi: `auth-account-reverse-spec.md` Mục 6. Flow legacy (`/login` → `/dashboard`) đã xóa ở #134 cùng khu `_app-legacy`.
 
 ## Flow 1: Đăng ký bằng email + mật khẩu
 
@@ -22,11 +22,17 @@ sequenceDiagram
     participant D as CSDL D1
     K->>W: Chon che do dang ky, nhap Ten, Email, Mat khau 8 ky tu tro len
     K->>W: Bam Tao tai khoan
-    Note over W: Trinh duyet chan neu thieu truong hoac email sai dinh dang (cau chu 🟡 chua resolve)
-    W->>S: Gui ten da trim, email da trim, mat khau nguyen ban
+    Note over W: Trinh duyet chan neu thieu truong hoac email sai dinh dang (cau chu HTML5 theo ngon ngu trinh duyet cua nguoi dung)
+    W->>S: Gui ten da trim (1..50 ky tu), email da trim, mat khau nguyen ban (8..128 ky tu)
     alt Email da ton tai (ma USER_ALREADY_EXISTS...)
         S-->>W: Loi 422
         W-->>K: Email đã được sử dụng. (E-002)
+    else Ten ngoai 1..50 ky tu sau trim
+        S-->>W: BAD_REQUEST INVALID_NAME
+        W-->>K: Tên hiển thị không hợp lệ (1–50 ký tự). (E-016)
+    else Gui qua nhanh vuot 3 lan/10s
+        S-->>W: HTTP 429
+        W-->>K: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây. (E-015)
     else Ma loi khac
         S-->>W: Loi khac
         W-->>K: Đăng ký không thành công. Vui lòng thử lại. (E-004)
@@ -38,32 +44,36 @@ sequenceDiagram
         W->>W: Chon dich = redirect hop le hoac /onboarding
         W-->>K: Tai lai toan trang toi dich
     end
-    Note over S: Chinh sach mat khau phia may chu 🟡 OQ-1
+    Note over S: Mat khau bam scrypt, dai 8..128 ky tu (better-auth 1.7.12)
 ```
 
 ### Activity — Đăng ký bằng email
 
 ```mermaid
 flowchart TD
-    A["Mo /auth, bam Chua co tai khoan? Dang ky"] --> B["Nhap Ten hien thi, Email, Mat khau (toi thieu 8 ky tu)"]
+    A["Mo /auth, bam Chua co tai khoan? Dang ky"] --> B["Nhap Ten hien thi (1..50 ky tu), Email, Mat khau (8..128 ky tu)"]
     B --> C{"Form hop le theo trinh duyet?"}
-    C -->|Khong| C1["Trinh duyet chan gui 🟡 cau chu chua resolve"]
+    C -->|Khong| C1["Trinh duyet chan gui (cau chu HTML5 theo ngon ngu trinh duyet)"]
     C -->|Co| D["Khoa form, cat khoang trang ten va email"]
     D --> E{"Ket qua goi dang ky"}
     E -->|"Ma bat dau USER_ALREADY_EXISTS"| E1["Hien: Email đã được sử dụng."]
+    E -->|"INVALID_NAME (ten ngoai 1..50)"| E1b["Hien: Tên hiển thị không hợp lệ (1–50 ký tự)."]
+    E -->|"HTTP 429 (qua nhanh)"| E1c["Hien: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."]
     E -->|"Ma loi khac"| E2["Hien: Đăng ký không thành công. Vui lòng thử lại."]
     E -->|"Ngoai le"| E3["Hien: Không thể kết nối đến máy chủ xác thực."]
     E -->|"Thanh cong"| F{"redirect hop le?"}
     F -->|Co| F1["Tai lai toan trang toi redirect"]
     F -->|Khong| F2["Tai lai toan trang toi /onboarding"]
     E1 --> G["Mo khoa form, giu nguyen du lieu da nhap"]
+    E1b --> G
+    E1c --> G
     E2 --> G
     E3 --> G
 ```
 
 ## Flow 2: Đăng nhập bằng email + mật khẩu
 
-> Nguồn ✅: apps/web/src/features/auth/auth-screen.tsx:118-143; packages/api/src/test/auth.test.ts:67-87,195-221. Liên quan FR-006..009, FR-012, E-001, E-003, E-005.
+> Nguồn ✅: apps/web/src/features/auth/auth-screen.tsx; packages/api/src/test/auth.test.ts; apps/web/src/routes/_proto/auth.tsx (chuyển hướng khi đã onboard, #134). Liên quan FR-006..009, FR-015, FR-012, E-001, E-003, E-005, E-015.
 
 ### Sequence — Đăng nhập bằng email
 
@@ -74,9 +84,12 @@ sequenceDiagram
     participant S as May chu xac thuc
     K->>W: Nhap Email, Mat khau roi bam Dang nhap
     W->>S: Gui email da trim, mat khau nguyen ban
-    alt Sai email hoac mat khau (401 INVALID_EMAIL_OR_PASSWORD)
+    alt Sai email hoac mat khau, email khong ton tai, hoac tai khoan chi co Google (401 INVALID_EMAIL_OR_PASSWORD)
         S-->>W: Loi 401
         W-->>K: Sai email hoặc mật khẩu. (E-001)
+    else Gui qua nhanh vuot 3 lan/10s
+        S-->>W: HTTP 429
+        W-->>K: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây. (E-015)
     else Ma loi khac
         S-->>W: Loi khac
         W-->>K: Đăng nhập không thành công. Vui lòng thử lại. (E-003)
@@ -93,23 +106,25 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["Mo /auth (mac dinh che do dang nhap)"] --> B["Nhap Email va Mat khau"]
+    A["Mo /auth (neu da co phien va da onboard, khong co error thi bi chuyen sang dich hop le)"] --> B["Nhap Email va Mat khau"]
     B --> C["Khoa form, cat khoang trang email"]
     C --> D{"Ket qua goi dang nhap"}
-    D -->|"INVALID_EMAIL_OR_PASSWORD"| D1["Hien: Sai email hoặc mật khẩu."]
+    D -->|"INVALID_EMAIL_OR_PASSWORD (ca email khong ton tai)"| D1["Hien: Sai email hoặc mật khẩu."]
+    D -->|"HTTP 429 (qua nhanh)"| D1b["Hien: Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."]
     D -->|"Ma loi khac"| D2["Hien: Đăng nhập không thành công. Vui lòng thử lại."]
     D -->|"Ngoai le"| D3["Hien: Không thể kết nối đến máy chủ xác thực."]
     D -->|"Thanh cong"| E{"redirect hop le?"}
     E -->|"Co (bat dau bang /, khong // va khong /auth, /login)"| E1["Tai lai toan trang toi redirect"]
     E -->|Khong| E2["Tai lai toan trang toi /app/dashboard"]
     D1 --> F["Mo khoa form"]
+    D1b --> F
     D2 --> F
     D3 --> F
 ```
 
 ## Flow 3: Đăng nhập bằng Google
 
-> Nguồn ✅: apps/web/src/features/auth/auth-screen.tsx:75-116; packages/auth/src/index.ts:38-43; packages/api/src/test/auth.test.ts:31-57; apps/web/src/features/__tests__/slice-a.test.tsx:661-764. Liên quan FR-013, FR-014, E-005..E-008. Bước Google chấp thuận/hủy diễn ra ngoài hệ thống — chỉ biết kết quả qua tham số `error`; các bước thư viện/Google bên dưới là 🟡 (chưa xác nhận từ repo).
+> Nguồn ✅: apps/web/src/features/auth/auth-screen.tsx; packages/auth/src/index.ts; packages/api/src/test/auth.test.ts; apps/web/src/features/__tests__/slice-a.test.tsx. Liên quan FR-013, FR-014, FR-015, E-005..E-008, E-015. Bước Google chấp thuận/hủy diễn ra ngoài hệ thống — kết quả về web qua callback hoặc tham số `error`; cơ chế `callbackURL`/`newUserCallbackURL` đã xác minh trên `better-auth@1.7.12`.
 
 ### Sequence — Đăng nhập Google
 
@@ -120,7 +135,7 @@ sequenceDiagram
     participant S as May chu xac thuc
     participant G as Google OAuth
     K->>W: Bam Tiep tuc voi Google
-    W->>S: Yeu cau dang nhap social, callback = dich hop le hoac /app/dashboard, errorCallback = /auth (kem redirect hop le)
+    W->>S: Yeu cau dang nhap social, callback = dich hop le hoac /app/dashboard, newUserCallbackURL = dich hop le hoac /onboarding, errorCallback = /auth (kem redirect hop le)
     alt Loi tra ve ngay
         S-->>W: Loi
         W-->>K: Đăng nhập Google không thành công. Vui lòng thử lại. (E-006)
@@ -131,10 +146,10 @@ sequenceDiagram
         W->>G: Chuyen huong trinh duyet
         alt Nguoi dung dong y
             G->>S: Goi lai callback google
-            S-->>W: Chuyen ve dich (phien dang nhap) 🟡
+            S-->>W: Chuyen ve dich: callbackURL (tai khoan cu) hoac newUserCallbackURL = /onboarding (tai khoan moi), kem phien dang nhap
         else Huy hoac loi
             G->>S: Loi
-            S-->>W: Chuyen ve /auth kem tham so error 🟡
+            S-->>W: Chuyen ve /auth kem tham so error
             W-->>K: E-007 hoac E-008 tuy gia tri error
         end
     end
@@ -147,20 +162,21 @@ flowchart TD
     A["Bam nut Tiep tuc voi Google"] --> B{"Dang xu ly (isBusy)?"}
     B -->|Co| B1["Bo qua lan bam"]
     B -->|Khong| C["Hien Đang kết nối..., khoa form"]
-    C --> D["Tinh callbackURL va errorCallbackURL tu redirect hop le"]
+    C --> D["Tinh callbackURL, newUserCallbackURL va errorCallbackURL tu redirect hop le"]
     D --> E{"Ket qua khoi tao"}
     E -->|"Loi tra ve"| E1["Hien: Đăng nhập Google không thành công. Vui lòng thử lại."]
     E -->|"Ngoai le"| E2["Hien: Không thể kết nối đến máy chủ xác thực."]
     E -->|"Thanh cong"| F["Chuyen sang Google"]
     F --> G{"Quay lai"}
-    G -->|"Thanh cong"| G1["Vao dich, mac dinh /app/dashboard"]
-    G -->|"error = account_not_linked"| G2["Hien: Email này đã đăng ký bằng mật khẩu... 🟡"]
+    G -->|"Thanh cong, tai khoan cu"| G1["Vao dich, mac dinh /app/dashboard"]
+    G -->|"Thanh cong, tai khoan moi"| G1b["Vao newUserCallbackURL, mac dinh /onboarding"]
+    G -->|"error = account_not_linked"| G2["Hien: Email này đã đăng ký bằng mật khẩu..."]
     G -->|"error khac"| G3["Hien: Đăng nhập Google không thành công hoặc đã bị hủy..."]
 ```
 
 ## Flow 4: Đăng xuất
 
-> Nguồn ✅: apps/web/src/hooks/use-sign-out.ts:10-31; apps/web/src/features/app-state/use-profile-hydration.ts:30-40; apps/web/src/hooks/__tests__/use-sign-out.test.tsx:37-90. Liên quan FR-016..018, E-009.
+> Nguồn ✅: apps/web/src/hooks/use-sign-out.ts; apps/web/src/lib/auth-guard.ts (clearOnboardedUserCache, #134); apps/web/src/features/app-state/use-profile-hydration.ts; apps/web/src/hooks/__tests__/use-sign-out.test.tsx. Liên quan FR-016..018, E-009.
 
 ### Sequence — Đăng xuất
 
@@ -169,7 +185,7 @@ sequenceDiagram
     actor H as Hoc vien
     participant W as Giao dien web
     participant S as May chu xac thuc
-    H->>W: Bam Dang xuat (sidebar, bottom nav, ho so hoac menu legacy)
+    H->>W: Bam Dang xuat (sidebar, bottom nav hoac ho so)
     W->>S: Huy phien
     alt Phan hoi loi hoac ngoai le mang
         S-->>W: Loi
@@ -178,6 +194,7 @@ sequenceDiagram
     else Thanh cong
         S-->>W: Phien da huy
         W->>W: Xoa khoa state prototype trong sessionStorage (loi xoa bi bo qua)
+        W->>W: Xoa bo nho dem trang thai onboarding (clearOnboardedUserCache)
         W->>W: Dieu huong toi /auth
         W->>W: Phien khong con user nen reset state hoc vien, giu mode va voice
         W-->>H: Man hinh Auth
@@ -193,7 +210,8 @@ flowchart TD
     C -->|Co| C1["Toast: Đăng xuất thất bại. Vui lòng thử lại."]
     C1 --> C2["Giu nguyen trang va phien"]
     C -->|Khong| D["Xoa sessionStorage khoa vox-flow-proto-state-v3"]
-    D --> E["Dieu huong toi /auth (hoac dich tuy chon)"]
+    D --> D2["Xoa bo nho dem trang thai onboarding (clearOnboardedUserCache)"]
+    D2 --> E["Dieu huong toi /auth (hoac dich tuy chon)"]
     E --> F["Reset state hoc vien, giu mode va voice"]
 ```
 
@@ -344,60 +362,4 @@ flowchart TD
     G -->|Khong| H{"Bat dau bang /avatars/?"}
     H -->|Co| OK
     H -->|Khong| X
-```
-
-## Flow 8: Khu vực legacy — đăng nhập và dashboard cũ (🟡 nghi dead)
-
-> Nguồn: apps/web/src/routes/_app-legacy/login.tsx:11-18; apps/web/src/routes/_app-legacy/_auth/route.tsx:5-16; apps/web/src/routes/_app-legacy/_auth/dashboard.tsx:10-21; apps/web/src/components/sign-in-form.tsx; apps/web/src/components/sign-up-form.tsx. Không có test, không có liên kết từ giao diện chính (xem `reverse-gaps.md` N-4). 🟡
-
-### Sequence — Legacy
-
-```mermaid
-sequenceDiagram
-    actor U as Nguoi dung (vao bang URL)
-    participant L as Route /login (legacy)
-    participant S as May chu xac thuc
-    participant D as Route /dashboard (legacy)
-    U->>L: Mo /login 🟡
-    L-->>U: Hien form Create Account (mac dinh)
-    U->>L: Dien Name, Email, Password roi Sign Up
-    alt Form khong hop le (email sai, mat khau duoi 8, ten duoi 2)
-        L-->>U: Loi do duoi o (tieng Anh)
-    else Hop le
-        L->>S: Dang ky
-        alt Loi
-            S-->>L: Loi
-            L-->>U: Toast message hoac statusText
-        else Thanh cong
-            S-->>L: Phien
-            L-->>U: Toast Sign up successful, chuyen /dashboard
-        end
-    end
-    U->>D: Mo /dashboard
-    alt Khong co phien
-        D-->>U: Chuyen /login
-    else Co phien
-        D->>S: Goi privateData
-        S-->>D: message va user
-        D-->>U: Welcome ten, API message
-    end
-```
-
-### Activity — Legacy
-
-```mermaid
-flowchart TD
-    A["Mo /login (legacy) 🟡"] --> B["Hien form Create Account"]
-    B --> C{"Chuyen sang Sign In?"}
-    C -->|Co| C1["Hien Welcome Back"]
-    C -->|Khong| D["Nhap Name Email Password"]
-    C1 --> D
-    D --> E{"Hop le? (email dung, mat khau tu 8 ky tu, ten tu 2 ky tu khi dang ky)"}
-    E -->|Khong| E1["Hien loi duoi o"]
-    E -->|Co| F{"Server tra ve"}
-    F -->|"Loi"| F1["Toast message hoac statusText"]
-    F -->|"Thanh cong"| G["Toast thanh cong va chuyen /dashboard"]
-    G --> H{"Co phien khi vao dashboard?"}
-    H -->|Khong| H1["Chuyen /login"]
-    H -->|Co| H2["Hien Welcome va API message"]
 ```

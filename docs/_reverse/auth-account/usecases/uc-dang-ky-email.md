@@ -2,39 +2,40 @@
 type: reverse-usecase
 feature: auth-account
 slug: dang-ky-email
-status: draft
-updated: 2026-11-11
+status: approved
+updated: 2026-11-12
 ---
 
 # UC: Đăng ký tài khoản bằng email
 
-> Tái lập chưa duyệt từ code. Nhãn ✅. Spec: [auth-account-reverse-spec.md](../auth-account-reverse-spec.md).
+> Đã duyệt (#134). Nhãn ✅. Spec: [auth-account-reverse-spec.md](../auth-account-reverse-spec.md).
 
-**a. Tên & mô tả:** Khách tạo tài khoản mới bằng Tên hiển thị, Email, Mật khẩu và được đăng nhập luôn. ✅ [apps/web/src/features/auth/auth-screen.tsx:118-143; packages/auth/src/index.ts:34-37]
+**a. Tên & mô tả:** Khách tạo tài khoản mới bằng Tên hiển thị, Email, Mật khẩu và được đăng nhập luôn. ✅ [apps/web/src/features/auth/auth-screen.tsx; packages/auth/src/index.ts]
 
 **b. Actor:** Khách (chính); máy chủ xác thực (hệ thống). ✅
 
-**c. Tiền điều kiện:** Khách ở màn hình S-1 (`/auth`) và đã chuyển sang chế độ đăng ký. Không có điều kiện đã đăng nhập: màn hình không chặn người đã có phiên (OQ-8). ✅ [apps/web/src/routes/_proto/auth.tsx:5-24]
+**c. Tiền điều kiện:** Khách ở màn hình S-1 (`/auth`) và đã chuyển sang chế độ đăng ký. Người đã có phiên và đã hoàn tất onboarding (khi không có `?error=`) bị route chuyển đi trước (BR-auth-account-033), nên luồng này chỉ chạy cho người chưa onboard hoặc chưa có phiên. ✅ [apps/web/src/routes/_proto/auth.tsx]
 
-**d. Hậu điều kiện:** Có tài khoản mới với email duy nhất; phiên đăng nhập được cấp; trình duyệt tải lại toàn trang tới đích hợp lệ do khách yêu cầu, mặc định `/onboarding`. ✅ [apps/web/src/features/auth/auth-screen.tsx:74,136-138; apps/web/src/features/__tests__/slice-a.test.tsx:570-593]
+**d. Hậu điều kiện:** Có tài khoản mới với email duy nhất; phiên đăng nhập được cấp; trình duyệt tải lại toàn trang tới đích hợp lệ do khách yêu cầu, mặc định `/onboarding`. ✅ [apps/web/src/features/auth/auth-screen.tsx; apps/web/src/features/__tests__/slice-a.test.tsx]
 
 **e. Luồng chính:**
-1. Khách bấm "Chưa có tài khoản? Đăng ký". ✅ [apps/web/src/features/auth/auth-screen.tsx:254]
-2. Khách nhập Tên hiển thị, Email, Mật khẩu (tối thiểu 8 ký tự). ✅ [apps/web/src/features/auth/auth-screen.tsx:187-236]
-3. Khách bấm "Tạo tài khoản". Hệ thống khóa form và cắt khoảng trắng tên và email. ✅ [apps/web/src/features/auth/auth-screen.tsx:120-128]
-4. Hệ thống tạo tài khoản, cấp phiên (tự đăng nhập). ✅ [packages/auth/src/index.ts:36]
-5. Hệ thống tải lại toàn trang tới đích. ✅ [apps/web/src/features/auth/auth-screen.tsx:137-138]
+1. Khách bấm "Chưa có tài khoản? Đăng ký". ✅
+2. Khách nhập Tên hiển thị (1..50 ký tự, `maxLength=50`), Email, Mật khẩu (8..128 ký tự; ô nhập gợi ý "Tối thiểu 8 ký tự."). ✅
+3. Khách bấm "Tạo tài khoản". Hệ thống khóa form và cắt khoảng trắng tên và email. ✅
+4. Hệ thống tạo tài khoản, cấp phiên (tự đăng nhập); máy chủ băm mật khẩu `scrypt` và kiểm tra lại tên (1..50 sau `trim()`) với `validateUserName`. ✅ [packages/auth/src/index.ts; packages/auth/src/name-validation.ts]
+5. Hệ thống tải lại toàn trang tới đích. ✅
 
 **f. Luồng thay thế:**
-- 3a. Trình duyệt chặn gửi khi thiếu trường, email sai định dạng hoặc mật khẩu ngắn hơn 8 ký tự (E-auth-account-014 🟡). [apps/web/src/features/auth/auth-screen.tsx:196,213,227-228]
-- 5a. Có tham số redirect hợp lệ: đích là redirect thay vì `/onboarding` (BR-auth-account-001, BR-auth-account-002). ✅ [apps/web/src/features/__tests__/slice-a.test.tsx:545-568]
-- 5b. Tham số redirect không hợp lệ (vd "//evil.com/hack"): bỏ qua, đích `/onboarding`. ✅ [apps/web/src/features/__tests__/slice-a.test.tsx:627-643]
+- 3a. Trình duyệt chặn gửi khi thiếu trường, email sai định dạng, mật khẩu ngoài 8..128 hoặc tên vượt 50 ký tự — câu chữ HTML5 do trình duyệt sinh, theo ngôn ngữ trình duyệt của người dùng (E-auth-account-014). ✅
+- 5a. Có tham số redirect hợp lệ: đích là redirect thay vì `/onboarding` (BR-auth-account-001, BR-auth-account-002). ✅
+- 5b. Tham số redirect không hợp lệ (vd "//evil.com/hack"): bỏ qua, đích `/onboarding`. ✅
 
 **g. Ngoại lệ:**
-- Email đã tồn tại (kể cả email của tài khoản Google): "Email đã được sử dụng." (E-auth-account-002) ✅ [apps/web/src/features/auth/auth-screen.tsx:43; packages/api/src/test/auth.test.ts:223-284]
-- Lỗi mã khác: "Đăng ký không thành công. Vui lòng thử lại." (E-auth-account-004) ✅ [apps/web/src/features/auth/auth-screen.tsx:46]
-- Mất kết nối: "Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau." (E-auth-account-005) ✅ [apps/web/src/features/auth/auth-screen.tsx:141]
-- Mọi trường hợp lỗi: form mở khóa, giữ dữ liệu đã nhập, không chuyển trang. ✅ [apps/web/src/features/auth/auth-screen.tsx:131-133,140]
+- Email đã tồn tại (kể cả email của tài khoản Google): "Email đã được sử dụng." (E-auth-account-002) ✅
+- Tên hiển thị ngoài 1..50 ký tự sau `trim()`: máy chủ trả BAD_REQUEST `INVALID_NAME` → "Tên hiển thị không hợp lệ (1–50 ký tự)." (E-auth-account-016) ✅
+- Gửi quá nhanh vượt `3 lần/10s`: máy chủ trả HTTP `429` → "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây." (E-auth-account-015) ✅
+- Lỗi mã khác: "Đăng ký không thành công. Vui lòng thử lại." (E-auth-account-004) ✅
+- Mất kết nối: "Không thể kết nối đến máy chủ xác thực. Vui lòng thử lại sau." (E-auth-account-005) ✅
+- Mọi trường hợp lỗi: form mở khóa, giữ dữ liệu đã nhập, không chuyển trang. ✅
 
-**h. Quy tắc & ghi chú:** BR-auth-account-001..005, BR-auth-account-007. Chính sách mật khẩu máy chủ, xác minh email, giới hạn tên: 🟡 OQ-1, OQ-3, OQ-11. Ảnh đại diện kèm đăng ký (nếu có) theo BR-auth-account-009..017.
-
+**h. Quy tắc & ghi chú:** BR-auth-account-001..005, BR-auth-account-007, BR-auth-account-032, BR-auth-account-033. Mật khẩu máy chủ 8..128 ký tự + băm `scrypt`; không xác minh email (D-03); tên hiển thị 1..50 ký tự sau `trim()` ở cả giao diện và máy chủ. Ảnh đại diện kèm đăng ký (nếu có) theo BR-auth-account-009..017.
