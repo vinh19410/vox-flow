@@ -1,7 +1,9 @@
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { user } from "@vox-flow/db/schema";
 import { TRPCError } from "@trpc/server";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { ApiEnv } from "../context";
 import { createTestDb, type TestDbContext } from "../test/db";
 import { appRouter } from "./index";
 
@@ -56,11 +58,13 @@ describe("forecast-admin router and student reporting rules", () => {
 
   function createCaller(
     u: typeof adminUser | null,
-    env: { ADMIN_EMAILS?: string } | undefined = mockEnv,
+    env: ApiEnv | undefined = mockEnv,
+    waitUntil?: (promise: Promise<unknown>) => void,
   ) {
     return appRouter.createCaller({
       db: testCtx.db,
       env,
+      waitUntil,
       session: u
         ? {
             session: {
@@ -334,5 +338,125 @@ describe("forecast-admin router and student reporting rules", () => {
     const created = drafts.find((d) => d.id === feedResult.drafts[0]?.id);
     expect(created).toBeDefined();
     expect(created?.sources).toHaveLength(3);
+  });
+
+  it("publish and updateDraft on published topic schedule non-blocking TTS pre-warm populating 3 x N R2 keys", async () => {
+    const storedKeys = new Map<string, Uint8Array>();
+    const fakeBucket = {
+      get: vi.fn(async (key: string) => {
+        const bytes = storedKeys.get(key);
+        return bytes ? { body: bytes, size: bytes.byteLength } : null;
+      }),
+      put: vi.fn(async (key: string, value: Uint8Array) => {
+        const copy = new Uint8Array(value);
+        storedKeys.set(key, copy);
+        return { size: copy.byteLength };
+      }),
+      delete: vi.fn(async (key: string) => {
+        storedKeys.delete(key);
+      }),
+    } as unknown as R2Bucket;
+
+    const backgroundTasks: Promise<unknown>[] = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(new Uint8Array([0x49, 0x44, 0x33]), { status: 200 }),
+    );
+
+    try {
+      const adminCaller = createCaller(
+        adminUser,
+        {
+          ...mockEnv,
+          AUDIO_BUCKET: fakeBucket,
+          ELEVENLABS_API_KEY: "xi-admin-prewarm",
+        },
+        (p) => {
+          backgroundTasks.push(p);
+        },
+      );
+
+      const draft = await adminCaller.forecastAdmin.createDraft({
+        title: "Morning Routine",
+        quarter: "2026-Q3",
+        part: 1,
+        questions: ["What do you usually do in the morning?", "Do you eat breakfast every day?"],
+      });
+      expect(backgroundTasks).toHaveLength(0);
+
+      const published = await adminCaller.forecastAdmin.publish({ id: draft.id });
+      expect(published.status).toBe("published");
+      expect(backgroundTasks).toHaveLength(1);
+
+      await Promise.all(backgroundTasks);
+      // 3 voices (uk-f, us-m, au-f) x 2 questions = 6 R2 keys
+      expect(storedKeys.size).toBe(6);
+      expect([...storedKeys.keys()].filter((k) => k.startsWith("tts/v1/uk-f/"))).toHaveLength(2);
+      expect([...storedKeys.keys()].filter((k) => k.startsWith("tts/v1/us-m/"))).toHaveLength(2);
+      expect([...storedKeys.keys()].filter((k) => k.startsWith("tts/v1/au-f/"))).toHaveLength(2);
+      expect(fetchSpy).toHaveBeenCalledTimes(6);
+
+      // Editing questions on an already published topic triggers pre-warm only for the new question
+      await adminCaller.forecastAdmin.updateDraft({
+        id: draft.id,
+        questions: [
+          "What do you usually do in the morning?",
+          "Has your morning routine changed recently?",
+        ],
+      });
+      expect(backgroundTasks).toHaveLength(2);
+      await Promise.all(backgroundTasks);
+      // 3 new keys added (for the 1 modified question across 3 voices), first question reused from R2
+      expect(storedKeys.size).toBe(9);
+      expect(fetchSpy).toHaveBeenCalledTimes(9);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("publish still succeeds and waitUntil resolves cleanly when ElevenLabs returns 429 or 500", async () => {
+    const fakeBucket = {
+      get: vi.fn(async () => null),
+      put: vi.fn(async () => ({ size: 0 })),
+      delete: vi.fn(async () => {}),
+    } as unknown as R2Bucket;
+
+    const backgroundTasks: Promise<unknown>[] = [];
+    let callCount = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      callCount++;
+      return callCount % 2 === 0
+        ? new Response("Server Error", { status: 500 })
+        : new Response("Rate Limited", { status: 429 });
+    });
+
+    try {
+      const adminCaller = createCaller(
+        adminUser,
+        {
+          ...mockEnv,
+          AUDIO_BUCKET: fakeBucket,
+          ELEVENLABS_API_KEY: "xi-admin-failing",
+        },
+        (p) => {
+          backgroundTasks.push(p);
+        },
+      );
+
+      const draft = await adminCaller.forecastAdmin.createDraft({
+        title: "Resilient Publish Topic",
+        quarter: "2026-Q3",
+        part: 1,
+        questions: ["Do you like rainy days?"],
+      });
+
+      const published = await adminCaller.forecastAdmin.publish({ id: draft.id });
+      expect(published.status).toBe("published");
+      expect(backgroundTasks).toHaveLength(1);
+
+      // Must resolve cleanly without rejecting
+      await expect(Promise.all(backgroundTasks)).resolves.toBeDefined();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

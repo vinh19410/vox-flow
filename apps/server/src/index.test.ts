@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth } = vi.hoisted(() => {
+const { mockBucket, mockGet, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth, mockEnv } = vi.hoisted(() => {
   const mockPut = vi.fn().mockResolvedValue({ size: 3 });
   const mockDelete = vi.fn().mockResolvedValue(undefined);
   const mockList = vi.fn().mockResolvedValue({ objects: [] as { key: string }[], truncated: false });
@@ -17,6 +17,12 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
     list: mockList,
   };
 
+  const mockEnv: Record<string, unknown> = {
+    CORS_ORIGIN: "*",
+    AUDIO_BUCKET: mockBucket,
+    ELEVENLABS_API_KEY: "xi-server-test-key",
+  };
+
   const mockState = {
     currentAttemptStatus: "in_progress",
     currentAttemptUserId: "user-1",
@@ -25,7 +31,7 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
     attemptMode: "full",
     attemptQuestionKey: null as string | null,
     existingAnswers: [] as Array<{ id: string; questionKey: string; sizeBytes: number; generation?: number; audioKey?: string }>,
-    topicRow: null as { id: string; part: number; questions: unknown } | null,
+    topicRow: null as { id: string; title?: string; part: number; questions: unknown; status?: string } | null,
     currentSessionUser: {
       id: "user-1",
       email: "test@example.com",
@@ -100,7 +106,7 @@ const { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb
     },
   };
 
-  return { mockBucket, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth };
+  return { mockBucket, mockGet, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth, mockEnv };
 });
 
 vi.mock("@vox-flow/api", async (importOriginal) => ({
@@ -109,10 +115,7 @@ vi.mock("@vox-flow/api", async (importOriginal) => ({
 }));
 
 vi.mock("./env.server", () => ({
-  ENV: {
-    CORS_ORIGIN: "*",
-    AUDIO_BUCKET: mockBucket,
-  },
+  ENV: mockEnv,
 }));
 
 vi.mock("./services", () => ({
@@ -853,5 +856,182 @@ describe("GET /api/attempts/:attemptId/answers/:answerId/audio", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("content-type")).toBe("audio/webm");
+  });
+});
+
+describe("GET /api/tts/* routes", () => {
+  const r2Objects = new Map<string, Uint8Array>();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    r2Objects.clear();
+    mockEnv.AUDIO_BUCKET = mockBucket;
+    mockEnv.ELEVENLABS_API_KEY = "xi-server-test-key";
+    mockState.topicRow = null;
+
+    mockGet.mockReset();
+    mockGet.mockImplementation(async (key: string) => {
+      const bytes = r2Objects.get(key);
+      if (!bytes) return null;
+      return {
+        body: bytes,
+        size: bytes.byteLength,
+      };
+    });
+
+    mockPut.mockReset();
+    mockPut.mockImplementation(async (key: string, value: Uint8Array) => {
+      const copy = new Uint8Array(value);
+      r2Objects.set(key, copy);
+      return { size: copy.byteLength };
+    });
+
+    mockDelete.mockReset();
+    mockDelete.mockImplementation(async (key: string) => {
+      r2Objects.delete(key);
+    });
+  });
+
+  it("serves preview MP3 on cache miss with safe/cache headers, then serves 200 & 304 from R2 with 0 ElevenLabs calls", async () => {
+    const fakeMp3 = new Uint8Array([0x49, 0x44, 0x33, 0x03, 0x00, 0x11]);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(fakeMp3, { status: 200, headers: { "Content-Type": "audio/mpeg" } }),
+    );
+
+    const missRes = await app.request("/api/tts/preview/uk-f?v=1");
+    expect(missRes.status).toBe(200);
+    expect(missRes.headers.get("content-type")).toBe("audio/mpeg");
+    expect(missRes.headers.get("content-length")).toBe(String(fakeMp3.byteLength));
+    expect(missRes.headers.get("cache-control")).toBe(
+      "public, max-age=86400, stale-while-revalidate=604800",
+    );
+    expect(missRes.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(missRes.headers.get("content-disposition")).toBe("inline");
+    expect(missRes.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    const etag = missRes.headers.get("etag");
+    expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
+    expect(new Uint8Array(await missRes.arrayBuffer())).toEqual(fakeMp3);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Remove API key on subsequent requests to prove R2 hit never touches ElevenLabs
+    delete mockEnv.ELEVENLABS_API_KEY;
+
+    const hitRes = await app.request("/api/tts/preview/uk-f");
+    expect(hitRes.status).toBe(200);
+    expect(hitRes.headers.get("etag")).toBe(etag);
+    expect(new Uint8Array(await hitRes.arrayBuffer())).toEqual(fakeMp3);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    const notModifiedRes = await app.request("/api/tts/preview/uk-f", {
+      headers: { "If-None-Match": etag! },
+    });
+    expect(notModifiedRes.status).toBe(304);
+    expect(notModifiedRes.headers.get("etag")).toBe(etag);
+    expect(notModifiedRes.headers.get("cache-control")).toBe(
+      "public, max-age=86400, stale-while-revalidate=604800",
+    );
+    expect((await notModifiedRes.arrayBuffer()).byteLength).toBe(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 400 for invalid examiner voice or malformed questionKey/topicId", async () => {
+    const badVoice = await app.request("/api/tts/preview/fr-f");
+    expect(badVoice.status).toBe(400);
+    expect(await badVoice.json()).toEqual({ error: "Invalid examiner voice" });
+
+    const badMockKey = await app.request("/api/tts/mock/uk-f/bad..key");
+    expect(badMockKey.status).toBe(400);
+
+    const badForecastTopic = await app.request("/api/tts/forecast/us-m/bad$topic/p1-1");
+    expect(badForecastTopic.status).toBe(400);
+  });
+
+  it("serves mock prompts (Part 2 speaks opening title only) and returns 404 for unknown mock keys", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    );
+
+    const p2Res = await app.request("/api/tts/mock/us-m/p2-1");
+    expect(p2Res.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const sentBody = JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string) as { text: string };
+    expect(sentBody.text).toBe("Describe a time when you helped someone.");
+
+    const missingFollowUp = await app.request("/api/tts/mock/us-m/p2-1-f");
+    expect(missingFollowUp.status).toBe(404);
+    expect(await missingFollowUp.json()).toEqual({ error: "TTS prompt not found" });
+
+    const unknownMock = await app.request("/api/tts/mock/us-m/p99-1");
+    expect(unknownMock.status).toBe(404);
+  });
+
+  it("serves published forecast prompts and rejects draft/archived/unknown forecast keys with 404", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response(new Uint8Array([7, 8, 9]), { status: 200 }),
+    );
+
+    // Draft topic -> 404
+    mockState.topicRow = {
+      id: "topic-draft",
+      title: "Draft Topic",
+      part: 1,
+      questions: JSON.stringify(["Draft Q1"]),
+      status: "draft",
+    };
+    const draftRes = await app.request("/api/tts/forecast/au-f/topic-draft/topic-draft-0");
+    expect(draftRes.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    // Published Part 2/3 topic -> 200 for cue card title & Part 3 question
+    mockState.topicRow = {
+      id: "topic-pub",
+      title: "Describe an outdoor activity",
+      part: 2,
+      questions: JSON.stringify({
+        cueCards: ["where you do it"],
+        part3: ["Why is outdoor exercise beneficial?"],
+      }),
+      status: "published",
+    };
+    const cueRes = await app.request("/api/tts/forecast/au-f/topic-pub/topic-pub-c");
+    expect(cueRes.status).toBe(200);
+    expect(
+      JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string) as { text: string },
+    ).toMatchObject({ text: "Describe an outdoor activity" });
+
+    const p3Res = await app.request("/api/tts/forecast/au-f/topic-pub/topic-pub-p3-0");
+    expect(p3Res.status).toBe(200);
+    expect(
+      JSON.parse(fetchSpy.mock.calls[1]![1]?.body as string) as { text: string },
+    ).toMatchObject({ text: "Why is outdoor exercise beneficial?" });
+
+    const invalidKeyRes = await app.request("/api/tts/forecast/au-f/topic-pub/topic-pub-p3-9");
+    expect(invalidKeyRes.status).toBe(404);
+  });
+
+  it("returns 503 with Cache-Control: no-store when upstream fails, API key is missing on miss, or AUDIO_BUCKET is absent", async () => {
+    // Missing API key on cache miss
+    delete mockEnv.ELEVENLABS_API_KEY;
+    const noKeyRes = await app.request("/api/tts/preview/us-m");
+    expect(noKeyRes.status).toBe(503);
+    expect(noKeyRes.headers.get("cache-control")).toBe("no-store");
+    expect(await noKeyRes.json()).toEqual({ error: "TTS service unavailable" });
+
+    // Upstream 429
+    mockEnv.ELEVENLABS_API_KEY = "xi-server-test-key";
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response("Rate limit exceeded", { status: 429 }),
+    );
+    const upstreamFailRes = await app.request("/api/tts/preview/au-f");
+    expect(upstreamFailRes.status).toBe(503);
+    expect(upstreamFailRes.headers.get("cache-control")).toBe("no-store");
+    expect(r2Objects.size).toBe(0);
+
+    // Missing AUDIO_BUCKET
+    delete mockEnv.AUDIO_BUCKET;
+    const noBucketRes = await app.request("/api/tts/preview/uk-f");
+    expect(noBucketRes.status).toBe(503);
+    expect(noBucketRes.headers.get("cache-control")).toBe("no-store");
+    expect(await noBucketRes.json()).toEqual({ error: "Storage unavailable" });
   });
 });

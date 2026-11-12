@@ -25,7 +25,16 @@ import {
   maxAnswersForAttempt,
 } from "@vox-flow/api/scoring/answer-limits";
 import { getValidMockQuestionKeys } from "@vox-flow/api/scoring/mock-exam-bank";
-import { Hono } from "hono";
+import {
+  buildTtsCacheKey,
+  type ExaminerVoiceId,
+  getOrCreateTtsAudio,
+  isValidExaminerVoice,
+  resolveForecastTtsText,
+  resolveMockTtsText,
+  resolvePreviewTtsText,
+} from "@vox-flow/api/tts";
+import { type Context as HonoContext, Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { z } from "zod";
@@ -395,6 +404,106 @@ app.get("/api/attempts/:attemptId/answers/:answerId/audio", async (c) => {
 
 app.get("/", (c) => {
   return c.text("OK");
+});
+
+const TTS_PARAM_RE = /^[a-zA-Z0-9_-]{1,128}$/;
+const TTS_CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
+
+function matchesIfNoneMatch(headerValue: string | undefined, etag: string): boolean {
+  if (!headerValue) return false;
+  return headerValue
+    .split(",")
+    .map((token) => token.trim())
+    .some((token) => token === "*" || token === etag || token === `W/${etag}`);
+}
+
+async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: string) {
+  const envRecord = (typeof ENV === "object" && ENV !== null ? ENV : {}) as Record<string, unknown>;
+  const bucket = "AUDIO_BUCKET" in envRecord ? (envRecord.AUDIO_BUCKET as R2Bucket | undefined) : undefined;
+  if (!bucket) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Storage unavailable" }, 503);
+  }
+
+  try {
+    const { r2Key, etag } = await buildTtsCacheKey({ voice, text, env: envRecord });
+    if (matchesIfNoneMatch(c.req.header("if-none-match"), etag)) {
+      const existing = await bucket.get(r2Key);
+      if (existing && existing.size > 0) {
+        c.header("ETag", etag);
+        c.header("Cache-Control", TTS_CACHE_CONTROL);
+        return c.body(null, 304);
+      }
+    }
+
+    const result = await getOrCreateTtsAudio({
+      bucket,
+      env: envRecord,
+      voice,
+      text,
+    });
+
+    c.header("Content-Type", "audio/mpeg");
+    c.header("Content-Length", String(result.size));
+    c.header("ETag", result.etag);
+    c.header("Cache-Control", TTS_CACHE_CONTROL);
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Content-Disposition", "inline");
+    c.header("Content-Security-Policy", "default-src 'none'; sandbox");
+    return c.body(result.body as any, 200);
+  } catch {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "TTS service unavailable" }, 503);
+  }
+}
+
+app.get("/api/tts/preview/:voice", async (c) => {
+  const voice = c.req.param("voice");
+  if (!isValidExaminerVoice(voice)) {
+    return c.json({ error: "Invalid examiner voice" }, 400);
+  }
+  const text = resolvePreviewTtsText(voice);
+  return serveCanonicalTts(c, voice, text);
+});
+
+app.get("/api/tts/mock/:voice/:questionKey", async (c) => {
+  const voice = c.req.param("voice");
+  if (!isValidExaminerVoice(voice)) {
+    return c.json({ error: "Invalid examiner voice" }, 400);
+  }
+  const questionKey = c.req.param("questionKey");
+  if (!TTS_PARAM_RE.test(questionKey)) {
+    return c.json({ error: "Invalid question key" }, 400);
+  }
+  const text = resolveMockTtsText(questionKey);
+  if (!text) {
+    return c.json({ error: "TTS prompt not found" }, 404);
+  }
+  return serveCanonicalTts(c, voice, text);
+});
+
+app.get("/api/tts/forecast/:voice/:topicId/:questionKey", async (c) => {
+  const voice = c.req.param("voice");
+  if (!isValidExaminerVoice(voice)) {
+    return c.json({ error: "Invalid examiner voice" }, 400);
+  }
+  const topicId = c.req.param("topicId");
+  const questionKey = c.req.param("questionKey");
+  if (!TTS_PARAM_RE.test(topicId) || !TTS_PARAM_RE.test(questionKey)) {
+    return c.json({ error: "Invalid question key" }, 400);
+  }
+
+  let text: string | null;
+  try {
+    text = await resolveForecastTtsText(getDb(), topicId, questionKey);
+  } catch {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "TTS service unavailable" }, 503);
+  }
+  if (!text) {
+    return c.json({ error: "TTS prompt not found" }, 404);
+  }
+  return serveCanonicalTts(c, voice, text);
 });
 
 export { app };
