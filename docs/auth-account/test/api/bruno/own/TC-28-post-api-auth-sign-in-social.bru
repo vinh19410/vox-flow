@@ -1,0 +1,34 @@
+meta {
+  name: TC-28 POST /api/auth/sign-in/social
+  type: http
+  seq: 26
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/social
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "provider": "google",
+    "callbackURL": "{{TRUSTED_ORIGIN}}/app/dashboard",
+    "newUserCallbackURL": "{{TRUSTED_ORIGIN}}/onboarding",
+    "errorCallbackURL": "{{TRUSTED_ORIGIN}}/auth"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 200
+  res.body.redirect: eq true
+  res.body.url: startsWith https://accounts.google.com
+  res.body.url: contains %2Fapi%2Fauth%2Fcallback%2Fgoogle
+}

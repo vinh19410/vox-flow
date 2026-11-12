@@ -1,0 +1,19 @@
+meta {
+  name: TC-46 GET /trpc/privateData
+  type: http
+  seq: 44
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/trpc/privateData
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 401
+  res.body.error.data.code: eq UNAUTHORIZED
+  res.body.error.message: eq Authentication required
+}

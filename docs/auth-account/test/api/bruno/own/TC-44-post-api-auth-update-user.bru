@@ -1,0 +1,27 @@
+meta {
+  name: TC-44 POST /api/auth/update-user
+  type: http
+  seq: 42
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/update-user
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+  Cookie: {{sessionCookie}}
+}
+
+body:json {
+  {
+    "email": "new-email@voxflow.local"
+  }
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 400
+  res.body.code: eq EMAIL_CAN_NOT_BE_UPDATED
+}

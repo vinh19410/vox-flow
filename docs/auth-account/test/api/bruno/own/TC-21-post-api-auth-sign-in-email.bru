@@ -1,0 +1,35 @@
+meta {
+  name: TC-21 POST /api/auth/sign-in/email
+  type: http
+  seq: 20
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa+{{runId}}@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.redirect: eq false
+  res.body.token: isString
+  res.headers['set-cookie']: contains session_token=
+}

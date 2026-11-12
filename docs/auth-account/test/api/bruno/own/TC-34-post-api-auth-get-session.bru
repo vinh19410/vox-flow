@@ -1,0 +1,27 @@
+meta {
+  name: TC-34 POST /api/auth/get-session
+  type: http
+  seq: 32
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/get-session
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 405
+  res.body.code: eq METHOD_NOT_ALLOWED_DEFER_SESSION_REQUIRED
+}

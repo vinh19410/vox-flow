@@ -1,0 +1,19 @@
+meta {
+  name: TC-51 GET /api/auth/get-session
+  type: http
+  seq: 49
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/get-session
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 200
+  res.body: isNull
+}

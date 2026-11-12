@@ -1,0 +1,5 @@
+# Bruno local secrets & temporary CLI reports — NEVER commit
+bruno/.env
+bruno/.env.*
+!bruno/.env.example
+.bruno-report-*.json

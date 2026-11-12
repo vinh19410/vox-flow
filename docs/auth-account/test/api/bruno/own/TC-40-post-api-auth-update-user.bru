@@ -1,0 +1,27 @@
+meta {
+  name: TC-40 POST /api/auth/update-user
+  type: http
+  seq: 38
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/update-user
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+  Cookie: {{sessionCookie}}
+}
+
+body:json {
+  {
+    "name": "{{NAME_51}}"
+  }
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 400
+  res.body.code: eq INVALID_NAME
+}

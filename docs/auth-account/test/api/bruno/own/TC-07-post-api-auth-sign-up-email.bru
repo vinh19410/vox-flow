@@ -1,0 +1,33 @@
+meta {
+  name: TC-07 POST /api/auth/sign-up/email
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.nopass+{{runId}}@voxflow.local",
+    "name": "Thieu Mat Khau"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: isString
+}

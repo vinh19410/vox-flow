@@ -1,0 +1,34 @@
+meta {
+  name: TC-19 POST /api/auth/sign-up/email
+  type: http
+  seq: 19
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{UNTRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.badorg+{{runId}}@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "Sai Origin"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 403
+  res.body.code: eq INVALID_ORIGIN
+}

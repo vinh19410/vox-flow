@@ -1,0 +1,30 @@
+meta {
+  name: TC-30 POST /api/auth/sign-in/social
+  type: http
+  seq: 28
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/social
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "provider": "google",
+    "callbackURL": "https://evil.example.com/pwn"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 403
+  res.body.code: eq INVALID_CALLBACK_URL
+}

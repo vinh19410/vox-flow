@@ -1,0 +1,35 @@
+meta {
+  name: TC-04 POST /api/auth/sign-up/email
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.avatar+{{runId}}@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "Hoc Vien Avatar",
+    "image": "{{VALID_IMAGE_HTTPS}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.user.image: eq {{VALID_IMAGE_HTTPS}}
+}

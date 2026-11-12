@@ -1,0 +1,30 @@
+meta {
+  name: TC-06 POST /api/auth/sign-up/email
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "Thieu Email"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: isString
+}

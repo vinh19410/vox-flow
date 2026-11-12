@@ -1,0 +1,27 @@
+meta {
+  name: TC-36 POST /api/auth/update-user
+  type: http
+  seq: 34
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/update-user
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+  Cookie: {{sessionCookie}}
+}
+
+body:json {
+  {
+    "image": "{{VALID_IMAGE_PRESET}}"
+  }
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 200
+  res.body.status: eq true
+}

@@ -1,0 +1,36 @@
+meta {
+  name: TC-18 POST /api/auth/sign-up/email
+  type: http
+  seq: 18
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.bigimg+{{runId}}@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "Anh Qua Lon",
+    "image": "{{OVERSIZE_IMAGE_DATA_URL}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+  bru.setVar('OVERSIZE_IMAGE_DATA_URL', 'data:image/webp;base64,' + 'A'.repeat(32000));
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: eq INVALID_IMAGE
+}

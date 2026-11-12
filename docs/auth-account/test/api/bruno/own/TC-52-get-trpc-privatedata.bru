@@ -1,0 +1,19 @@
+meta {
+  name: TC-52 GET /trpc/privateData
+  type: http
+  seq: 50
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/trpc/privateData
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 401
+  res.body.error.data.code: eq UNAUTHORIZED
+}

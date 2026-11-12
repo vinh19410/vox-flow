@@ -1,0 +1,31 @@
+meta {
+  name: TC-09 POST /api/auth/sign-up/email
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "khong-phai-email",
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "Sai Dinh Dang Email"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: eq INVALID_EMAIL
+}
