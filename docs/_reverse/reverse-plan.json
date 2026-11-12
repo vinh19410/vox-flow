@@ -1,0 +1,203 @@
+{
+  "codebase": "/root/projects/vox-flow",
+  "generated": "2026-11-11",
+  "stack": "pnpm monorepo: Cloudflare Workers + Hono + tRPC + Drizzle/D1 + Better-Auth + React/TanStack Router",
+  "shared_infrastructure": [
+    "packages/api/src/routers/index.ts (healthCheck, privateData)",
+    "apps/web/src/features/app-state",
+    "apps/web/src/layouts",
+    "packages/ui",
+    "apps/web/src/routes/_app-legacy (nghi dead code)"
+  ],
+  "features": [
+    {
+      "slug": "auth-account",
+      "sources": [
+        "packages/auth/src/index.ts",
+        "apps/web/src/features/auth/auth-screen.tsx",
+        "apps/web/src/components/sign-in-form.tsx",
+        "apps/web/src/components/sign-up-form.tsx",
+        "apps/web/src/lib/auth-guard.ts",
+        "packages/db/src/schema/auth.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "multi-role"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "onboarding-profile",
+      "sources": [
+        "packages/api/src/routers/profile.ts",
+        "packages/api/src/routers/profile.test.ts",
+        "apps/web/src/features/onboarding",
+        "apps/web/src/features/profile",
+        "packages/db/src/schema/profile.ts",
+        "packages/auth/src/image-validation.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [],
+      "status": "done"
+    },
+    {
+      "slug": "privacy-controls",
+      "sources": [
+        "packages/api/src/routers/privacy.ts",
+        "packages/api/src/routers/privacy.test.ts",
+        "packages/api/src/data-registry.ts",
+        "packages/api/src/exam/consent.ts",
+        "packages/db/src/schema/consent.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [],
+      "status": "done"
+    },
+    {
+      "slug": "mock-exam",
+      "sources": [
+        "packages/api/src/routers/attempt.ts",
+        "packages/api/src/routers/attempt.test.ts",
+        "packages/api/src/exam",
+        "packages/api/src/answers.ts",
+        "packages/api/src/audio.ts",
+        "apps/server/src/index.ts",
+        "apps/web/src/features/exam",
+        "apps/web/src/features/select",
+        "packages/db/src/schema/attempt.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "async",
+        "external-redirect"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "scoring-results",
+      "sources": [
+        "packages/api/src/routers/scoring.ts",
+        "packages/api/src/scoring",
+        "apps/server/src/queue.ts",
+        "apps/web/src/features/scoring",
+        "apps/web/src/features/results",
+        "packages/db/src/schema/score.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "async",
+        "state-machine",
+        "throttle"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "score-dispute",
+      "sources": [
+        "packages/api/src/routers/dispute.ts",
+        "packages/api/src/routers/dispute.test.ts",
+        "apps/web/src/features/results/components/report-modal.tsx",
+        "packages/db/src/schema/dispute.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "state-machine"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "dispute-admin",
+      "sources": [
+        "packages/api/src/routers/dispute-admin.ts",
+        "packages/api/src/routers/dispute-admin.test.ts",
+        "packages/api/src/disputes/overdue.ts",
+        "apps/server/src/scheduled.ts",
+        "apps/web/src/features/admin/disputes-screen.tsx"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "multi-role",
+        "state-machine",
+        "async"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "forecast-practice",
+      "sources": [
+        "packages/api/src/routers/forecast.ts",
+        "packages/api/src/routers/forecast.test.ts",
+        "apps/web/src/features/forecast",
+        "packages/db/src/schema/forecast.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "medium",
+      "complexity_flags": [],
+      "status": "done"
+    },
+    {
+      "slug": "forecast-curation",
+      "sources": [
+        "packages/api/src/routers/forecast-admin.ts",
+        "packages/api/src/routers/forecast-admin.test.ts",
+        "packages/api/src/forecast",
+        "apps/web/src/features/admin/forecast-admin-screen.tsx",
+        "packages/db/src/schema/forecast.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [
+        "multi-role",
+        "state-machine"
+      ],
+      "status": "done"
+    },
+    {
+      "slug": "billing",
+      "sources": [
+        "apps/web/src/features/billing",
+        "apps/web/src/lib/feature-flags.ts"
+      ],
+      "existing_doc": null,
+      "confidence": "low",
+      "complexity_flags": [
+        "payment"
+      ],
+      "grouping_note": "Chi co giao dien, QR gia, khong thay backend thanh toan",
+      "status": "done"
+    },
+    {
+      "slug": "progress-history",
+      "sources": [
+        "apps/web/src/features/history",
+        "apps/web/src/features/dashboard",
+        "apps/web/src/routes/_proto/app/history.index.tsx",
+        "apps/web/src/routes/_proto/app/dashboard.tsx"
+      ],
+      "existing_doc": null,
+      "confidence": "low",
+      "complexity_flags": [],
+      "grouping_note": "Chua thay goi API, nghi du lieu prototype",
+      "status": "done"
+    },
+    {
+      "slug": "landing-page",
+      "sources": [
+        "apps/web/src/features/landing",
+        "apps/web/src/routes/_proto/index.tsx",
+        "apps/web/src/routes/_proto/terms.tsx"
+      ],
+      "existing_doc": null,
+      "confidence": "high",
+      "complexity_flags": [],
+      "status": "done"
+    }
+  ]
+}
