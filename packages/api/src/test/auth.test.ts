@@ -1,6 +1,7 @@
 import {
   createAuth,
   MAX_USER_IMAGE_LENGTH,
+  MAX_USER_NAME_LENGTH,
   type AuthConfig,
 } from "@vox-flow/auth";
 import * as authSchema from "@vox-flow/db/schema/auth";
@@ -37,10 +38,8 @@ describe("Better Auth with Google provider (WI-07)", () => {
       "test-google-client-id.apps.googleusercontent.com",
     );
 
-    // Verify trustedOrigins stripped the trailing slash
-    expect(auth.options.trustedOrigins).toContain("http://localhost:3001");
-    expect(auth.options.trustedOrigins).not.toContain("http://localhost:3001/");
-
+    // Verify trustedOrigins stripped the trailing slash and contains only CORS_ORIGIN
+    expect(auth.options.trustedOrigins).toEqual(["http://localhost:3001"]);
     // Verify signInSocial initiates OAuth URL redirect to accounts.google.com with correct redirect_uri
     const response = await auth.api.signInSocial({
       body: {
@@ -56,11 +55,13 @@ describe("Better Auth with Google provider (WI-07)", () => {
     );
   });
 
-  it("enables email/password with auto sign-in", () => {
+  it("enables email/password with auto sign-in and password length bounds", () => {
     const auth = createAuth(authConfig, testCtx.db);
     expect(auth.options.emailAndPassword).toMatchObject({
       enabled: true,
       autoSignIn: true,
+      minPasswordLength: 8,
+      maxPasswordLength: 128,
     });
   });
 
@@ -153,10 +154,16 @@ describe("Better Auth with Google provider (WI-07)", () => {
       }),
     );
     expect(signInRes.status).toBe(200);
-    const cookieHeader = signInRes.headers
-      .getSetCookie()
-      .map((c) => c.split(";")[0])
-      .join("; ");
+    const setCookies = signInRes.headers.getSetCookie();
+    const sessionSetCookie = setCookies.find((c) =>
+      c.includes("session_token="),
+    );
+    expect(sessionSetCookie).toBeDefined();
+    expect(sessionSetCookie).toMatch(/;\s*HttpOnly\b/i);
+    expect(sessionSetCookie).toMatch(/;\s*Secure\b/i);
+    expect(sessionSetCookie).toMatch(/;\s*SameSite=None\b/i);
+
+    const cookieHeader = setCookies.map((c) => c.split(";")[0]).join("; ");
     expect(cookieHeader).toContain("session_token=");
     const headers = new Headers({ cookie: cookieHeader });
 
@@ -218,6 +225,167 @@ describe("Better Auth with Google provider (WI-07)", () => {
       statusCode: 401,
       body: { code: "INVALID_EMAIL_OR_PASSWORD" },
     });
+  });
+
+  it("rejects sign-in with a non-existent email with INVALID_EMAIL_OR_PASSWORD", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+
+    const err = await auth.api
+      .signInEmail({
+        body: {
+          email: "nonexistent@example.com",
+          password: "Password123!",
+        },
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+
+    expect(err).toMatchObject({
+      statusCode: 401,
+      body: { code: "INVALID_EMAIL_OR_PASSWORD" },
+    });
+  });
+
+  it("validates display name length (1..50 trimmed) on signUpEmail and updateUser", async () => {
+    const auth = createAuth(authConfig, testCtx.db);
+
+    const whitespaceSignUpErr = await auth.api
+      .signUpEmail({
+        body: {
+          email: "whitespace-name@example.com",
+          password: "Password123!",
+          name: "   ",
+        },
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(whitespaceSignUpErr).toMatchObject({
+      statusCode: 400,
+      body: { code: "INVALID_NAME", message: "INVALID_NAME" },
+    });
+
+    const longSignUpErr = await auth.api
+      .signUpEmail({
+        body: {
+          email: "long-name@example.com",
+          password: "Password123!",
+          name: "N".repeat(MAX_USER_NAME_LENGTH + 1),
+        },
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(longSignUpErr).toMatchObject({
+      statusCode: 400,
+      body: { code: "INVALID_NAME", message: "INVALID_NAME" },
+    });
+
+    const exact50SignUp = "N".repeat(MAX_USER_NAME_LENGTH);
+    const signUp = await auth.api.signUpEmail({
+      body: {
+        email: "valid-name@example.com",
+        password: "Password123!",
+        name: `  ${exact50SignUp}  `,
+      },
+    });
+    expect(signUp.user.name).toBe(exact50SignUp);
+
+    const signInRes = await auth.handler(
+      new Request("http://localhost:3000/api/auth/sign-in/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "valid-name@example.com",
+          password: "Password123!",
+        }),
+      }),
+    );
+    expect(signInRes.status).toBe(200);
+    const cookieHeader = signInRes.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .join("; ");
+    const headers = new Headers({ cookie: cookieHeader });
+
+    const whitespaceUpdateErr = await auth.api
+      .updateUser({ body: { name: "   " }, headers })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(whitespaceUpdateErr).toMatchObject({
+      statusCode: 400,
+      body: { code: "INVALID_NAME", message: "INVALID_NAME" },
+    });
+
+    const longUpdateErr = await auth.api
+      .updateUser({
+        body: { name: "M".repeat(MAX_USER_NAME_LENGTH + 1) },
+        headers,
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(longUpdateErr).toMatchObject({
+      statusCode: 400,
+      body: { code: "INVALID_NAME", message: "INVALID_NAME" },
+    });
+
+    const unchangedSession = await auth.api.getSession({ headers });
+    expect(unchangedSession?.user.name).toBe(exact50SignUp);
+
+    const exact50Update = "M".repeat(MAX_USER_NAME_LENGTH);
+    await auth.api.updateUser({
+      body: { name: `  ${exact50Update}  ` },
+      headers,
+    });
+    const updatedSession = await auth.api.getSession({ headers });
+    expect(updatedSession?.user.name).toBe(exact50Update);
+  });
+
+  it("enforces in-memory rate limit per cf-connecting-ip when enableRateLimit is true", async () => {
+    const defaultAuth = createAuth(authConfig, testCtx.db);
+    expect(defaultAuth.options.rateLimit?.enabled).toBe(false);
+
+    const rateLimitedAuth = createAuth(authConfig, testCtx.db, {
+      enableRateLimit: true,
+    });
+    expect(rateLimitedAuth.options.rateLimit?.enabled).toBe(true);
+    expect(rateLimitedAuth.options.advanced?.ipAddress?.ipAddressHeaders).toEqual(
+      ["cf-connecting-ip"],
+    );
+
+    const postSignIn = (ip: string) =>
+      rateLimitedAuth.handler(
+        new Request("http://localhost:3000/api/auth/sign-in/email", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "cf-connecting-ip": ip,
+          },
+          body: JSON.stringify({
+            email: "ratelimit-target@example.com",
+            password: "Password123!",
+          }),
+        }),
+      );
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await postSignIn("203.0.113.10");
+      expect(res.status).toBe(401);
+    }
+
+    const fourthSameIp = await postSignIn("203.0.113.10");
+    expect(fourthSameIp.status).toBe(429);
+
+    const otherIp = await postSignIn("203.0.113.11");
+    expect(otherIp.status).toBe(401);
   });
 
   it("rejects a password sign-up whose email already belongs to a Google account", async () => {
