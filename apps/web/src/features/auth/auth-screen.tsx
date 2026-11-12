@@ -24,7 +24,7 @@ const DEFAULT_SIGNUP_REDIRECT = "/onboarding";
  * Returns the redirect path only when it is a same-origin app path that does
  * not loop back to the auth screens; otherwise null (open-redirect guard).
  */
-function getSafeRedirect(target: string | undefined): string | null {
+export function getSafeRedirect(target: string | undefined): string | null {
   if (
     target &&
     target.startsWith("/") &&
@@ -38,9 +38,16 @@ function getSafeRedirect(target: string | undefined): string | null {
   return null;
 }
 
-function getEmailAuthErrorMessage(mode: EmailMode, code: string | undefined): string {
-  if (code === "INVALID_EMAIL_OR_PASSWORD") return "Sai email hoặc mật khẩu.";
-  if (code?.startsWith("USER_ALREADY_EXISTS")) return "Email đã được sử dụng.";
+function getEmailAuthErrorMessage(
+  mode: EmailMode,
+  error: { status?: number; code?: string; message?: string } | undefined,
+): string {
+  if (error?.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây.";
+  if (error?.code === "INVALID_EMAIL_OR_PASSWORD") return "Sai email hoặc mật khẩu.";
+  if (error?.code?.startsWith("USER_ALREADY_EXISTS")) return "Email đã được sử dụng.";
+  if (error?.code === "INVALID_NAME" || error?.message === "INVALID_NAME") {
+    return "Tên hiển thị không hợp lệ (1–50 ký tự).";
+  }
   return mode === "signIn"
     ? "Đăng nhập không thành công. Vui lòng thử lại."
     : "Đăng ký không thành công. Vui lòng thử lại.";
@@ -102,12 +109,17 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
       const res = await authClient.signIn.social({
         provider: "google",
         callbackURL,
+        newUserCallbackURL: `${origin}${signUpCallbackPath}`,
         errorCallbackURL,
       });
 
       if (res?.error) {
         setIsPending(false);
-        setLocalError("Đăng nhập Google không thành công. Vui lòng thử lại.");
+        setLocalError(
+          res.error.status === 429
+            ? "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít giây."
+            : "Đăng nhập Google không thành công. Vui lòng thử lại.",
+        );
       }
     } catch {
       setIsPending(false);
@@ -129,7 +141,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
 
       if (res?.error) {
         setIsEmailPending(false);
-        setLocalError(getEmailAuthErrorMessage(emailMode, res.error.code));
+        setLocalError(getEmailAuthErrorMessage(emailMode, res.error));
         return;
       }
 
@@ -194,6 +206,7 @@ export function AuthScreen({ search }: AuthScreenProps = {}) {
                 type="text"
                 autoComplete="name"
                 required
+                maxLength={50}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={isBusy}

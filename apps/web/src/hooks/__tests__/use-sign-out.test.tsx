@@ -3,16 +3,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSignOut } from "../use-sign-out";
 
-const { signOutMock, navigateMock, toastErrorMock } = vi.hoisted(() => ({
-  signOutMock: vi.fn(),
-  navigateMock: vi.fn(),
-  toastErrorMock: vi.fn(),
-}));
+const { signOutMock, navigateMock, toastErrorMock, clearOnboardedUserCacheMock } = vi.hoisted(
+  () => ({
+    signOutMock: vi.fn(),
+    navigateMock: vi.fn(),
+    toastErrorMock: vi.fn(),
+    clearOnboardedUserCacheMock: vi.fn(),
+  }),
+);
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
     signOut: signOutMock,
   },
+}));
+
+vi.mock("@/lib/auth-guard", () => ({
+  clearOnboardedUserCache: clearOnboardedUserCacheMock,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -45,6 +52,7 @@ describe("useSignOut", () => {
     expect(navigateMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledWith({ to: "/auth" });
     expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(clearOnboardedUserCacheMock).toHaveBeenCalledTimes(1);
   });
 
   it("toasts and stays on the page when sign-out resolves with an error", async () => {
@@ -61,6 +69,7 @@ describe("useSignOut", () => {
     expect(navigateMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledTimes(1);
     expect(toastErrorMock).toHaveBeenCalledWith(SIGN_OUT_ERROR);
+    expect(clearOnboardedUserCacheMock).not.toHaveBeenCalled();
   });
 
   it("toasts and stays on the page when sign-out rejects", async () => {
@@ -74,18 +83,20 @@ describe("useSignOut", () => {
     expect(navigateMock).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledTimes(1);
     expect(toastErrorMock).toHaveBeenCalledWith(SIGN_OUT_ERROR);
+    expect(clearOnboardedUserCacheMock).not.toHaveBeenCalled();
   });
 
   it("uses the custom redirect target when provided", async () => {
-    const { result } = renderHook(() => useSignOut("/login"));
+    const { result } = renderHook(() => useSignOut("/terms"));
 
     await act(async () => {
       await result.current();
     });
 
     expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(clearOnboardedUserCacheMock).toHaveBeenCalledTimes(1);
     expect(navigateMock).toHaveBeenCalledTimes(1);
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/login" });
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/terms" });
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 });
