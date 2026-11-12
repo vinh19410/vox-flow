@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun, user } from "@vox-flow/db/schema";
 
 import { appRouter } from "../routers/index";
+import { buildLinkedPromptKey } from "../exam/linked-prompt-store";
 import { createTestDb, type TestDbContext } from "../test/db";
 import { OpenAIRequestError, type ChatCompletionResult, type ScoringOpenAIClient } from "./openai-client";
 import {
@@ -840,6 +841,49 @@ describe("scoreAttempt", () => {
       expect(firstBodyText()).toContain("Bank topic title");
       expect(firstBodyText()).not.toContain("HACKED");
       expect(firstBodyText()).not.toContain("(question unavailable)");
+    });
+
+    it("grades with server-stored linked prompt from R2 when present, while still ignoring forged client questionText", async () => {
+      const CANONICAL_Q2 = "Do you enjoy living in your neighborhood? (canonical)";
+      const LINKED_Q2 = "Since you mentioned the beach, how does living near the coast affect your daily routine?";
+      await seedBankAttempt(
+        [
+          { questionKey: "topic-1-0", questionText: "FORGED client Q0" },
+          { questionKey: "topic-1-1", questionText: "FORGED client Q1", orderIndex: 1 },
+        ],
+        {
+          topicQuestions: JSON.stringify([CANONICAL_Q1, CANONICAL_Q2]),
+        },
+      );
+
+      const linkedKey = buildLinkedPromptKey(USER_ID, ATTEMPT_ID, "topic-1-1");
+      const linkedJson = JSON.stringify({
+        questionText: LINKED_Q2,
+        triggerPhrase: "living near the beach",
+        baseQuestionText: CANONICAL_Q2,
+        updatedAt: 1700000000000,
+      });
+      bucket.get = async (key: string) => {
+        bucket.gets.push(key);
+        if (key === linkedKey) {
+          return {
+            arrayBuffer: async () => new TextEncoder().encode(linkedJson).slice().buffer,
+            text: async () => linkedJson,
+          };
+        }
+        return { arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer };
+      };
+
+      await expect(scoreAttempt(deps, ATTEMPT_ID)).resolves.toBe("done");
+
+      const text = firstBodyText();
+      // Key without R2 linked prompt falls back to canonical bank, ignoring forged client text.
+      expect(text).toContain(CANONICAL_Q1);
+      expect(text).not.toContain("FORGED client Q0");
+      // Key with R2 linked prompt uses the server-stored linked prompt instead of canonical or forged client text.
+      expect(text).toContain(LINKED_Q2);
+      expect(text).not.toContain(CANONICAL_Q2);
+      expect(text).not.toContain("FORGED client Q1");
     });
   });
 

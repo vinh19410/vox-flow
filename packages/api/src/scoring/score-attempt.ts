@@ -1,3 +1,4 @@
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { and, asc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -5,6 +6,7 @@ import type { Database } from "@vox-flow/db";
 import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@vox-flow/db/schema";
 
 import { isValidAudioKey } from "../audio";
+import { loadLinkedPrompt } from "../exam/linked-prompt-store";
 import { resolveCanonicalQuestionText, type CanonicalQuestionTopic } from "../forecast/questions";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { findAnswerLimitViolation } from "./answer-limits";
@@ -59,7 +61,7 @@ export class NonRetriableScoringError extends Error {
 
 /** Minimal R2 read surface used by the pipeline. */
 export type AudioReader = {
-  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer>; text?: () => Promise<string> } | null>;
 };
 
 export type ScoreAttemptDeps = {
@@ -359,26 +361,55 @@ async function runPipeline(
   }
 
   const partCounters = new Map<number, number>();
-  const answers: GradingAnswer[] = answerRows.map((row) => {
+  const indexedRows = answerRows.map((row) => {
     const indexInPart = (partCounters.get(row.partNumber) ?? 0) + 1;
     partCounters.set(row.partNumber, indexInPart);
-    // Canonical text only: the forecast bank when the attempt has a topic,
-    // otherwise the static mock bank for the attempt's mode. Unknown keys
-    // grade with the placeholder — never the client-supplied questionText,
-    // and generated follow-ups stay unpersisted by design (see #93).
-    const questionText =
-      (bankTopic && resolveCanonicalQuestionText(bankTopic, row.questionKey)) ??
-      (!attemptRow.topicId ? resolveCanonicalMockQuestionText(row.questionKey, attemptRow.mode) : null) ??
-      "(question unavailable)";
-    return {
-      questionKey: row.questionKey,
-      questionText,
-      partNumber: row.partNumber,
-      indexInPart,
-      transcript: transcripts.get(row.questionKey) ?? "",
-      mimeType: row.mimeType,
-    };
+    return { row, indexInPart };
   });
+
+  const linkedBucket =
+    deps.audioBucket && attemptRow.topicId
+      ? ({
+          get: async (key: string) => {
+            const obj = await deps.audioBucket!.get(key);
+            if (!obj) return null;
+            if (typeof obj.text === "function") {
+              return obj;
+            }
+            return {
+              text: async () => new TextDecoder().decode(await obj.arrayBuffer()),
+            };
+          },
+        } as unknown as R2Bucket)
+      : null;
+
+  const answers: GradingAnswer[] = await Promise.all(
+    indexedRows.map(async ({ row, indexInPart }) => {
+      // Server-stored linked prompts in R2 take precedence for topic attempts,
+      // then the forecast bank or static mock bank. Unknown keys grade with the
+      // placeholder — never the client-supplied questionText.
+      const linkedPrompt = linkedBucket
+        ? await loadLinkedPrompt(linkedBucket, {
+            userId: attemptRow.userId,
+            attemptId,
+            questionKey: row.questionKey,
+          }).catch(() => null)
+        : null;
+      const questionText =
+        linkedPrompt?.questionText ??
+        (bankTopic && resolveCanonicalQuestionText(bankTopic, row.questionKey)) ??
+        (!attemptRow.topicId ? resolveCanonicalMockQuestionText(row.questionKey, attemptRow.mode) : null) ??
+        "(question unavailable)";
+      return {
+        questionKey: row.questionKey,
+        questionText,
+        partNumber: row.partNumber,
+        indexInPart,
+        transcript: transcripts.get(row.questionKey) ?? "",
+        mimeType: row.mimeType,
+      };
+    }),
+  );
 
   // 3. Grade the missing runs. Each body is serialised once and shared by
   //    every run that sends it. The first run probes whether the model accepts

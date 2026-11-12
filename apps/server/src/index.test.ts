@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { buildLinkedPromptKey } from "@vox-flow/api/exam/linked-prompt-store";
 
 const { mockBucket, mockGet, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth, mockEnv } = vi.hoisted(() => {
   const mockPut = vi.fn().mockResolvedValue({ size: 3 });
@@ -867,6 +868,13 @@ describe("GET /api/tts/* routes", () => {
     r2Objects.clear();
     mockEnv.AUDIO_BUCKET = mockBucket;
     mockEnv.ELEVENLABS_API_KEY = "xi-server-test-key";
+    mockState.attemptExists = true;
+    mockState.currentAttemptUserId = "user-1";
+    mockState.attemptTopicId = null;
+    mockState.currentSessionUser = {
+      id: "user-1",
+      email: "test@example.com",
+    };
     mockState.topicRow = null;
 
     mockGet.mockReset();
@@ -876,12 +884,14 @@ describe("GET /api/tts/* routes", () => {
       return {
         body: bytes,
         size: bytes.byteLength,
+        text: async () => new TextDecoder().decode(bytes),
+        arrayBuffer: async () => bytes.slice().buffer,
       };
     });
 
     mockPut.mockReset();
-    mockPut.mockImplementation(async (key: string, value: Uint8Array) => {
-      const copy = new Uint8Array(value);
+    mockPut.mockImplementation(async (key: string, value: string | Uint8Array) => {
+      const copy = typeof value === "string" ? new TextEncoder().encode(value) : new Uint8Array(value);
       r2Objects.set(key, copy);
       return { size: copy.byteLength };
     });
@@ -1033,5 +1043,142 @@ describe("GET /api/tts/* routes", () => {
     expect(noBucketRes.status).toBe(503);
     expect(noBucketRes.headers.get("cache-control")).toBe("no-store");
     expect(await noBucketRes.json()).toEqual({ error: "Storage unavailable" });
+  });
+
+  describe("GET /api/tts/attempt/:attemptId/:voice/:questionKey", () => {
+    it("returns 401 with Cache-Control: no-store when unauthenticated", async () => {
+      mockState.currentSessionUser = null;
+      const res = await app.request("/api/tts/attempt/att-123/uk-f/topic-pub-0");
+      expect(res.status).toBe(401);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(await res.json()).toEqual({ error: "Unauthorized" });
+    });
+
+    it("returns 400 for invalid examiner voice, attemptId, or questionKey", async () => {
+      const badVoice = await app.request("/api/tts/attempt/att-123/invalid/topic-pub-0");
+      expect(badVoice.status).toBe(400);
+      expect(badVoice.headers.get("cache-control")).toBe("no-store");
+
+      const badAttemptId = await app.request("/api/tts/attempt/bad$id/uk-f/topic-pub-0");
+      expect(badAttemptId.status).toBe(400);
+      expect(badAttemptId.headers.get("cache-control")).toBe("no-store");
+
+      const badKey = await app.request("/api/tts/attempt/att-123/uk-f/bad..key");
+      expect(badKey.status).toBe(400);
+      expect(badKey.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("returns 403 when targeting another user's attempt", async () => {
+      mockState.currentAttemptUserId = "user-2";
+      mockState.attemptTopicId = "topic-pub";
+      const res = await app.request("/api/tts/attempt/att-123/uk-f/topic-pub-0");
+      expect(res.status).toBe(403);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(await res.json()).toEqual({ error: "Forbidden" });
+    });
+
+    it("returns 404 when attempt is missing, has no topicId, or questionKey is unknown", async () => {
+      // Missing attempt
+      mockState.attemptExists = false;
+      const missingRes = await app.request("/api/tts/attempt/att-missing/uk-f/topic-pub-0");
+      expect(missingRes.status).toBe(404);
+      expect(missingRes.headers.get("cache-control")).toBe("no-store");
+
+      // Topic-less mock attempt
+      mockState.attemptExists = true;
+      mockState.attemptTopicId = null;
+      const noTopicRes = await app.request("/api/tts/attempt/att-123/uk-f/p1-1");
+      expect(noTopicRes.status).toBe(404);
+      expect(noTopicRes.headers.get("cache-control")).toBe("no-store");
+
+      // Unknown key on published topic
+      mockState.attemptTopicId = "topic-pub";
+      mockState.topicRow = {
+        id: "topic-pub",
+        title: "Daily Routine",
+        part: 1,
+        questions: JSON.stringify(["What is your morning routine?"]),
+        status: "published",
+      };
+      const badKeyRes = await app.request("/api/tts/attempt/att-123/uk-f/topic-pub-99");
+      expect(badKeyRes.status).toBe(404);
+      expect(badKeyRes.headers.get("cache-control")).toBe("no-store");
+    });
+
+    it("serves server-stored linked prompt with Cache-Control: private, max-age=86400 on 200 and 304", async () => {
+      mockState.attemptTopicId = "topic-pub";
+      mockState.topicRow = {
+        id: "topic-pub",
+        title: "Daily Routine",
+        part: 1,
+        questions: JSON.stringify([
+          "What is your morning routine?",
+          "Do you prefer waking up early?",
+        ]),
+        status: "published",
+      };
+      const linkedText = "Since you mentioned jogging early, do you prefer waking up early?";
+      const linkedKey = buildLinkedPromptKey("user-1", "att-123", "topic-pub-1");
+      r2Objects.set(
+        linkedKey,
+        new TextEncoder().encode(
+          JSON.stringify({
+            questionText: linkedText,
+            triggerPhrase: "jogging early",
+            baseQuestionText: "Do you prefer waking up early?",
+            updatedAt: 1700000000000,
+          }),
+        ),
+      );
+
+      const fakeMp3 = new Uint8Array([0x49, 0x44, 0x33, 0x04]);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(fakeMp3, { status: 200, headers: { "Content-Type": "audio/mpeg" } }),
+      );
+
+      const res = await app.request("/api/tts/attempt/att-123/uk-f/topic-pub-1");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("private, max-age=86400");
+      expect(res.headers.get("content-type")).toBe("audio/mpeg");
+      const etag = res.headers.get("etag");
+      expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(fakeMp3);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const sentBody = JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string) as { text: string };
+      expect(sentBody.text).toBe(linkedText);
+
+      const notModified = await app.request("/api/tts/attempt/att-123/uk-f/topic-pub-1", {
+        headers: { "If-None-Match": etag! },
+      });
+      expect(notModified.status).toBe(304);
+      expect(notModified.headers.get("cache-control")).toBe("private, max-age=86400");
+    });
+
+    it("falls back to canonical forecast text when no linked prompt is stored in R2", async () => {
+      mockState.attemptTopicId = "topic-pub";
+      mockState.topicRow = {
+        id: "topic-pub",
+        title: "Daily Routine",
+        part: 1,
+        questions: JSON.stringify([
+          "What is your morning routine?",
+          "Do you prefer waking up early?",
+        ]),
+        status: "published",
+      };
+
+      const fakeMp3 = new Uint8Array([0x49, 0x44, 0x33, 0x05]);
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(fakeMp3, { status: 200, headers: { "Content-Type": "audio/mpeg" } }),
+      );
+
+      const res = await app.request("/api/tts/attempt/att-123/us-m/topic-pub-1");
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("private, max-age=86400");
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const sentBody = JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string) as { text: string };
+      expect(sentBody.text).toBe("Do you prefer waking up early?");
+    });
   });
 });

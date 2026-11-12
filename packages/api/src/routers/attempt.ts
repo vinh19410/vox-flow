@@ -4,12 +4,15 @@ import { z } from "zod";
 import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
-import { generateFollowUp } from "../exam/follow-up";
-import { QUESTION_KEY_RE } from "../audio";
+import { generateFollowUp, generateLinkedQuestion } from "../exam/follow-up";
+import { deleteLinkedPrompt, loadLinkedPrompt, saveLinkedPrompt } from "../exam/linked-prompt-store";
+import { transcribeAudioStrict } from "../exam/transcribe";
+import { isValidAudioKey, QUESTION_KEY_RE } from "../audio";
 import { getValidQuestionKeysForTopic } from "../scoring/forecast-keys";
 import { findAnswerLimitViolation } from "../scoring/answer-limits";
 import { sanitizeDelimited } from "../scoring/prompt";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
+import { resolveForecastQuestionDetail } from "../tts/resolver";
 
 /**
  * Returned (as BAD_REQUEST) when submit is called twice. The web client matches
@@ -197,6 +200,156 @@ export const attemptRouter = router({
           text: sanitizeDelimited(result.questionText).slice(0, 300),
           trigger: sanitizeDelimited(result.triggerPhrase),
         },
+      };
+    }),
+
+  prepareNextQuestion: protectedProcedure
+    .input(
+      z.object({
+        attemptId: z.string().min(1),
+        previousQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        nextQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [currentAttempt] = await ctx.db
+        .select()
+        .from(attempt)
+        .where(eq(attempt.id, input.attemptId))
+        .limit(1);
+
+      if (!currentAttempt) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Attempt not found",
+        });
+      }
+
+      if (currentAttempt.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to access this attempt",
+        });
+      }
+
+      if (currentAttempt.status !== "in_progress") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot prepare next question for a finalized attempt",
+        });
+      }
+
+      if (!currentAttempt.topicId || currentAttempt.questionKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Linked practice preparation is only supported for whole-topic forecast attempts",
+        });
+      }
+
+      const [prevDetail, nextDetail] = await Promise.all([
+        resolveForecastQuestionDetail(ctx.db, currentAttempt.topicId, input.previousQuestionKey),
+        resolveForecastQuestionDetail(ctx.db, currentAttempt.topicId, input.nextQuestionKey),
+      ]);
+
+      if (!prevDetail || !nextDetail) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid questionKey for topic",
+        });
+      }
+
+      const bucket = ctx.env?.AUDIO_BUCKET;
+      const prevLinked = bucket
+        ? await loadLinkedPrompt(bucket, {
+            userId: ctx.session.user.id,
+            attemptId: input.attemptId,
+            questionKey: input.previousQuestionKey,
+          }).catch(() => null)
+        : null;
+      const previousQuestionText = prevLinked?.questionText ?? prevDetail.text;
+
+      const [answerRow] = await ctx.db
+        .select()
+        .from(attemptAnswer)
+        .where(
+          and(
+            eq(attemptAnswer.attemptId, input.attemptId),
+            eq(attemptAnswer.questionKey, input.previousQuestionKey),
+          ),
+        )
+        .limit(1);
+
+      let candidateTranscript = answerRow?.transcript?.trim() ?? "";
+      const openAiKey = ctx.env?.OPENAI_API_KEY;
+      if (!candidateTranscript && answerRow && bucket && openAiKey) {
+        try {
+          if (isValidAudioKey(answerRow.audioKey, ctx.session.user.id, input.attemptId)) {
+            const obj = await bucket.get(answerRow.audioKey);
+            if (obj) {
+              const transcribed = await transcribeAudioStrict({
+                audioBuffer: await obj.arrayBuffer(),
+                mimeType: answerRow.mimeType,
+                apiKey: openAiKey,
+                timeoutMs: 8000,
+              });
+              if (transcribed) {
+                candidateTranscript = transcribed;
+                await ctx.db
+                  .update(attemptAnswer)
+                  .set({ transcript: transcribed })
+                  .where(
+                    and(
+                      eq(attemptAnswer.id, answerRow.id),
+                      eq(attemptAnswer.generation, answerRow.generation),
+                    ),
+                  );
+              }
+            }
+          }
+        } catch {
+          // Best-effort STT; fall back to unlinked canonical question on error
+        }
+      }
+
+      const result = await generateLinkedQuestion({
+        previousQuestionText,
+        candidateTranscript,
+        nextQuestionText: nextDetail.text,
+        previousPart: prevDetail.part,
+        part: nextDetail.part,
+        apiKey: openAiKey,
+      });
+
+      if (bucket) {
+        if (result.linked) {
+          await saveLinkedPrompt(bucket, {
+            userId: ctx.session.user.id,
+            attemptId: input.attemptId,
+            questionKey: input.nextQuestionKey,
+            prompt: {
+              questionText: result.questionText,
+              triggerPhrase: result.triggerPhrase || undefined,
+              baseQuestionText: nextDetail.text,
+              updatedAt: Date.now(),
+            },
+          });
+        } else {
+          await deleteLinkedPrompt(bucket, {
+            userId: ctx.session.user.id,
+            attemptId: input.attemptId,
+            questionKey: input.nextQuestionKey,
+          }).catch(() => {});
+        }
+      }
+
+      return {
+        questionKey: input.nextQuestionKey,
+        questionText: sanitizeDelimited(result.questionText).slice(0, 300),
+        triggerPhrase:
+          result.linked && result.triggerPhrase
+            ? sanitizeDelimited(result.triggerPhrase).slice(0, 160)
+            : null,
+        linked: result.linked,
       };
     }),
 

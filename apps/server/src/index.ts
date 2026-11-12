@@ -17,6 +17,7 @@ import {
   upsertAnswerRecording,
 } from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
+import { loadLinkedPrompt } from "@vox-flow/api/exam/linked-prompt-store";
 import {
   getValidQuestionKeysForTopic,
   MAX_TOTAL_AUDIO_BYTES,
@@ -417,7 +418,12 @@ function matchesIfNoneMatch(headerValue: string | undefined, etag: string): bool
     .some((token) => token === "*" || token === etag || token === `W/${etag}`);
 }
 
-async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: string) {
+async function serveCanonicalTts(
+  c: HonoContext,
+  voice: ExaminerVoiceId,
+  text: string,
+  cacheControl: string = TTS_CACHE_CONTROL,
+) {
   const envRecord = (typeof ENV === "object" && ENV !== null ? ENV : {}) as Record<string, unknown>;
   const bucket = "AUDIO_BUCKET" in envRecord ? (envRecord.AUDIO_BUCKET as R2Bucket | undefined) : undefined;
   if (!bucket) {
@@ -440,7 +446,7 @@ async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: s
       }
       if (existing && existing.size > 0) {
         c.header("ETag", etag);
-        c.header("Cache-Control", TTS_CACHE_CONTROL);
+        c.header("Cache-Control", cacheControl);
         return c.body(null, 304);
       }
     }
@@ -455,7 +461,7 @@ async function serveCanonicalTts(c: HonoContext, voice: ExaminerVoiceId, text: s
     c.header("Content-Type", "audio/mpeg");
     c.header("Content-Length", String(result.size));
     c.header("ETag", result.etag);
-    c.header("Cache-Control", TTS_CACHE_CONTROL);
+    c.header("Cache-Control", cacheControl);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("Content-Disposition", "inline");
     c.header("Content-Security-Policy", "default-src 'none'; sandbox");
@@ -520,6 +526,85 @@ app.get("/api/tts/forecast/:voice/:topicId/:questionKey", async (c) => {
     return c.json({ error: "TTS prompt not found" }, 404);
   }
   return serveCanonicalTts(c, voice, text);
+});
+
+app.get("/api/tts/attempt/:attemptId/:voice/:questionKey", async (c) => {
+  const auth = await createAuth();
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session?.user) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const attemptId = c.req.param("attemptId");
+  const voice = c.req.param("voice");
+  const questionKey = c.req.param("questionKey");
+
+  if (!isValidExaminerVoice(voice)) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Invalid examiner voice" }, 400);
+  }
+  if (!TTS_PARAM_RE.test(attemptId) || !TTS_PARAM_RE.test(questionKey)) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Invalid question key" }, 400);
+  }
+
+  const db = getDb();
+  let attemptRow: { id: string; userId: string; topicId: string | null } | undefined;
+  try {
+    const [row] = await db
+      .select({
+        id: attempt.id,
+        userId: attempt.userId,
+        topicId: attempt.topicId,
+      })
+      .from(attempt)
+      .where(eq(attempt.id, attemptId))
+      .limit(1);
+    attemptRow = row;
+  } catch {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "TTS service unavailable" }, 503);
+  }
+
+  if (!attemptRow) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Attempt not found" }, 404);
+  }
+  if (attemptRow.userId !== session.user.id) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  if (!attemptRow.topicId) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "TTS prompt not found" }, 404);
+  }
+
+  const envRecord = (typeof ENV === "object" && ENV !== null ? ENV : {}) as Record<string, unknown>;
+  const bucket = "AUDIO_BUCKET" in envRecord ? (envRecord.AUDIO_BUCKET as R2Bucket | undefined) : undefined;
+  const linked = bucket
+    ? await loadLinkedPrompt(bucket, {
+        userId: session.user.id,
+        attemptId,
+        questionKey,
+      }).catch(() => null)
+    : null;
+
+  let text: string | null = linked?.questionText ?? null;
+  if (!text) {
+    try {
+      text = await resolveForecastTtsText(db, attemptRow.topicId, questionKey);
+    } catch {
+      c.header("Cache-Control", "no-store");
+      return c.json({ error: "TTS service unavailable" }, 503);
+    }
+  }
+  if (!text) {
+    c.header("Cache-Control", "no-store");
+    return c.json({ error: "TTS prompt not found" }, 404);
+  }
+
+  return serveCanonicalTts(c, voice, text, "private, max-age=86400");
 });
 
 export { app };
