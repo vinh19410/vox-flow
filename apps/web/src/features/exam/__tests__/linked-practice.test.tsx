@@ -5,6 +5,7 @@ const getActiveSpy = vi.fn();
 const startSpy = vi.fn();
 const submitSpy = vi.fn();
 const prepareNextQuestionSpy = vi.fn();
+const invalidateLinkedPromptSpy = vi.fn();
 const trackUploadSpy = vi.fn();
 const stopSpy = vi.fn();
 const prefetchSpeechSpy = vi.fn();
@@ -20,6 +21,7 @@ vi.mock("@/utils/trpc", () => ({
       start: { mutate: (...a: unknown[]) => startSpy(...a) },
       submit: { mutate: (...a: unknown[]) => submitSpy(...a) },
       prepareNextQuestion: { mutate: (...a: unknown[]) => prepareNextQuestionSpy(...a) },
+      invalidateLinkedPrompt: { mutate: (...a: unknown[]) => invalidateLinkedPromptSpy(...a) },
     },
   },
 }));
@@ -131,6 +133,7 @@ describe("ExamScreen linked multi-question practice", () => {
     startSpy.mockReset().mockResolvedValue({ attemptId: "att-linked-1" });
     submitSpy.mockReset().mockResolvedValue({ success: true });
     prepareNextQuestionSpy.mockReset().mockResolvedValue({ linked: false, questionText: null, triggerPhrase: null });
+    invalidateLinkedPromptSpy.mockReset().mockResolvedValue({ cleared: true });
     trackUploadSpy.mockReset().mockResolvedValue(true);
     stopSpy.mockReset().mockResolvedValue({ blob: recordedBlob, durationMs: 4000, mimeType: "audio/webm" });
     prefetchSpeechSpy.mockReset().mockResolvedValue(null);
@@ -168,11 +171,15 @@ describe("ExamScreen linked multi-question practice", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(prepareNextQuestionSpy).toHaveBeenCalledTimes(1);
-    expect(prepareNextQuestionSpy).toHaveBeenCalledWith({
-      attemptId: "att-linked-1",
-      previousQuestionKey: "f-neighborhood-0",
-      nextQuestionKey: "f-neighborhood-1",
-    });
+    expect(prepareNextQuestionSpy).toHaveBeenCalledWith(
+      {
+        attemptId: "att-linked-1",
+        previousQuestionKey: "f-neighborhood-0",
+        nextQuestionKey: "f-neighborhood-1",
+        previousGeneration: expect.any(Number),
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
 
     // User clicks "Câu tiếp theo" while prepareNextQuestion is still in flight -> examiner-thinking state.
     fireEvent.click(screen.getByText("Câu tiếp theo"));
@@ -223,11 +230,15 @@ describe("ExamScreen linked multi-question practice", () => {
     recordAndStop();
     await flush();
 
-    expect(prepareNextQuestionSpy).toHaveBeenCalledWith({
-      attemptId: "att-linked-1",
-      previousQuestionKey: "f-helped-p2",
-      nextQuestionKey: "f-helped-p3-0",
-    });
+    expect(prepareNextQuestionSpy).toHaveBeenCalledWith(
+      {
+        attemptId: "att-linked-1",
+        previousQuestionKey: "f-helped-p2",
+        nextQuestionKey: "f-helped-p3-0",
+        previousGeneration: expect.any(Number),
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
 
     fireEvent.click(screen.getByText("Câu tiếp theo"));
     expect(screen.getByText("Đang chuẩn bị câu tiếp theo…")).toBeTruthy();
@@ -301,6 +312,10 @@ describe("ExamScreen linked multi-question practice", () => {
 
     // Learner clicks "Nói lại" before prep1 finishes, then records again.
     fireEvent.click(screen.getByText("Nói lại"));
+    expect(invalidateLinkedPromptSpy).toHaveBeenCalledWith({
+      attemptId: "att-linked-1",
+      questionKey: "f-neighborhood-1",
+    });
     recordAndStop();
     await flush();
     expect(prepareNextQuestionSpy).toHaveBeenCalledTimes(2);
@@ -439,6 +454,10 @@ describe("ExamScreen linked multi-question practice", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(12_000);
+    });
+    expect(invalidateLinkedPromptSpy).toHaveBeenCalledWith({
+      attemptId: "att-linked-1",
+      questionKey: "f-neighborhood-1",
     });
     await flush();
     act(() => {

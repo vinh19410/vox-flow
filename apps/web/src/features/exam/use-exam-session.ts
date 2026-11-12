@@ -29,11 +29,18 @@ interface PrepareNextQuestionResult {
 
 type AttemptClientWithPrepare = typeof trpcClient.attempt & {
   prepareNextQuestion?: {
-    mutate: (input: {
-      attemptId: string;
-      previousQuestionKey: string;
-      nextQuestionKey: string;
-    }) => Promise<PrepareNextQuestionResult>;
+    mutate: (
+      input: {
+        attemptId: string;
+        previousQuestionKey: string;
+        nextQuestionKey: string;
+        previousGeneration?: number;
+      },
+      options?: { signal?: AbortSignal },
+    ) => Promise<PrepareNextQuestionResult>;
+  };
+  invalidateLinkedPrompt?: {
+    mutate: (input: { attemptId: string; questionKey: string }) => Promise<unknown>;
   };
 };
 
@@ -119,6 +126,7 @@ export function useExamSession(): ExamSessionValue {
   const mountedRef = useRef(true);
   const prepTokensRef = useRef(new Map<number, number>());
   const prepPromisesRef = useRef(new Map<number, Promise<void>>());
+  const prepAbortControllersRef = useRef(new Map<number, AbortController>());
   const activePrepCleanupsRef = useRef(new Set<() => void>());
   const practiceKey = s.practice ? `${s.practice.topicId}::${s.practice.singleQuestionId ?? ""}` : "";
   const prevPracticeKeyRef = useRef(practiceKey);
@@ -128,6 +136,8 @@ export function useExamSession(): ExamSessionValue {
       setLinkedOverrides({});
       prepTokensRef.current.clear();
       prepPromisesRef.current.clear();
+      for (const controller of prepAbortControllersRef.current.values()) controller.abort();
+      prepAbortControllersRef.current.clear();
     }
   }, [practiceKey]);
   const recorder = useRecorder();
@@ -244,12 +254,27 @@ export function useExamSession(): ExamSessionValue {
       return nextOverrides;
     });
   };
+  const invalidateServerLinkedPrompt = (activeAttemptId: string | null | undefined, questionKey: string) => {
+    if (!activeAttemptId) return;
+    const attemptClient = trpcClient.attempt as AttemptClientWithPrepare | undefined;
+    if (typeof attemptClient?.invalidateLinkedPrompt?.mutate === "function") {
+      void attemptClient.invalidateLinkedPrompt.mutate({ attemptId: activeAttemptId, questionKey }).catch(() => {});
+    }
+  };
   const invalidatePrep = (stepIndex: number, clearNextOverride: boolean) => {
     prepTokensRef.current.set(stepIndex, (prepTokensRef.current.get(stepIndex) ?? 0) + 1);
+    const controller = prepAbortControllersRef.current.get(stepIndex);
+    if (controller) {
+      controller.abort();
+      prepAbortControllersRef.current.delete(stepIndex);
+    }
     prepPromisesRef.current.delete(stepIndex);
     if (clearNextOverride) {
       const nextBase = baseSteps[stepIndex + 1];
-      if (nextBase) clearLinkedOverride(nextBase.key);
+      if (nextBase) {
+        clearLinkedOverride(nextBase.key);
+        invalidateServerLinkedPrompt(attemptIdRef.current ?? attemptId, nextBase.key);
+      }
     }
   };
   const stepAudioUrl = (targetStep: ExamStep): string | undefined => {
@@ -391,6 +416,9 @@ export function useExamSession(): ExamSessionValue {
       ) {
         const token = (prepTokensRef.current.get(stepIdx) ?? 0) + 1;
         prepTokensRef.current.set(stepIdx, token);
+        prepAbortControllersRef.current.get(stepIdx)?.abort();
+        const abortController = new AbortController();
+        prepAbortControllersRef.current.set(stepIdx, abortController);
         const isCurrentToken = () => mountedRef.current && prepTokensRef.current.get(stepIdx) === token;
 
         let prepPromise!: Promise<void>;
@@ -407,25 +435,38 @@ export function useExamSession(): ExamSessionValue {
               timeoutId = null;
             }
             activePrepCleanupsRef.current.delete(cleanupOnUnmount);
-            if (asTimeout) timedOut = true;
+            if (asTimeout) {
+              timedOut = true;
+              abortController.abort();
+            }
             resolveTimeout("timeout");
           };
-          const cleanupOnUnmount = () => settleTimeout(false);
+          const cleanupOnUnmount = () => {
+            abortController.abort();
+            settleTimeout(false);
+          };
           activePrepCleanupsRef.current.add(cleanupOnUnmount);
           timeoutId = setTimeout(() => settleTimeout(true), PREP_TIMEOUT_MS);
 
           const workPromise = (async (): Promise<"done"> => {
             try {
-              const ok = await uploadPromise;
+              const [ok, record] = await Promise.all([uploadPromise, recorded]);
               if (!ok || timedOut || !isCurrentToken()) {
-                if (isCurrentToken()) clearLinkedOverride(nextStep.key);
+                if (isCurrentToken()) {
+                  clearLinkedOverride(nextStep.key);
+                  invalidateServerLinkedPrompt(activeAttemptId, nextStep.key);
+                }
                 return "done";
               }
-              const res = await attemptClient.prepareNextQuestion!.mutate({
-                attemptId: activeAttemptId,
-                previousQuestionKey: currentStep.key,
-                nextQuestionKey: nextStep.key,
-              });
+              const res = await attemptClient.prepareNextQuestion!.mutate(
+                {
+                  attemptId: activeAttemptId,
+                  previousQuestionKey: currentStep.key,
+                  nextQuestionKey: nextStep.key,
+                  ...(record ? { previousGeneration: record.generation } : {}),
+                },
+                { signal: abortController.signal },
+              );
               if (timedOut || !isCurrentToken()) return "done";
               if (res.linked && res.questionText) {
                 const trigger = res.triggerPhrase?.trim() || undefined;
@@ -440,7 +481,10 @@ export function useExamSession(): ExamSessionValue {
                 clearLinkedOverride(nextStep.key);
               }
             } catch {
-              if (isCurrentToken()) clearLinkedOverride(nextStep.key);
+              if (!timedOut && isCurrentToken()) {
+                clearLinkedOverride(nextStep.key);
+                invalidateServerLinkedPrompt(activeAttemptId, nextStep.key);
+              }
             }
             return "done";
           })();
@@ -448,9 +492,13 @@ export function useExamSession(): ExamSessionValue {
           const winner = await Promise.race([workPromise, timeoutPromise]);
           if (winner === "timeout" && isCurrentToken()) {
             clearLinkedOverride(nextStep.key);
+            invalidateServerLinkedPrompt(activeAttemptId, nextStep.key);
           }
           settleTimeout(false);
         })().finally(() => {
+          if (prepAbortControllersRef.current.get(stepIdx) === abortController) {
+            prepAbortControllersRef.current.delete(stepIdx);
+          }
           if (prepPromisesRef.current.get(stepIdx) === prepPromise) {
             prepPromisesRef.current.delete(stepIdx);
           }
@@ -489,6 +537,7 @@ export function useExamSession(): ExamSessionValue {
       pendingSessionRef.current.clear();
       for (const cleanup of [...activePrepCleanupsRef.current]) cleanup();
       activePrepCleanupsRef.current.clear();
+      prepAbortControllersRef.current.clear();
       prepPromisesRef.current.clear();
     };
   }, []);

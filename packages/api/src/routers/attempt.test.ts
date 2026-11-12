@@ -1100,5 +1100,197 @@ describe("attemptRouter", () => {
         await dispose();
       }
     });
+
+    it("returns linked: false without touching newer R2 prompt when previousGeneration is stale", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const bucket = makeMemoryBucket();
+        await db.insert(user).values(LEARNER);
+        await db.insert(forecastTopic).values(MULTI_TOPIC);
+        await db.insert(attempt).values({
+          id: "att-gen-stale",
+          userId: LEARNER.id,
+          mode: "part1",
+          status: "in_progress",
+          topicId: MULTI_TOPIC.id,
+        });
+        await db.insert(attemptAnswer).values({
+          id: "ans-gen-0",
+          attemptId: "att-gen-stale",
+          questionKey: "p1-routine-0",
+          questionText: "What is your typical morning routine?",
+          partNumber: 1,
+          orderIndex: 0,
+          generation: 3,
+          audioKey: `users/${LEARNER.id}/attempts/att-gen-stale/p1-routine-0.3.webm`,
+          durationMs: 9000,
+          mimeType: "audio/webm",
+          transcript: "I usually meditate before breakfast.",
+        });
+        await saveLinkedPrompt(bucket, {
+          userId: LEARNER.id,
+          attemptId: "att-gen-stale",
+          questionKey: "p1-routine-1",
+          prompt: {
+            questionText: "Newer prompt from generation 3?",
+            triggerPhrase: "meditate before breakfast",
+            baseQuestionText: "Do you prefer waking up early or staying up late?",
+            updatedAt: Date.now(),
+          },
+        });
+
+        const fetchSpy = vi.fn();
+        vi.stubGlobal("fetch", fetchSpy);
+        const caller = makeCaller(db, LEARNER, {
+          AUDIO_BUCKET: bucket,
+          OPENAI_API_KEY: "test-openai-key",
+        });
+
+        const res = await caller.attempt.prepareNextQuestion({
+          attemptId: "att-gen-stale",
+          previousQuestionKey: "p1-routine-0",
+          nextQuestionKey: "p1-routine-1",
+          previousGeneration: 2,
+        });
+
+        expect(res).toEqual({
+          questionKey: "p1-routine-1",
+          questionText: "Do you prefer waking up early or staying up late?",
+          triggerPhrase: null,
+          linked: false,
+        });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        const stored = await loadLinkedPrompt(bucket, {
+          userId: LEARNER.id,
+          attemptId: "att-gen-stale",
+          questionKey: "p1-routine-1",
+        });
+        expect(stored?.questionText).toBe("Newer prompt from generation 3?");
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("falls back gracefully to linked: false when R2 put fails during saveLinkedPrompt", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const bucket = makeMemoryBucket();
+        bucket.put = vi.fn(async () => {
+          throw new Error("R2 write timeout");
+        }) as unknown as typeof bucket.put;
+
+        await db.insert(user).values(LEARNER);
+        await db.insert(forecastTopic).values(MULTI_TOPIC);
+        await db.insert(attempt).values({
+          id: "att-r2-err",
+          userId: LEARNER.id,
+          mode: "part1",
+          status: "in_progress",
+          topicId: MULTI_TOPIC.id,
+        });
+        await db.insert(attemptAnswer).values({
+          id: "ans-r2-err-0",
+          attemptId: "att-r2-err",
+          questionKey: "p1-routine-0",
+          questionText: "What is your typical morning routine?",
+          partNumber: 1,
+          orderIndex: 0,
+          generation: 1,
+          audioKey: `users/${LEARNER.id}/attempts/att-r2-err/p1-routine-0.1.webm`,
+          durationMs: 7000,
+          mimeType: "audio/webm",
+          transcript: "I walk my dog every morning.",
+        });
+
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () =>
+            new Response(
+              JSON.stringify({
+                choices: [
+                  {
+                    message: {
+                      content: JSON.stringify({
+                        triggerPhrase: "walk my dog",
+                        questionText: "Since you walk your dog early, do you prefer waking up early or staying up late?",
+                      }),
+                    },
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          ),
+        );
+
+        const caller = makeCaller(db, LEARNER, {
+          AUDIO_BUCKET: bucket,
+          OPENAI_API_KEY: "test-openai-key",
+        });
+        const res = await caller.attempt.prepareNextQuestion({
+          attemptId: "att-r2-err",
+          previousQuestionKey: "p1-routine-0",
+          nextQuestionKey: "p1-routine-1",
+          previousGeneration: 1,
+        });
+
+        expect(res).toEqual({
+          questionKey: "p1-routine-1",
+          questionText: "Do you prefer waking up early or staying up late?",
+          triggerPhrase: null,
+          linked: false,
+        });
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("invalidateLinkedPrompt deletes the stored R2 linked prompt for owner and rejects non-owners", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const bucket = makeMemoryBucket();
+        await db.insert(user).values([LEARNER, OTHER_USER]);
+        await db.insert(forecastTopic).values(MULTI_TOPIC);
+        await db.insert(attempt).values({
+          id: "att-inv",
+          userId: LEARNER.id,
+          mode: "part1",
+          status: "in_progress",
+          topicId: MULTI_TOPIC.id,
+        });
+        await saveLinkedPrompt(bucket, {
+          userId: LEARNER.id,
+          attemptId: "att-inv",
+          questionKey: "p1-routine-1",
+          prompt: {
+            questionText: "Linked prompt to clear?",
+            triggerPhrase: "early coffee",
+            baseQuestionText: "Do you prefer waking up early or staying up late?",
+            updatedAt: Date.now(),
+          },
+        });
+        const key = buildLinkedPromptKey(LEARNER.id, "att-inv", "p1-routine-1");
+        expect(bucket.store.has(key)).toBe(true);
+
+        const otherCaller = makeCaller(db, OTHER_USER, { AUDIO_BUCKET: bucket });
+        await expect(
+          otherCaller.attempt.invalidateLinkedPrompt({
+            attemptId: "att-inv",
+            questionKey: "p1-routine-1",
+          }),
+        ).rejects.toMatchObject({ code: "FORBIDDEN" });
+        expect(bucket.store.has(key)).toBe(true);
+
+        const ownerCaller = makeCaller(db, LEARNER, { AUDIO_BUCKET: bucket });
+        const cleared = await ownerCaller.attempt.invalidateLinkedPrompt({
+          attemptId: "att-inv",
+          questionKey: "p1-routine-1",
+        });
+        expect(cleared).toEqual({ cleared: true });
+        expect(bucket.store.has(key)).toBe(false);
+      } finally {
+        await dispose();
+      }
+    });
   });
 });

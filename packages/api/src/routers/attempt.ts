@@ -209,6 +209,7 @@ export const attemptRouter = router({
         attemptId: z.string().min(1),
         previousQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
         nextQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        previousGeneration: z.number().int().nonnegative().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -258,6 +259,13 @@ export const attemptRouter = router({
         });
       }
 
+      const unlinkedFallback = () => ({
+        questionKey: input.nextQuestionKey,
+        questionText: nextDetail.text,
+        triggerPhrase: null as string | null,
+        linked: false,
+      });
+
       const bucket = ctx.env?.AUDIO_BUCKET;
       const prevLinked = bucket
         ? await loadLinkedPrompt(bucket, {
@@ -279,6 +287,15 @@ export const attemptRouter = router({
         )
         .limit(1);
 
+      if (
+        input.previousGeneration !== undefined &&
+        answerRow &&
+        answerRow.generation > input.previousGeneration
+      ) {
+        // Stale prepare call superseded by a newer recording; leave R2 untouched.
+        return unlinkedFallback();
+      }
+
       let candidateTranscript = answerRow?.transcript?.trim() ?? "";
       const openAiKey = ctx.env?.OPENAI_API_KEY;
       if (!candidateTranscript && answerRow && bucket && openAiKey) {
@@ -290,7 +307,7 @@ export const attemptRouter = router({
                 audioBuffer: await obj.arrayBuffer(),
                 mimeType: answerRow.mimeType,
                 apiKey: openAiKey,
-                timeoutMs: 8000,
+                timeoutMs: 6000,
               });
               if (transcribed) {
                 candidateTranscript = transcribed;
@@ -318,21 +335,49 @@ export const attemptRouter = router({
         previousPart: prevDetail.part,
         part: nextDetail.part,
         apiKey: openAiKey,
+        timeoutMs: 3500,
       });
 
+      if (input.previousGeneration !== undefined) {
+        const [latestRow] = await ctx.db
+          .select({ generation: attemptAnswer.generation })
+          .from(attemptAnswer)
+          .where(
+            and(
+              eq(attemptAnswer.attemptId, input.attemptId),
+              eq(attemptAnswer.questionKey, input.previousQuestionKey),
+            ),
+          )
+          .limit(1);
+        if (latestRow && latestRow.generation > input.previousGeneration) {
+          return unlinkedFallback();
+        }
+      }
+
+      const sanitizedQuestion = sanitizeDelimited(result.questionText).slice(0, 300).trim();
+      const rawTrigger =
+        result.linked && result.triggerPhrase
+          ? sanitizeDelimited(result.triggerPhrase).slice(0, 160).trim()
+          : "";
+      const effectiveLinked = result.linked && sanitizedQuestion.length >= 5;
+
       if (bucket) {
-        if (result.linked) {
-          await saveLinkedPrompt(bucket, {
-            userId: ctx.session.user.id,
-            attemptId: input.attemptId,
-            questionKey: input.nextQuestionKey,
-            prompt: {
-              questionText: result.questionText,
-              triggerPhrase: result.triggerPhrase || undefined,
-              baseQuestionText: nextDetail.text,
-              updatedAt: Date.now(),
-            },
-          });
+        if (effectiveLinked) {
+          try {
+            await saveLinkedPrompt(bucket, {
+              userId: ctx.session.user.id,
+              attemptId: input.attemptId,
+              questionKey: input.nextQuestionKey,
+              prompt: {
+                questionText: sanitizedQuestion,
+                triggerPhrase: rawTrigger || undefined,
+                baseQuestionText: nextDetail.text,
+                updatedAt: Date.now(),
+              },
+            });
+          } catch {
+            return unlinkedFallback();
+          }
         } else {
           await deleteLinkedPrompt(bucket, {
             userId: ctx.session.user.id,
@@ -342,15 +387,58 @@ export const attemptRouter = router({
         }
       }
 
+      if (!effectiveLinked) {
+        return unlinkedFallback();
+      }
+
       return {
         questionKey: input.nextQuestionKey,
-        questionText: sanitizeDelimited(result.questionText).slice(0, 300),
-        triggerPhrase:
-          result.linked && result.triggerPhrase
-            ? sanitizeDelimited(result.triggerPhrase).slice(0, 160)
-            : null,
-        linked: result.linked,
+        questionText: sanitizedQuestion,
+        triggerPhrase: rawTrigger || null,
+        linked: true,
       };
+    }),
+
+  invalidateLinkedPrompt: protectedProcedure
+    .input(
+      z.object({
+        attemptId: z.string().min(1),
+        questionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [currentAttempt] = await ctx.db
+        .select({
+          id: attempt.id,
+          userId: attempt.userId,
+          status: attempt.status,
+        })
+        .from(attempt)
+        .where(eq(attempt.id, input.attemptId))
+        .limit(1);
+
+      if (!currentAttempt) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Attempt not found" });
+      }
+      if (currentAttempt.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to access this attempt",
+        });
+      }
+      if (currentAttempt.status !== "in_progress") {
+        return { cleared: false };
+      }
+
+      if (ctx.env?.AUDIO_BUCKET) {
+        await deleteLinkedPrompt(ctx.env.AUDIO_BUCKET, {
+          userId: ctx.session.user.id,
+          attemptId: input.attemptId,
+          questionKey: input.questionKey,
+        }).catch(() => {});
+      }
+
+      return { cleared: true };
     }),
 
   submit: protectedProcedure

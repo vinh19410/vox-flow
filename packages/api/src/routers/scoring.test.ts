@@ -1,8 +1,10 @@
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { attempt, attemptAnswer, attemptScore, scoringRetryLog, user } from "@vox-flow/db/schema";
 
+import { type LinkedPromptBucket, saveLinkedPrompt } from "../exam/linked-prompt-store";
 import { SCORING_ENQUEUE_DELAY_SECONDS, type ScoringQueue } from "../scoring/queue";
 import { startOfVietnamDayMs } from "../scoring/retry-limits";
 import type { ScoredCriterion, ScoringQueueMessage } from "../scoring/types";
@@ -499,6 +501,52 @@ describe("scoringRouter", () => {
       await expect(callerFor("other").scoring.getResult({ attemptId: "att-forecast" })).rejects.toMatchObject({
         code: "FORBIDDEN",
       });
+    });
+
+    it("overlays server-stored R2 linked questionText over attemptAnswer.questionText", async () => {
+      const store = new Map<string, string>();
+      const bucket: LinkedPromptBucket = {
+        async put(key, value) {
+          const text = typeof value === "string" ? value : new TextDecoder().decode(value as Uint8Array);
+          store.set(key, text);
+        },
+        async get(key) {
+          const text = store.get(key);
+          return text === undefined ? null : { text: async () => text };
+        },
+        async delete(key) {
+          store.delete(key);
+        },
+      };
+      await saveLinkedPrompt(bucket, {
+        userId: "owner",
+        attemptId: "att-forecast",
+        questionKey: "p1-2",
+        prompt: {
+          questionText: "Linked Second from R2?",
+          triggerPhrase: "first answer",
+          baseQuestionText: "Second",
+          updatedAt: Date.now(),
+        },
+      });
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-forecast",
+        userId: "owner",
+        status: "done",
+        overall: 7,
+        criteriaJson: JSON.stringify(CRITERIA),
+        oneLiner: "Tốt",
+        scoredAt: new Date("2026-11-10T04:00:00.000Z"),
+      });
+
+      const callerWithBucket = appRouter.createCaller({
+        db: ctx.db,
+        session: makeSession("owner"),
+        env: { SCORING_QUEUE: queue, AUDIO_BUCKET: bucket as unknown as R2Bucket },
+      });
+      const result = await callerWithBucket.scoring.getResult({ attemptId: "att-forecast" });
+      expect(result?.answers.find((a) => a.questionKey === "p1-2")?.questionText).toBe("Linked Second from R2?");
+      expect(result?.answers.find((a) => a.questionKey === "p1-1")?.questionText).toBe("First");
     });
   });
 });
