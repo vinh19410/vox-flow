@@ -15,7 +15,9 @@ local.db-*
 
 # Environment variables
 .env
+**/.env
 .env*.local
+.bruno-report-*.json
 
 # IDEs and editors
 .vscode/*
