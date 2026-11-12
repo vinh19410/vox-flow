@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { PROTO_STORAGE_KEY } from "@/features/app-state/store";
 import { authClient } from "@/lib/auth-client";
+import { clearOnboardedUserCache } from "@/lib/auth-guard";
 
 const SIGN_OUT_ERROR = "Đăng xuất thất bại. Vui lòng thử lại.";
 
@@ -22,6 +23,7 @@ export function useSignOut(redirect: string = "/auth") {
       toast.error(SIGN_OUT_ERROR);
       return;
     }
+    clearOnboardedUserCache();
     try {
       globalThis.sessionStorage?.removeItem(PROTO_STORAGE_KEY);
     } catch {

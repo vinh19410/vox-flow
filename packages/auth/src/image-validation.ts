@@ -10,9 +10,10 @@ export const MAX_USER_IMAGE_LENGTH = 32_000;
 const DATA_IMAGE_ALLOWED = /^data:image\/(webp|jpeg|png);base64,/;
 
 /**
- * Kiểm tra trường `image` do client gửi lên (sign-up email, /update-user).
- * Chỉ chấp nhận: URL https, data URL ảnh (webp/jpeg/png) đã nén, hoặc đường
- * dẫn avatar nội bộ `/avatars/...`. Trả về `false` để từ chối cập nhật.
+ * Kiểm tra trường `image` áp cho mọi thao tác tạo/cập nhật user qua
+ * `databaseHooks.user` (bao gồm sign-up email, tạo user qua Google OAuth, và
+ * `/update-user`). Chỉ chấp nhận: URL https, data URL ảnh (webp/jpeg/png) đã
+ * nén, hoặc đường dẫn avatar nội bộ `/avatars/...`. Trả về `false` để từ chối.
  */
 export function validateUserImage(
   image: unknown,
