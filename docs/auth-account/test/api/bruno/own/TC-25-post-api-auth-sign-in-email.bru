@@ -1,0 +1,33 @@
+meta {
+  name: TC-25 POST /api/auth/sign-in/email
+  type: http
+  seq: 24
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa+{{runId}}@voxflow.local",
+    "password": "{{PASS_129}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: eq PASSWORD_TOO_LONG
+}

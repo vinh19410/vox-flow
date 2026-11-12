@@ -1,0 +1,169 @@
+---
+name: code-explorer
+description: >-
+  Domain reference for mapping an unfamiliar codebase and clustering units into
+  user-facing business features (not code modules). Loaded by the `code-to-srs`
+  skill (Phase A map + Phase B cluster) alongside `stacks-reference`. Do not
+  activate directly unless assisting `code-to-srs` or mapping business features
+  from source code.
+---
+<!-- Licensed to th.vinh102@gmail.com — Order GD86QNQXZ -->
+
+# Code Explorer — map codebase + cluster feature nghiệp vụ‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+
+> **Vai trò:** engine đọc-code cho `/code-to-srs`. Trả về (1) bản đồ codebase (stack/kiến trúc/entry point) và
+> (2) danh sách **feature nghiệp vụ** để feed vào `reverse-plan.json`. Bổ trợ `stacks-reference` (recipe bóc
+> fact theo stack) — file này lo phần "đọc rộng để CHIA feature", stacks-reference lo phần "bóc fact 1 feature".
+
+## Nguyên tắc vàng: FEATURE ≠ MODULE‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+
+* **Module** = đơn vị code (`src/payments/`, `AuthModule`).
+* **Feature** = việc **user làm được** ("đăng nhập bằng Google", "thanh toán qua PayPal", "đặt lại mật khẩu").
+
+1 module có thể chứa nhiều feature; 1 feature có thể trải nhiều module. Đặt tên feature theo góc nhìn user,
+kebab-case ASCII (`naming-conventions.md`):
+* ✅ `payment-paypal`, `login`, `password-reset`, `dashboard-admin`
+* ❌ `PaymentModule`, `auth`, `user-management`
+
+## Phase A — Map codebase (route-first, KHÔNG đọc-sâu vội)‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+
+> **Nguyên tắc repo lớn (đa số dự án thật):** KHÔNG đọc thân file trong Phase A. Chỉ (1) **đếm tổng file** để
+> biết độ nặng, rồi (2) scan **khung feature** = danh sách route/nav/controller/migration (unit list rẻ, không
+> nổ context vì chỉ là path + tên route). Đọc-sâu thân file để lại Phase D, và CHỈ cho subset user chọn (xem
+> GATE-SCOPE). **Do not silently under-scan** — repo có hàng trăm controller/màn là bình thường, KHÔNG sample
+> /truncate danh sách unit; danh sách dài là *tín hiệu thật*, không phải nhiễu để cắt.
+
+### A.1 Đếm quy mô + file tree (KHÔNG `head` cứng làm sót)‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+```bash
+# Đếm tổng file mã (để quyết định repo "nặng" hay không — xem GATE-SCOPE)
+find . -type f \
+  | grep -v node_modules | grep -v .git | grep -v __pycache__ \
+  | grep -v "\.pyc$" | grep -v "/dist/" | grep -v "/build/" \
+  | grep -v "\.min\." | grep -v "/coverage/" | grep -v "\.lock$" \
+  | wc -l
+# Cây thư mục cấp cao (định hướng kiến trúc — KHÔNG cần liệt kê hết file body)
+find . -maxdepth 3 -type d | grep -v node_modules | grep -v .git | sort | head -80
+```
+
+> Bỏ `head -300` cứng cũ (cắt theo alphabet → sót feature). Việc "liệt kê hết unit" nằm ở Phase B (route/nav/
+> controller list qua recipe `stacks-reference`), rẻ và đầy đủ; KHÔNG cần dump toàn bộ file body ở A.1.
+
+### A.2 Stack detection‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+```bash
+# Node
+cat package.json 2>/dev/null | python3 -c "
+import json,sys; d=json.load(sys.stdin)
+print('name:', d.get('name'))
+print('scripts:', list(d.get('scripts',{}).keys()))
+print('deps:', list(d.get('dependencies',{}).keys())[:25])
+" 2>/dev/null
+
+cat requirements.txt 2>/dev/null || cat pyproject.toml 2>/dev/null   # Python
+cat pom.xml 2>/dev/null | grep -E "<artifactId>|<version>" | head -10 # Java
+cat go.mod 2>/dev/null                                                # Go
+cat composer.json 2>/dev/null | python3 -c "import json,sys; d=json.load(sys.stdin); print(list(d.get('require',{}).keys()))" 2>/dev/null  # PHP
+```
+
+> Xác định stack xong → chuyển sang recipe stack tương ứng trong [stacks-reference](../stacks-reference/SKILL.md) để bóc route/model/DTO.
+
+### A.3 README + docs có sẵn
+```bash
+cat README.md 2>/dev/null || cat readme.md 2>/dev/null
+ls docs/ 2>/dev/null
+```
+
+### A.4 Infra hints
+```bash
+cat docker-compose.yml 2>/dev/null | grep -E "image:|build:|ports:" | head -20
+ls Dockerfile* .env.example .env.sample 2>/dev/null
+```
+
+## Phase B — Nhận diện feature nghiệp vụ (4 nguồn signal, ưu tiên góc nhìn user)
+
+Đọc 4 loại signal (ưu tiên trên xuống — cái sau chỉ để bổ sung/xác nhận):
+
+1) **Route / URL definitions** — mỗi route group = 1 feature candidate. Dùng recipe stack trong
+   [stacks-reference](../stacks-reference/SKILL.md) (App Router `page.tsx`, NestJS `@Controller`, Django `urls.py`, ...).
+2) **Navigation / menu ở frontend** — lộ TÊN feature thật user thấy (đáng tin hơn tên folder code).
+3) **README** — nếu có, mô tả tính năng bằng ngôn ngữ user.
+4) **Migration / schema file names** — lộ concept nghiệp vụ (bảng `subscriptions`, `refunds` → feature).
+
+### Kiểm hạt feature (granularity)
+* Tên kiểu "quản lý / và / hoặc" (vd `user-management`) → thường là NHIỀU feature, cân nhắc tách
+  (`register`, `login`, `password-reset`, `profile-edit`).
+* 1 field/endpoint lẻ không đứng độc lập → cân nhắc gộp vào feature lớn hơn.
+* **Mơ hồ tách/gộp → tự quyết theo signal + ghi note/OQ, KHÔNG dừng hỏi user** (theo nguyên tắc nền
+  `/code-to-srs`: code = proof).
+
+### Cluster bằng BẰNG CHỨNG gọi/dữ liệu chéo repo (KHÔNG theo tên gần nhau)
+* Frontend screen/route + controller(s) nó **thực sự gọi** (khớp path-constant frontend với endpoint
+  controller) = **1 feature**. Batch/job đọc-ghi cùng bảng/bucket mà controller cluster khác đụng → **nhập‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+  cluster đó**.
+* **KHÔNG cluster theo tên/số gần nhau** (2 unit cùng prefix số KHÔNG đương nhiên cùng feature) — đòi **bằng
+  chứng call/data thật**. Không tìm được bằng chứng nối → **giữ tách + ghi `grouping_note`**, KHÔNG đoán.
+* **Cross-cutting** (auth chung/health-check/util) → cho vào list `shared_infrastructure` riêng — **disclosed,
+  KHÔNG tính là feature**, không force-fit vào 1 luồng.
+
+### Priority order (điền vào plan + gợi ý thứ tự làm cho GATE-SCOPE)
+1) Auth features (login, register, password-reset).
+2) Core business features (thứ chính app làm).
+3) Secondary features.
+4) Admin / management features.
+
+### GATE-SCOPE — repo lớn thì hỏi user chọn subset TRƯỚC khi đọc-sâu (mục 2)
+Sau khi có danh sách feature-candidate (đầy đủ, chưa đọc-sâu):
+
+1) **In bảng feature cho user THẤY**: `# | feature | unit/route nguồn | repo | confidence | trùng doc?` +
+   dòng tổng kết độ nặng (số feature · số repo · ước lượng file/feature).
+2) **Repo NẶNG** — vượt ngưỡng (đề xuất: **> ~25 feature** HOẶC **> ~1500 file mã**, HOẶC nhiều repo) →
+   **DỪNG + WARN**: *"Codebase lớn ({N} feature) — nên làm lần lượt để chắc + không vỡ context. Anh chọn làm
+   nhóm nào trước?"* + cho chọn: `all` · danh sách feature cụ thể · theo nhóm ưu tiên (auth → core → admin).
+   **Wait user chọn.** Đây là điểm dừng hỏi **PHẠM VI LÀM**, KHÔNG phải hỏi nghiệp vụ (vẫn hợp lệ với nguyên
+   tắc "code = proof, không hỏi nghiệp vụ"). Feature không chọn → ghi `status: "deferred"` trong plan (lần
+   sau chạy lại làm tiếp, resumable).
+3) **Repo nhỏ** (dưới ngưỡng) → vẫn in bảng nhưng **chạy tiếp không chặn** (như hiện tại — bảng là
+   informational, user chỉnh được nhưng không bắt buộc).
+
+## Output feed cho reverse-plan.json
+
+Mỗi feature tạo 1 entry (schema chung với `/reverse-doc`, `sources` là **đường dẫn code** thay vì S-id tài liệu):
+
+```json
+{
+  "slug": "login",
+  "sources": ["src/auth/auth.controller.ts", "src/auth/auth.service.ts", "src/auth/auth.guard.ts"],
+  "existing_doc": null,
+  "confidence": "medium",
+  "complexity_flags": ["oauth", "throttle"],
+  "status": "pending"
+}
+```
+
+* `sources` = **source_paths + key_files** (max ~7 file/feature, ưu tiên: routes → controllers/views →
+  services → models/schemas → guards → **tests** → config). **Test là NGUỒN hạng nhất** (không chỉ để đếm)
+  — nó cấp fact ✅ về boundary/flow/edge mà code sản phẩm hay không lộ (xem `stacks-reference` R1). i18n
+  catalog cũng nên có trong sources nếu feature có lỗi dùng mã khóa (R2).
+* `status`: `pending` (sẽ làm) · `deferred` (user chưa chọn ở GATE-SCOPE, để lần sau) · `done` (đã Write).
+* `complexity_flags`: `oauth` / `payment` / `webhook` / `async` / `multi-role` / `state-machine` / `throttle`
+  / `external-redirect` — dò từ deps + code, để Phase D biết Mục nào cần điền kỹ.
+* `existing_doc`: điền `docs/{feature}/` nếu dò trùng qua KG (xem [kg-usage.md](../../references/kg-usage.md)) — sẽ điền Mục 0.3 trong spec.
+
+## References
+
+- [stacks-reference](../stacks-reference/SKILL.md)
+- [naming-conventions.md](../../references/naming-conventions.md)
+- [kg-usage.md](../../references/kg-usage.md)
+
+## Chống bịa (khớp triết lý reverse)
+
+* CHỈ nhận diện feature có **route/nav/migration làm bằng chứng**. Không suy feature "chắc có" mà không có
+  file nào backing.
+* Feature nhận diện từ code = **cái user LÀM được (fact)**; nhưng **vì sao / cho ai / mục tiêu nghiệp vụ**
+  code không nói → mặc định 🟡 Inferred trong spec + OQ. Đừng để "map được code" thành "hiểu được nghiệp vụ".
+* **Nghi dead-code / flag-tắt** (route no-caller, `@Deprecated`, `if(false)` — xem `stacks-reference` R3) →
+  KHÔNG tái lập như feature chắc; hạ 🟡 + OQ + negative-search. Cluster `shared_infrastructure` KHÔNG tính là
+  feature.‍​​‌‌‌​‌‌​‌‌​​​​‌‌​‌‌‌‌‌‌‌​​‌‌‌​​‌​​‌​‌​‌​‌‌‌‌‌‌​​‌​‌‌​​‌‌‌‌​‌​‌​‌​​​​​‌‌‌​​​​​‌‌‌‌​‌‌​‌​‌​​​‌‌‌‌​​​​​‌‌​​‌​‌​‌​‌‌​‌‌​​​‌‌​‌​‌‌​​‍
+
+
+<!-- wm:c3e3a8b9c06f46427bf9089e2fdafa48 -->
+<sub>Tài liệu thuộc bộ AI4BA BA-Kit — bản quyền hoangphan.blog</sub>

@@ -1,0 +1,26 @@
+meta {
+  name: TC-50 POST /api/auth/sign-out
+  type: http
+  seq: 48
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-out
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+  Cookie: {{sessionCookie}}
+}
+
+body:json {
+  {}
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 200
+  res.body.success: eq true
+  res.headers['set-cookie']: contains session_token=
+}

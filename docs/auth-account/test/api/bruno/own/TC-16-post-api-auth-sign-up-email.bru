@@ -1,0 +1,34 @@
+meta {
+  name: TC-16 POST /api/auth/sign-up/email
+  type: http
+  seq: 16
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.name51+{{runId}}@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}",
+    "name": "{{NAME_51}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: eq INVALID_NAME
+}

@@ -1,0 +1,20 @@
+meta {
+  name: TC-49 GET /trpc/disputeAdmin.checkAdmin
+  type: http
+  seq: 47
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/trpc/disputeAdmin.checkAdmin
+}
+
+headers {
+  Cookie: {{sessionCookie}}
+}
+
+assert {
+  # auth: session (relies on Bruno cookie jar after _setup/login)
+  res.status: eq 403
+  res.body.error.data.code: eq FORBIDDEN
+  res.body.error.message: eq Admin access required
+}

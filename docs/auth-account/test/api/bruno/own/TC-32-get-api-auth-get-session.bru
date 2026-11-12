@@ -1,0 +1,19 @@
+meta {
+  name: TC-32 GET /api/auth/get-session
+  type: http
+  seq: 30
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/get-session
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 200
+  res.body: isNull
+  res.headers['cache-control']: contains no-store
+}

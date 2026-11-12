@@ -1,0 +1,41 @@
+meta {
+  name: SETUP Login Seed Session
+  type: http
+  seq: 0
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "{{process.env.SEED_EMAIL}}",
+    "password": "{{process.env.SEED_PASSWORD}}"
+  }
+}
+
+script:pre-request {
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+script:post-response {
+  const rawCookie = res.headers['set-cookie'];
+  const cookies = Array.isArray(rawCookie) ? rawCookie : (rawCookie ? [rawCookie] : []);
+  const pairs = cookies.map((c) => String(c).split(';')[0]).filter(Boolean);
+  if (pairs.length > 0) {
+    bru.setVar('sessionCookie', pairs.join('; '));
+  }
+}
+
+assert {
+  # session bootstrap for Auth=session test cases
+  res.status: eq 200
+}

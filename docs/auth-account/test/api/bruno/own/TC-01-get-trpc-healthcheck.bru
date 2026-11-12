@@ -1,0 +1,18 @@
+meta {
+  name: TC-01 GET /trpc/healthCheck
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{AUTH_ACCOUNT_BASE}}/trpc/healthCheck
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 200
+  res.body.result.data: eq OK
+}

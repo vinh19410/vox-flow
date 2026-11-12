@@ -1,0 +1,34 @@
+meta {
+  name: TC-10 POST /api/auth/sign-up/email
+  type: http
+  seq: 10
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-up/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "qa.short7+{{runId}}@voxflow.local",
+    "password": "Abc123!",
+    "name": "Mat Khau Ngan"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+  if (!bru.getVar('runId')) {
+    bru.setVar('runId', String(Date.now()));
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.code: eq PASSWORD_TOO_SHORT
+}

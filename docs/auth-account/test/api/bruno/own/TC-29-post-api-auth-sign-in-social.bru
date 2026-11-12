@@ -1,0 +1,29 @@
+meta {
+  name: TC-29 POST /api/auth/sign-in/social
+  type: http
+  seq: 27
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/social
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "provider": "github"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 404
+  res.body.code: eq PROVIDER_NOT_FOUND
+}

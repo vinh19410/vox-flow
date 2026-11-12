@@ -1,0 +1,29 @@
+meta {
+  name: TC-45 POST /api/auth/update-user
+  type: http
+  seq: 43
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/update-user
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "name": "Anonymous"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 401
+  res.body.code: eq UNAUTHORIZED
+}

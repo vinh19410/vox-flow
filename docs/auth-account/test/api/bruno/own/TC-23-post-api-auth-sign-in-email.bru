@@ -1,0 +1,30 @@
+meta {
+  name: TC-23 POST /api/auth/sign-in/email
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{AUTH_ACCOUNT_BASE}}/api/auth/sign-in/email
+  body: json
+}
+
+headers {
+  Origin: {{TRUSTED_ORIGIN}}
+}
+
+body:json {
+  {
+    "email": "chua-ton-tai-9999@voxflow.local",
+    "password": "{{process.env.TEST_USER_PASSWORD}}"
+  }
+}
+
+script:pre-request {
+  try { bru.cookies.jar().clear(); } catch (e) {}
+}
+
+assert {
+  res.status: eq 401
+  res.body.code: eq INVALID_EMAIL_OR_PASSWORD
+}
