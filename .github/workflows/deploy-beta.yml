@@ -4,6 +4,17 @@ on:
   push:
     branches:
       - dev
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'turbo.json'
+      - 'tsconfig.json'
+      - 'bunfig.toml'
+      - '.github/workflows/deploy-beta.yml'
+      - '!**/*.md'
   workflow_dispatch:
 
 concurrency:
