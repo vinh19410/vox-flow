@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/features/app-state/types";
 import { useMicLevel } from "@/hooks/use-mic-level";
 import { useRecorder } from "@/hooks/use-recorder";
-import { cancelSpeech, speakText } from "@/lib/speech";
+import { cancelSpeech, prefetchSpeech, speakText } from "@/lib/speech";
+import { buildForecastTtsUrl, buildMockTtsUrl } from "@/lib/tts-url";
 import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
@@ -182,12 +183,40 @@ export function useExamSession(): ExamSessionValue {
   const maxRec = step?.part === 2 ? 120 : step?.part === 3 ? 60 : 40;
   // All exam timers pause while the exit or pre-submit modal is open.
   const paused = exitOpen || review;
+  const practiceTopicId = s.practice?.topicId?.trim();
+  const stepAudioUrl = (targetStep: ExamStep): string | undefined => {
+    if (practiceTopicId) {
+      if (targetStep.follow) return undefined;
+      return buildForecastTtsUrl(voice.id, practiceTopicId, targetStep.key, targetStep.text);
+    }
+    return buildMockTtsUrl(voice.id, targetStep.key, targetStep.text);
+  };
+
+  useEffect(() => {
+    cancelSpeech();
+    return () => cancelSpeech();
+  }, []);
+
+  // Prefetch current and next examiner prompts so audio is warm before "asking" starts.
+  useEffect(() => {
+    if (muted || steps.length === 0) return;
+    const currentUrl = steps[idx] ? stepAudioUrl(steps[idx]) : undefined;
+    if (currentUrl) void prefetchSpeech(currentUrl);
+    const upcomingUrl = steps[idx + 1] ? stepAudioUrl(steps[idx + 1]) : undefined;
+    if (upcomingUrl) void prefetchSpeech(upcomingUrl);
+  }, [idx, muted, steps, practiceTopicId, voice.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Examiner reads the question aloud while the text reveals char by char.
   useEffect(() => {
-    if (phase !== "asking") return;
+    if (phase !== "asking" || !step) return;
     setTyped(0);
-    if (!muted) speakText(step.text, { lang: voiceLang(voice.id), rate: 0.95 });
+    if (!muted) {
+      speakText(step.text, {
+        audioUrl: stepAudioUrl(step),
+        lang: voiceLang(voice.id),
+        rate: 0.95,
+      });
+    }
   }, [phase, idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reveal interval — paused while a modal is open, resumes at the frozen caret.
@@ -200,11 +229,6 @@ export function useExamSession(): ExamSessionValue {
   useEffect(() => {
     if (phase === "asking" && typed >= step.text.length + 12) setPhase(step.part === 2 && !step.follow ? "prep" : "ready");
   }, [typed, phase, step]);
-
-  useEffect(() => {
-    cancelSpeech();
-    return () => cancelSpeech();
-  }, []);
 
   useEffect(() => {
     if (phase === "intro" || paused) return;

@@ -4,7 +4,29 @@ import { deduplicateAndDraftTopics } from "../forecast/dedupe";
 import { z } from "zod";
 
 import { forecastReport, forecastSource, forecastTopic } from "@vox-flow/db/schema";
+import type { Context } from "../context";
 import { adminProcedure, router } from "../index";
+import { prewarmTopicAudio } from "../tts";
+
+function scheduleTopicAudioPrewarm(
+  ctx: Context,
+  topic: { title: string; part: number; questions: string | unknown },
+) {
+  const bucket = ctx.env?.AUDIO_BUCKET;
+  if (!bucket) {
+    return;
+  }
+  const promise = prewarmTopicAudio({
+    topic,
+    bucket,
+    env: ctx.env,
+  }).catch(() => {});
+  if (ctx.waitUntil) {
+    ctx.waitUntil(promise);
+  } else {
+    void promise;
+  }
+}
 
 const urlSchema = z
   .string()
@@ -270,6 +292,12 @@ export const forecastAdminRouter = router({
           message: "Failed to update forecast topic",
         });
       }
+      if (
+        topic.status === "published" &&
+        (input.questions !== undefined || input.title !== undefined || input.part !== undefined)
+      ) {
+        scheduleTopicAudioPrewarm(ctx, topic);
+      }
       return topic;
     }),
 
@@ -319,6 +347,7 @@ export const forecastAdminRouter = router({
           message: "Failed to publish forecast topic",
         });
       }
+      scheduleTopicAudioPrewarm(ctx, topic);
       return topic;
     }),
 

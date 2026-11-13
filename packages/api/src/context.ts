@@ -11,6 +11,11 @@ export type ApiEnv = {
   LAUNCH_ALLOWED_EMAILS?: string;
   ANTHROPIC_API_KEY?: string;
   OPENAI_API_KEY?: string;
+  ELEVENLABS_API_KEY?: string;
+  ELEVENLABS_MODEL_ID?: string;
+  ELEVENLABS_VOICE_UK_F?: string;
+  ELEVENLABS_VOICE_US_M?: string;
+  ELEVENLABS_VOICE_AU_F?: string;
   AZURE_SPEECH_KEY?: string;
   AZURE_SPEECH_REGION?: string;
   SCORE_DISPUTE_ENABLED?: string;
@@ -29,4 +34,6 @@ export type Context = {
   env?: ApiEnv;
   /** Injectable clock (same shape as `score-attempt.ts`); tests pin time with it. */
   now?: () => Date;
+  /** Cloudflare ExecutionContext.waitUntil hook for non-blocking background tasks. */
+  waitUntil?: (promise: Promise<unknown>) => void;
 };

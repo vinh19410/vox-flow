@@ -20,6 +20,15 @@ export async function createContext({ context }: CreateContextOptions): Promise<
     ENV && typeof ENV === "object" && "ADMIN_EMAILS" in ENV && typeof ENV.ADMIN_EMAILS === "string"
       ? ENV.ADMIN_EMAILS
       : "";
+  let waitUntil: ((promise: Promise<unknown>) => void) | undefined;
+  try {
+    const execCtx = context.executionCtx;
+    if (execCtx && typeof execCtx.waitUntil === "function") {
+      waitUntil = (promise) => execCtx.waitUntil(promise);
+    }
+  } catch {
+    // Hono throws on accessing context.executionCtx when running outside Workers (e.g. unit tests).
+  }
   return {
     db,
     session,
@@ -27,6 +36,7 @@ export async function createContext({ context }: CreateContextOptions): Promise<
       ...(typeof ENV === "object" && ENV !== null ? ENV : {}),
       ADMIN_EMAILS: adminEmails,
     } as ApiContext["env"],
+    ...(waitUntil ? { waitUntil } : {}),
   };
 }
 

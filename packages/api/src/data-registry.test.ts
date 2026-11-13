@@ -676,4 +676,60 @@ describe("Data registry for personal data discovery and erasure", () => {
     const rows = await testCtx.db.select().from(attempt);
     expect(rows.find((r) => r.id === "att_faildel")).toBeDefined();
   });
+
+  it("eraseUserData deletes users/<userId>/... blobs while leaving shared tts/v1/... audio blobs untouched", async () => {
+    const userId = "usr_tts_isolation_1";
+    await testCtx.db.insert(user).values({
+      id: userId,
+      name: "TTS Isolation User",
+      email: "ttsiso@voxflow.vn",
+      emailVerified: true,
+    });
+    await testCtx.db.insert(attempt).values({
+      id: "att_tts_iso_1",
+      userId,
+      mode: "full",
+      status: "submitted",
+    });
+    await testCtx.db.insert(attemptAnswer).values({
+      id: "ans_tts_iso_1",
+      attemptId: "att_tts_iso_1",
+      questionKey: "p1-1",
+      questionText: "Where do you live?",
+      partNumber: 1,
+      orderIndex: 0,
+      audioKey: `users/${userId}/attempts/att_tts_iso_1/p1-1.0.webm`,
+      durationMs: 5000,
+      mimeType: "audio/webm",
+    });
+
+    const sharedTtsKeys = [
+      "tts/v1/uk-f/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.mp3",
+      "tts/v1/us-m/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210.mp3",
+      "tts/v1/au-f/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.mp3",
+    ];
+    const userRecordingKey = `users/${userId}/attempts/att_tts_iso_1/p1-1.0.webm`;
+    const bucketObjects = new Set<string>([userRecordingKey, ...sharedTtsKeys]);
+    const deletedKeys: string[] = [];
+
+    const mockAudioBucket = {
+      delete: vi.fn(async (key: string) => {
+        deletedKeys.push(key);
+        bucketObjects.delete(key);
+      }),
+      list: vi.fn(async (opts: { prefix: string; cursor?: string }) => ({
+        objects: [...bucketObjects]
+          .filter((k) => k.startsWith(opts.prefix))
+          .map((key) => ({ key })),
+        truncated: false,
+      })),
+    };
+
+    await eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, userId);
+
+    expect(deletedKeys).toEqual([userRecordingKey]);
+    for (const ttsKey of sharedTtsKeys) {
+      expect(bucketObjects.has(ttsKey)).toBe(true);
+    }
+  });
 });
