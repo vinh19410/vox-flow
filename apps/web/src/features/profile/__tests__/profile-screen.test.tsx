@@ -301,4 +301,133 @@ describe("ProfileScreen component", () => {
 
     expect(screen.getByText("Gói Miễn phí")).toBeTruthy();
   });
+
+  it("renders 'Đã xác thực' badge when session user has email and emailVerified is true", () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-123",
+          email: "lan@example.com",
+          emailVerified: true,
+          name: "Lan Nguyễn",
+          image: null,
+        },
+        session: { id: "s-123", userId: "u-123" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderProfile();
+
+    expect(screen.getByText("lan@example.com")).toBeTruthy();
+    expect(screen.getByText("Đã xác thực")).toBeTruthy();
+  });
+
+  it("hides 'Đã xác thực' badge when session user has emailVerified false", () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-123",
+          email: "lan@example.com",
+          emailVerified: false,
+          name: "Lan Nguyễn",
+          image: null,
+        },
+        session: { id: "s-123", userId: "u-123" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderProfile();
+
+    expect(screen.getByText("lan@example.com")).toBeTruthy();
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+  });
+
+  it("hides 'Đã xác thực' badge when session is null or emailVerified is undefined", () => {
+    // Subcase 1: default beforeEach mock omits emailVerified
+    const { unmount } = renderProfile();
+    expect(screen.getByText("lan@example.com")).toBeTruthy();
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+    unmount();
+
+    // Subcase 2: session is null while app state has fallback email
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: null,
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderProfile({ email: "fallback@example.com" });
+
+    expect(screen.getByText("fallback@example.com")).toBeTruthy();
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+  });
+
+  it("hides 'Đã xác thực' badge when email is empty even if emailVerified is true", () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-123",
+          email: "",
+          emailVerified: true,
+          name: "Lan Nguyễn",
+          image: null,
+        },
+        session: { id: "s-123", userId: "u-123" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderProfile({ email: "" });
+
+    expect(screen.getByText("Chưa thiết lập")).toBeTruthy();
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+  });
+
+  it("hides 'Đã xác thực' badge when session email is empty and display falls back to s.email", () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-123",
+          email: "",
+          emailVerified: true,
+          name: "Lan Nguyễn",
+          image: null,
+        },
+        session: { id: "s-123", userId: "u-123" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    const { unmount } = renderProfile({ email: "fallback@example.com" });
+
+    expect(screen.getByText("fallback@example.com")).toBeTruthy();
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+    unmount();
+
+    // Whitespace-only session email must also hide the badge
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u-123",
+          email: "   ",
+          emailVerified: true,
+          name: "Lan Nguyễn",
+          image: null,
+        },
+        session: { id: "s-123", userId: "u-123" },
+      },
+      isPending: false,
+      error: null,
+    } as never);
+
+    renderProfile({ email: "fallback@example.com" });
+
+    expect(screen.queryByText("Đã xác thực")).toBeNull();
+  });
 });
