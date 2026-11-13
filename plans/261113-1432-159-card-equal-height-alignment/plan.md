@@ -1,7 +1,7 @@
 ---
 title: "Align card heights and bottom-pin footers across TopicCard, ModeGrid, and PlanGrid"
 description: "Use h-full flex-col and mt-auto footers on TopicCard, ModeGrid, and PlanGrid so cards in the same CSS Grid row share equal height and aligned footers without truncating topic titles."
-status: in_progress
+status: completed
 priority: P2
 effort: 1h
 issue: 159
@@ -41,4 +41,4 @@ Plan này chuẩn hóa cả 3 component theo đúng pattern đang dùng ở `Cri
 ## Các phase thực thi
 | Phase | Tên | Tệp | Trạng thái |
 |---|---|---|---|
-| 01 | Đồng bộ chiều cao & chân card + kiểm chứng 3 viewport | [phase-01-align-card-footers.md](./phase-01-align-card-footers.md) | `in_progress` |
+| 01 | Đồng bộ chiều cao & chân card + kiểm chứng 3 viewport | [phase-01-align-card-footers.md](./phase-01-align-card-footers.md) | `completed` |
