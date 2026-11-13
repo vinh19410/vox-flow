@@ -1,7 +1,7 @@
 ---
 title: "fix(profile): conditional emailVerified badge on /app/profile"
 description: "Chỉ hiển thị huy hiệu 'Đã xác thực' trên /app/profile khi người dùng có session.user.email hợp lệ và session?.user?.emailVerified === true."
-status: pending
+status: completed
 priority: P2
 effort: 1h
 issue: 135
@@ -38,9 +38,9 @@ Chỉ hiển thị huy hiệu `<Badge tone="good">Đã xác thực</Badge>` bên
 
 ## Success Criteria
 
-- [ ] `apps/web/src/features/profile/__tests__/profile-screen.test.tsx` có unit test kiểm chứng cả nhánh hiển thị (`emailVerified: true` + `session.user.email`) và ẩn (`emailVerified: false`, `emailVerified: undefined`/`session: null`, `email` rỗng, và `session.user.email` rỗng với fallback `s.email`) và toàn bộ đều pass.
-- [ ] `pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx` pass 100%.
-- [ ] `pnpm check-types` pass không lỗi TypeScript hay build Vite.
+- [x] `apps/web/src/features/profile/__tests__/profile-screen.test.tsx` có unit test kiểm chứng cả nhánh hiển thị (`emailVerified: true` + `session.user.email`) và ẩn (`emailVerified: false`, `emailVerified: undefined`/`session: null`, `email` rỗng, và `session.user.email` rỗng với fallback `s.email`) và toàn bộ đều pass.
+- [x] `pnpm --filter web test src/features/profile/__tests__/profile-screen.test.tsx` pass 100%.
+- [x] `pnpm check-types` pass không lỗi TypeScript hay build Vite.
 
 ## Red Team Review
 

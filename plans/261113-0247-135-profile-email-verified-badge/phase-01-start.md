@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Phase 1: Conditional Email Verified Badge"
-status: pending
+status: completed
 priority: P2
 effort: 1h
 dependencies: []

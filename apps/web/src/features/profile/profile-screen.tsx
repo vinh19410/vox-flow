@@ -37,6 +37,7 @@ export function ProfileScreen() {
   const initialName = session?.user?.name || s.name || "Học viên Vox Flow";
   const initialAvatar = session?.user?.image || "";
   const email = session?.user?.email || s.email;
+  const sessionEmail = session?.user?.email?.trim() ?? "";
 
   const [name, setName] = useState<string>(initialName);
   const [avatar, setAvatar] = useState<string>(initialAvatar);
@@ -250,9 +251,11 @@ export function ProfileScreen() {
                       <Mail size={16} className="text-subtle" />
                       <span id="user-account-email" className="truncate">{email || "Chưa thiết lập"}</span>
                     </div>
-                    <Badge tone="good" className="shrink-0 text-[11px]">
-                      Đã xác thực
-                    </Badge>
+                    {Boolean(sessionEmail && session?.user?.emailVerified === true) && (
+                      <Badge tone="good" className="shrink-0 text-[11px]">
+                        Đã xác thực
+                      </Badge>
+                    )}
                   </div>
                 </div>
 
