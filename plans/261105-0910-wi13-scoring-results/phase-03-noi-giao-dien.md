@@ -15,11 +15,18 @@ Màn kết quả hiển thị đúng phần server cho phép, và "Luyện ngay"
 ## Files to Create / Modify
 - Modify: `apps/web/src/features/results/results-screen.tsx`
 - Modify: `apps/web/src/features/results/scored-result.ts`
+- Modify: `apps/web/src/features/results/types.ts`
 - Modify: `apps/web/src/features/results/components/band-hero.tsx`
+- Modify: `apps/web/src/features/results/components/criteria-grid.tsx`
+- Modify: `apps/web/src/features/results/components/criterion-detail.tsx`
 - Modify: `apps/web/src/features/results/components/soft-paywall.tsx`
+- Modify: `apps/web/src/components/ds/band-range.tsx`
 - Modify: `apps/web/src/features/results/__tests__/scored-results.test.tsx`
+- Modify: `apps/web/src/features/app-state/{types.ts,store.tsx}`
+- Modify: `apps/web/src/features/exam/{use-exam-session.ts,exam-screen.tsx}`
 - Modify: `packages/db/src/schema/attempt.ts` (thêm cột) và migration sinh bằng `pnpm --filter @vox-flow/db db:generate`
-- Modify: `packages/api/src/routers/attempt.ts`, `packages/api/src/routers/attempt.test.ts`
+- Modify: `packages/api/src/scoring/mock-exam-bank.ts`, `packages/api/src/scoring/mock-exam-bank.test.ts`, `apps/server/src/index.ts`
+- Modify: `packages/api/src/routers/attempt.ts`, `packages/api/src/routers/attempt.test.ts`, `packages/api/src/routers/scoring.ts`
 
 ## Tasks & Steps
 
@@ -39,9 +46,9 @@ Màn kết quả hiển thị đúng phần server cho phép, và "Luyện ngay"
 - Target files and symbols: `attempt.ts` (`start`), bảng `attempt` (cột `retake_of_attempt_id`), `results-screen.tsx` (nút "Luyện ngay")
 - Steps:
   1. Thêm cột `retake_of_attempt_id` (nullable) vào bảng `attempt`, sinh migration bằng lệnh của repo. Không sửa tay migration.
-  2. `attempt.start` nhận thêm `retakeOf: attemptId`. Server kiểm tra lượt gốc thuộc người gọi và đã chấm xong, lấy câu yếu nhất bằng `weakestQuestionKey`, lấy câu hỏi chuẩn của câu đó từ lượt gốc (forecast topic hoặc `mock-exam-bank`), rồi tạo lượt một câu có `retake_of_attempt_id`. Không nhận `questionText` hay `questionKey` từ client cho đường này.
-  3. Lượt luyện lại đi qua pipeline chấm hiện có, không thêm nhánh chấm riêng.
-  4. "Luyện ngay" gọi `attempt.start({ retakeOf })` thay vì về màn chọn đề. Màn kết quả của lượt luyện lại hiện band của lượt gốc cạnh band mới.
+  2. `attempt.start` nhận thêm `retakeOf: attemptId` (cấm truyền kèm `topicId`/`questionKey`/`mode`). Server kiểm tra quyền sở hữu và `attemptScore.status === "done"`, lấy câu yếu nhất bằng `weakestQuestionKey`, chuẩn hóa `-f` an toàn (`endsWith("-f")`) và lấy câu hỏi chuẩn (+ `cue` nếu Part 2) từ bank (`forecastTopic` hoặc `mock-exam-bank`), khóa upload gate `getValidMockQuestionKeys(mode, singleQuestionKey)`, rồi tạo lượt một câu có `retake_of_attempt_id`. Tuyệt đối không nhận hay dùng `attemptAnswer.questionText`.
+  3. Lượt luyện lại đi qua pipeline chấm hiện có, không thêm nhánh chấm riêng; `scoring.getResult` trả thêm `retakeOfAttemptId` và `previousOverall` (có kiểm tra `userId` sở hữu + `done`, trả `null` nếu parent mất).
+  4. "Luyện ngay" khóa double-click, gọi `attempt.start({ retakeOf })`, truyền prestarted `attemptId` và câu hỏi (kể cả Part 2 cue & mock) vào `useExamSession` thay vì về màn chọn đề. Màn kết quả của lượt luyện lại hiện band trước/sau rõ ràng trong `BandHero`.
   5. Viết test router: lượt của người khác bị từ chối; lượt chưa chấm bị từ chối; câu hỏi lấy từ server.
 - Success criteria: test router và test giao diện qua; cả repo qua kiểm tra kiểu.
 - Verify: `pnpm --filter @vox-flow/api test src/routers/attempt.test.ts`, `pnpm --filter web test src/features/results/__tests__/scored-results.test.tsx` và `pnpm check-types` đều thoát với mã 0.

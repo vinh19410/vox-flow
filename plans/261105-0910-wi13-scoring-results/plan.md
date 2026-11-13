@@ -1,11 +1,11 @@
 ---
 title: "Chấm điểm & bằng chứng (`scoring-results`)"
 description: "Phần còn lại sau #90/#130: khoảng tin cậy, paywall phía server theo D-04 và hành động North Star luyện lại câu yếu theo D-05."
-status: pending
+status: in_progress
 priority: P1
 effort: 4d
 issue: 17
-branch: vinh19410/feat/scoring-results
+branch: vinh19410/issue-17
 tags: [backend, frontend, critical, advice]
 blockedBy: [project:261105-0910-wi11-privacy-controls, project:261105-0910-wi12-mock-exam]
 blocks: [project:261105-0910-wi14-free-quota, project:261105-0910-wi15-billing-qr, project:261105-0910-wi17-first-real-students-gate, project:261105-0910-wi18-progress-history, project:261105-0910-wi20-forecast-practice, project:261105-0910-wi21-daily-practice, project:261105-0910-wi24-score-dispute]
@@ -68,9 +68,25 @@ Phần còn thiếu, cũng là toàn bộ phạm vi của plan này:
 - [ ] "Luyện ngay" mở lượt luyện đúng câu yếu nhất, lượt đó được chấm qua pipeline hiện hành, và màn kết quả của lượt luyện hiện band trước và sau.
 - [ ] Test của pipeline đã có vẫn qua (không hồi quy).
 
-## Câu hỏi mở
-- Khi bật paywall ở server mà #19 chưa có cách mua, người dùng Beta mất phần chi tiết đang xem được. Bật ngay, hay đợi #19 xong? Mặc định trong plan: bật ngay, vì D-04 yêu cầu backend không trả dữ liệu bị khóa.
-- "Câu yếu nhất" xác định theo quy tắc ở Task 2.2 (câu có nhiều bằng chứng `minus` nhất). Người sở hữu sản phẩm cần xác nhận quy tắc này.
-- Chưa có tài liệu BA cho tính năng này; cần chạy `/srs scoring-results` trước khi code không?
+## Câu hỏi mở (Đã chốt cho Issue #17)
+- Bật paywall ở server ngay lập tức theo mặc định D-04 (`canViewDetail` trả `false` tới khi #19 nối bảng `subscription`/`detail_unlock`).
+- Quy tắc xác định "câu yếu nhất" khóa theo Task 2.2 (`minus` count nhiều nhất trên 4 tiêu chí -> hòa thì `partNumber` nhỏ hơn rồi thứ tự câu -> không có `minus` thì câu đầu tiên -> `null` nếu không có câu trả lời).
+- Kế hoạch rút gọn đã được PO chốt tại PR #157; không cần chạy `/srs` riêng.
+
+## Red Team Review
+Rà soát song song bởi `kongming` + 3 góc nhìn (`Security Adversary`, `Assumption Destroyer`, `Failure Mode Analyst`) ngày 2026-11-13:
+
+| Mức độ | Phát hiện | Cách xử lý đã khóa |
+|---|---|---|
+| CRITICAL | `score_run` trống trên dữ liệu cũ/test seed khiến `confidenceRange([])` throw 500 trong `scoring.getResult` | `confidenceRange([])` vẫn ném lỗi trong `aggregate.ts`; `getResult` lọc giá trị hữu hạn từ `score_run` và fallback về `[snapToHalfBand(score.overall), snapToHalfBand(score.overall)]` khi `score_run` trống |
+| CRITICAL | `CriteriaGrid` & `CriterionDetail` gọi `c.band.toFixed(1)` sẽ crash khi server bỏ `band` ở trạng thái `locked: true`, và vùng mask che mất bằng chứng câu yếu nhất | Tách `PublicScoredCriterion` (`band?`, `summary?`) khỏi DB schema `scoredCriterionSchema`; UI nhận `band?: number | null`, hiển thị `"—"` khi null và render card bằng chứng câu yếu nhất rõ nét (không blur/mask) trước `SoftPaywall` |
+| CRITICAL | Upload route & `answer-limits` chưa giới hạn `questionKey` cho single-question mock retake (`topicId === null`), dễ bị upload nhầm câu hoặc sai mode Part 2 | Cập nhật `getValidMockQuestionKeys(mode, singleQuestionKey)` fail-closed trong `mock-exam-bank.ts` và truyền `currentAttempt.questionKey` ở `apps/server/src/index.ts`; sửa `useExamSession` hỗ trợ đủ Part 1/2/3 & `cue` |
+| CRITICAL | `attempt.start({ retakeOf })` có thể bị parameter mixing (`topicId`/`questionKey`/`mode`), vỡ với câu follow-up `-f`, hoặc bị `useExamSession.getActive()` gọi trùng tạo attempt mới | Cấm truyền `topicId`/`questionKey`/`mode` khi có `retakeOf`; chuẩn hóa hậu tố `-f` bằng `endsWith("-f") ? slice(0, -2) : key` cho forecast và kiểm chứng mock bank; khóa double-click nút "Luyện ngay"; truyền prestarted `attemptId` + verify qua `getActive` để rehydrate |
+| CRITICAL | Self-FK trên `attempt.retake_of_attempt_id` có thể kích hoạt SQLite/D1 table recreation | Khai báo `retakeOfAttemptId: text("retake_of_attempt_id")` + index không FK (giống precedent `topic_id`) và xác nhận file SQL do `db:generate` sinh chỉ có `ALTER TABLE` + `CREATE INDEX` |
+| IMPORTANT | Dữ liệu before/after (`previousOverall`), `BandRange` tràn `< 4.0`, `improve` quote bọc ngoặc, topic `archived` & parent bị xóa | `scoring.getResult` đọc `previousOverall` kèm điều kiện `userId` sở hữu + `done` (trả `null` nếu parent mất); dùng `cleanQuote(im.from)` trước `isVerbatimQuote`; clamp `BandRange` về `[0, 100]`; `PracticeSessionSchema` hỗ trợ `answer?: string` |
+| NOTE | `privacy.exportData` (`data-registry.ts`) hiện export nguyên `criteriaJson` và `transcript` theo quyền GDPR | Ghi nhận ngoài phạm vi #17 (không đụng `data-registry.ts`); PO cân nhắc khi mở billing #19 |
+
+## Validation Log
+- **2026-11-13:** Kiểm tra chữ ký file & symbol thực tế trên repo (`aggregate.ts`, `types.ts`, `scoring.ts`, `attempt.ts`, `mock-exam-bank.ts`, `apps/server/src/index.ts`, `results-screen.tsx`, `band-range.tsx`, `use-exam-session.ts`, `store.tsx`, `test/db.ts`); xác nhận mọi dependency Issues (#15, #16, #7) đã `CLOSED` và baseline API/Web tests đang xanh (88 API + 16 Web).
 
 <!-- slug: wi13-scoring-results -->

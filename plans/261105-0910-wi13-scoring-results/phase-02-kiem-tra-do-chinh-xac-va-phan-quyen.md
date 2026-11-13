@@ -24,8 +24,8 @@ dependencies: [1]
 - Goal: kết quả có khoảng tin cậy dựa trên dữ liệu thật đã lưu.
 - Target files and symbols: `aggregate.ts` (`confidenceRange`), `types.ts` (`ScoringResult.range`), `scoring.ts` (`getResult`)
 - Steps:
-  1. Viết test trước cho `confidenceRange(overalls: number[]): [number, number]`: trả `[min, max]` của `score_run.overall`, đã làm tròn bước 0.5; một lượt thì hai đầu bằng nhau; mảng rỗng thì ném lỗi.
-  2. `getResult` đọc `score_run.overall` của lượt và thêm `range` vào `ScoringResult`. Không sửa bảng, không cần migration.
+  1. Viết test trước cho `confidenceRange(overalls: number[]): [number, number]`: kiểm tra `Number.isFinite` trước khi `snapToHalfBand`, trả `[min, max]` của `score_run.overall` bước 0.5; một lượt thì hai đầu bằng nhau; mảng rỗng hoặc non-finite thì ném lỗi.
+  2. `getResult` đọc `score_run.overall` của lượt (lọc giá trị hữu hạn) và thêm `range` vào `ScoringResult` (fallback `[snapToHalfBand(score.overall), snapToHalfBand(score.overall)]` nếu dữ liệu cũ/seed chưa có `score_run`). Không sửa bảng, không cần migration.
 - Success criteria: test tính toán và test router đều qua.
 - Verify: `pnpm --filter @vox-flow/api test src/scoring/aggregate.test.ts src/routers/scoring.test.ts` thoát với mã 0.
 
@@ -33,8 +33,8 @@ dependencies: [1]
 - Goal: một quy tắc duy nhất, dùng chung cho paywall (D-04) và luyện lại (D-05).
 - Target files and symbols: `aggregate.ts` (`weakestQuestionKey(criteria, answers)`)
 - Steps:
-  1. Viết test trước. Quy tắc: câu có nhiều bằng chứng `kind: "minus"` nhất trên cả 4 tiêu chí; hòa thì lấy câu đứng trước theo `partNumber` rồi thứ tự câu; không có bằng chứng `minus` nào thì lấy câu đầu tiên. Trả `null` khi lượt không có câu trả lời.
-  2. Hàm thuần, không gọi dịch vụ ngoài.
+  1. Viết test trước. Quy tắc: câu có nhiều bằng chứng `kind: "minus"` nhất trên cả 4 tiêu chí (chỉ đếm `evidence` thuộc một câu có trong `answers`); hòa thì lấy câu đứng trước theo `partNumber` rồi thứ tự câu; không có bằng chứng `minus` nào thì lấy câu đầu tiên. Trả `null` khi lượt không có câu trả lời.
+  2. Hàm thuần, tự chuẩn hóa thứ tự `(partNumber asc, index asc)`, không gọi dịch vụ ngoài.
 - Success criteria: test qua, gồm trường hợp hòa và trường hợp không có `minus`.
 - Verify: `pnpm --filter @vox-flow/api test src/scoring/aggregate.test.ts` thoát với mã 0.
 
@@ -43,7 +43,7 @@ dependencies: [1]
 - Target files and symbols: `entitlements.ts` (`getEntitlement`, `canViewDetail`), `scoring.ts` (`getResult`)
 - Steps:
   1. Tạo `entitlements.ts`, export `getEntitlement(db, userId): Promise<'free'|'paid'>` và `canViewDetail(db, userId, attemptId): Promise<boolean>`. Chưa có bảng `subscription` thì `getEntitlement` trả `free`; chưa có `detail_unlock` thì `canViewDetail` trả theo `getEntitlement`. #19 sẽ nối hai bảng này vào đây.
-  2. `getResult` thêm `locked: boolean` và `weakestQuestionKey`. Khi `canViewDetail` là `false`: giữ `overall`, `range`, `oneLiner`; mỗi tiêu chí chỉ giữ `key` và bằng chứng có `questionKey` bằng câu yếu nhất (kèm `improve` nếu trích từ câu đó); bỏ `band` và `summary` của tiêu chí; `answers` chỉ giữ transcript của câu yếu nhất.
+  2. `getResult` thêm `locked: boolean` và `weakestQuestionKey`. Tách `PublicScoredCriterion` (`band?`, `summary?`) khỏi `scoredCriterionSchema` nội bộ. Khi `canViewDetail` là `false`: giữ `overall`, `range`, `oneLiner`; mỗi tiêu chí chỉ giữ `key`, bằng chứng có `questionKey === weakestQuestionKey`, và `improve` khớp nguyên văn với câu yếu nhất qua `isVerbatimQuote(cleanQuote(im.from), weakestTranscript)`; bỏ hẳn khóa `band` và `summary` khỏi object tiêu chí; `answers` chỉ giữ câu yếu nhất trước khi tra R2 `linkedPrompt`.
   3. Viết test khẳng định trên chính payload trả về: bản miễn phí không có `band` tiêu chí và không có bằng chứng của câu khác; bản có quyền thì đủ dữ liệu như hiện nay.
 - Success criteria: payload miễn phí không chứa dữ liệu trả phí.
 - Verify: `pnpm --filter @vox-flow/api test src/entitlements.test.ts src/routers/scoring.test.ts` thoát với mã 0.
