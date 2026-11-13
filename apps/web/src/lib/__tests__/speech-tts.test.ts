@@ -34,11 +34,18 @@ interface MockAudioInstance {
 }
 
 function createMp3Response(bytes = [0xff, 0xfb, 0x90, 0x64]): Response {
-  // Pass TypedArray instead of jsdom's Blob (which lacks .stream() on Node 22 undici Response).
-  return new Response(new Uint8Array(bytes), {
+  const payload = new Uint8Array(bytes);
+  // Node 22 undici Response rejects jsdom's Blob in its constructor (lacks .stream())
+  // and returns node:buffer.Blob from .blob(), which fails `instanceof Blob` against jsdom's Blob.
+  const res = new Response(payload, {
     status: 200,
     headers: { "Content-Type": "audio/mpeg" },
   });
+  res.blob = async () => {
+    await res.arrayBuffer();
+    return new Blob([payload], { type: "audio/mpeg" });
+  };
+  return res;
 }
 
 describe("tts-url builders", () => {
