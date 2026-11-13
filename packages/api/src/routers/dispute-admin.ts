@@ -86,6 +86,17 @@ export interface DisputeCaseResponse {
   }>;
 }
 
+function resolveNow(nowFn?: () => Date): Date {
+  const current = nowFn ? nowFn() : new Date();
+  if (!(current instanceof Date) || !Number.isFinite(current.getTime())) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Invalid clock value from Context.now",
+    });
+  }
+  return current;
+}
+
 export const disputeAdminRouter = router({
   checkAdmin: adminProcedure.query(() => {
     return { isAdmin: true };
@@ -95,7 +106,7 @@ export const disputeAdminRouter = router({
     .input(disputeQueueInputSchema)
     .query(async ({ ctx, input }) => {
       const filter = input?.status ?? "all";
-      const now = new Date();
+      const now = resolveNow(ctx.now);
 
       let statusCondition;
       if (filter === "open") {
@@ -255,7 +266,7 @@ export const disputeAdminRouter = router({
         });
       }
 
-      const now = new Date();
+      const now = resolveNow(ctx.now);
       const updated = await ctx.db
         .update(scoreDispute)
         .set({
@@ -289,7 +300,7 @@ export const disputeAdminRouter = router({
 
   metrics: adminProcedure.query(async ({ ctx }) => {
     const allDisputes = await ctx.db.select().from(scoreDispute);
-    const now = new Date();
+    const now = resolveNow(ctx.now);
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
 
     const totalCount = allDisputes.length;
