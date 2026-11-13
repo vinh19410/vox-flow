@@ -5,7 +5,14 @@ import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/d
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp, generateLinkedQuestion } from "../exam/follow-up";
-import { deleteLinkedPrompt, loadLinkedPrompt, saveLinkedPrompt } from "../exam/linked-prompt-store";
+import {
+  deleteLinkedPrompt,
+  isLinkedPromptInvalidated,
+  loadLinkedPrompt,
+  markLinkedPromptInvalidated,
+  PREP_TOKEN_RE,
+  saveLinkedPrompt,
+} from "../exam/linked-prompt-store";
 import { transcribeAudioStrict } from "../exam/transcribe";
 import { isValidAudioKey, QUESTION_KEY_RE } from "../audio";
 import { getValidQuestionKeysForTopic } from "../scoring/forecast-keys";
@@ -210,6 +217,7 @@ export const attemptRouter = router({
         previousQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
         nextQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
         previousGeneration: z.number().int().nonnegative().optional(),
+        prepToken: z.string().regex(PREP_TOKEN_RE, "Invalid prepToken format").optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -267,6 +275,20 @@ export const attemptRouter = router({
       });
 
       const bucket = ctx.env?.AUDIO_BUCKET;
+      const isPrepInvalidated = async (): Promise<boolean> => {
+        if (!bucket || !input.prepToken) return false;
+        return isLinkedPromptInvalidated(bucket, {
+          userId: ctx.session.user.id,
+          attemptId: input.attemptId,
+          questionKey: input.nextQuestionKey,
+          prepToken: input.prepToken,
+        }).catch(() => false);
+      };
+
+      if (await isPrepInvalidated()) {
+        return unlinkedFallback();
+      }
+
       const prevLinked = bucket
         ? await loadLinkedPrompt(bucket, {
             userId: ctx.session.user.id,
@@ -354,6 +376,10 @@ export const attemptRouter = router({
         }
       }
 
+      if (await isPrepInvalidated()) {
+        return unlinkedFallback();
+      }
+
       const sanitizedQuestion = sanitizeDelimited(result.questionText).slice(0, 300).trim();
       const rawTrigger =
         result.linked && result.triggerPhrase
@@ -372,18 +398,43 @@ export const attemptRouter = router({
                 questionText: sanitizedQuestion,
                 triggerPhrase: rawTrigger || undefined,
                 baseQuestionText: nextDetail.text,
+                ...(input.prepToken ? { prepToken: input.prepToken } : {}),
                 updatedAt: Date.now(),
               },
             });
+            if (await isPrepInvalidated()) {
+              const currentStored = await loadLinkedPrompt(bucket, {
+                userId: ctx.session.user.id,
+                attemptId: input.attemptId,
+                questionKey: input.nextQuestionKey,
+              }).catch(() => null);
+              if (!currentStored || !currentStored.prepToken || currentStored.prepToken === input.prepToken) {
+                await deleteLinkedPrompt(bucket, {
+                  userId: ctx.session.user.id,
+                  attemptId: input.attemptId,
+                  questionKey: input.nextQuestionKey,
+                }).catch(() => {});
+              }
+              return unlinkedFallback();
+            }
           } catch {
             return unlinkedFallback();
           }
         } else {
-          await deleteLinkedPrompt(bucket, {
-            userId: ctx.session.user.id,
-            attemptId: input.attemptId,
-            questionKey: input.nextQuestionKey,
-          }).catch(() => {});
+          const existing = input.prepToken
+            ? await loadLinkedPrompt(bucket, {
+                userId: ctx.session.user.id,
+                attemptId: input.attemptId,
+                questionKey: input.nextQuestionKey,
+              }).catch(() => null)
+            : null;
+          if (!input.prepToken || !existing?.prepToken || existing.prepToken === input.prepToken) {
+            await deleteLinkedPrompt(bucket, {
+              userId: ctx.session.user.id,
+              attemptId: input.attemptId,
+              questionKey: input.nextQuestionKey,
+            }).catch(() => {});
+          }
         }
       }
 
@@ -404,6 +455,7 @@ export const attemptRouter = router({
       z.object({
         attemptId: z.string().min(1),
         questionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        prepToken: z.string().regex(PREP_TOKEN_RE, "Invalid prepToken format").optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -431,10 +483,11 @@ export const attemptRouter = router({
       }
 
       if (ctx.env?.AUDIO_BUCKET) {
-        await deleteLinkedPrompt(ctx.env.AUDIO_BUCKET, {
+        await markLinkedPromptInvalidated(ctx.env.AUDIO_BUCKET, {
           userId: ctx.session.user.id,
           attemptId: input.attemptId,
           questionKey: input.questionKey,
+          ...(input.prepToken ? { prepToken: input.prepToken } : {}),
         }).catch(() => {});
       }
 

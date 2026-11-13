@@ -112,7 +112,7 @@ export type GeneratedLinkedQuestion = {
   linked: boolean;
 };
 
-const LINKED_DELIMITER_RE = /<\/?(?:previous_question|candidate_transcript|next_question)>/gi;
+const LINKED_DELIMITER_RE = /<\/?\s*(?:previous_question|candidate_transcript|next_question)\b[^>]*>/gi;
 
 function stripLinkedDelimiterTags(text: string): string {
   return text.replace(LINKED_DELIMITER_RE, "").trim();

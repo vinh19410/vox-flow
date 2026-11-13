@@ -16,10 +16,13 @@ export type LinkedPromptBucket = {
   delete(key: string): Promise<unknown>;
 };
 
+export const PREP_TOKEN_RE = /^[a-zA-Z0-9_-]{1,64}$/;
+
 export const LinkedPromptSchema = z.object({
   questionText: z.string().min(5).max(300),
   triggerPhrase: z.string().max(160).optional(),
   baseQuestionText: z.string().min(1).max(1000),
+  prepToken: z.string().regex(PREP_TOKEN_RE).optional(),
   updatedAt: z.number().int().nonnegative(),
 });
 
@@ -107,4 +110,69 @@ export async function deleteLinkedPrompt(
 ): Promise<void> {
   const key = buildLinkedPromptKey(params.userId, params.attemptId, params.questionKey);
   await bucket.delete(key);
+}
+
+/**
+ * Constructs the tenant-scoped R2 tombstone key marking a specific prep request token as cancelled.
+ */
+export function buildLinkedPromptInvalidationKey(
+  userId: string,
+  attemptId: string,
+  questionKey: string,
+  prepToken: string,
+): string {
+  assertSafePathSegment(userId, "userId");
+  assertSafePathSegment(attemptId, "attemptId");
+  if (!QUESTION_KEY_RE.test(questionKey)) {
+    throw new Error(`Invalid questionKey format: "${questionKey}"`);
+  }
+  if (!PREP_TOKEN_RE.test(prepToken)) {
+    throw new Error(`Invalid prepToken format: "${prepToken}"`);
+  }
+  return `users/${userId}/attempts/${attemptId}/prompts/${questionKey}.inv.${prepToken}.json`;
+}
+
+/**
+ * Marks a linked prompt preparation token as invalidated (preventing a late/in-flight
+ * worker from writing stale output to R2) and clears any matching/untagged stored prompt.
+ */
+export async function markLinkedPromptInvalidated(
+  bucket: LinkedPromptBucket,
+  params: LinkedPromptKeyParams & { prepToken?: string },
+): Promise<void> {
+  if (params.prepToken) {
+    const invKey = buildLinkedPromptInvalidationKey(
+      params.userId,
+      params.attemptId,
+      params.questionKey,
+      params.prepToken,
+    );
+    await bucket.put(invKey, JSON.stringify({ invalidatedAt: Date.now() }), {
+      httpMetadata: { contentType: "application/json" },
+    });
+    const existing = await loadLinkedPrompt(bucket, params);
+    if (existing && (!existing.prepToken || existing.prepToken === params.prepToken)) {
+      await deleteLinkedPrompt(bucket, params);
+    }
+    return;
+  }
+
+  await deleteLinkedPrompt(bucket, params);
+}
+
+/**
+ * Returns `true` when `prepToken` has already been invalidated via `markLinkedPromptInvalidated`.
+ */
+export async function isLinkedPromptInvalidated(
+  bucket: LinkedPromptBucket,
+  params: LinkedPromptKeyParams & { prepToken: string },
+): Promise<boolean> {
+  const invKey = buildLinkedPromptInvalidationKey(
+    params.userId,
+    params.attemptId,
+    params.questionKey,
+    params.prepToken,
+  );
+  const obj = await bucket.get(invKey);
+  return obj !== null;
 }

@@ -177,6 +177,7 @@ describe("ExamScreen linked multi-question practice", () => {
         previousQuestionKey: "f-neighborhood-0",
         nextQuestionKey: "f-neighborhood-1",
         previousGeneration: expect.any(Number),
+        prepToken: expect.stringMatching(/^s0-t\d+$/),
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -236,6 +237,7 @@ describe("ExamScreen linked multi-question practice", () => {
         previousQuestionKey: "f-helped-p2",
         nextQuestionKey: "f-helped-p3-0",
         previousGeneration: expect.any(Number),
+        prepToken: expect.stringMatching(/^s0-t\d+$/),
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
@@ -315,6 +317,7 @@ describe("ExamScreen linked multi-question practice", () => {
     expect(invalidateLinkedPromptSpy).toHaveBeenCalledWith({
       attemptId: "att-linked-1",
       questionKey: "f-neighborhood-1",
+      prepToken: "s0-t1",
     });
     recordAndStop();
     await flush();
@@ -458,6 +461,7 @@ describe("ExamScreen linked multi-question practice", () => {
     expect(invalidateLinkedPromptSpy).toHaveBeenCalledWith({
       attemptId: "att-linked-1",
       questionKey: "f-neighborhood-1",
+      prepToken: "s0-t1",
     });
     await flush();
     act(() => {
@@ -468,5 +472,37 @@ describe("ExamScreen linked multi-question practice", () => {
     expect((speakTextSpy.mock.calls.at(-1)![1] as { audioUrl?: string }).audioUrl).toContain(
       "/api/tts/forecast/uk-f/f-neighborhood/f-neighborhood-1?v=",
     );
+  });
+
+  it("skips prepareNextQuestion and clears linked prompt when retry recording returns null", async () => {
+    renderWithApp(<ExamScreen />, { practice: PART1_PRACTICE, voice: "uk-f" });
+    await flush();
+
+    beginAndReveal();
+    recordAndStop();
+    await flush();
+    expect(prepareNextQuestionSpy).toHaveBeenCalledTimes(1);
+
+    // Retry ("Nói lại") followed by an empty/null recording (e.g. mic error on take #2).
+    fireEvent.click(screen.getByText("Nói lại"));
+    invalidateLinkedPromptSpy.mockClear();
+    stopSpy.mockResolvedValueOnce(null);
+    recordAndStop();
+    await flush();
+
+    // Take #2 must NOT call prepareNextQuestion without previousGeneration (which would reuse take #1).
+    expect(prepareNextQuestionSpy).toHaveBeenCalledTimes(1);
+    expect(invalidateLinkedPromptSpy).toHaveBeenCalledWith({
+      attemptId: "att-linked-1",
+      questionKey: "f-neighborhood-1",
+      prepToken: "s0-t3",
+    });
+
+    fireEvent.click(screen.getByText("Câu tiếp theo"));
+    expect(screen.queryByText("Đang chuẩn bị câu tiếp theo…")).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(3500);
+    });
+    expect(screen.getByText("Do you like your neighborhood?")).toBeTruthy();
   });
 });

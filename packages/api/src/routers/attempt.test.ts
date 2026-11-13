@@ -1288,6 +1288,88 @@ describe("attemptRouter", () => {
         });
         expect(cleared).toEqual({ cleared: true });
         expect(bucket.store.has(key)).toBe(false);
+
+        // Token-scoped tombstone blocks a late take #1 even when D1 generation has not incremented,
+        // without clobbering take #2's newer prepToken prompt.
+        await ownerCaller.attempt.invalidateLinkedPrompt({
+          attemptId: "att-inv",
+          questionKey: "p1-routine-1",
+          prepToken: "s0-t1",
+        });
+        await db.insert(attemptAnswer).values({
+          id: "ans-inv-0",
+          attemptId: "att-inv",
+          questionKey: "p1-routine-0",
+          questionText: "What is your typical morning routine?",
+          partNumber: 1,
+          orderIndex: 0,
+          generation: 1,
+          audioKey: `users/${LEARNER.id}/attempts/att-inv/p1-routine-0.1.webm`,
+          durationMs: 7000,
+          mimeType: "audio/webm",
+          transcript: "I drink black coffee every morning.",
+        });
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async () =>
+            new Response(
+              JSON.stringify({
+                choices: [
+                  {
+                    message: {
+                      content: JSON.stringify({
+                        triggerPhrase: "black coffee",
+                        questionText: "Take 2 fresh question referencing black coffee?",
+                      }),
+                    },
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+          ),
+        );
+        const aiCaller = makeCaller(db, LEARNER, {
+          AUDIO_BUCKET: bucket,
+          OPENAI_API_KEY: "test-openai-key",
+        });
+
+        // Take #1 with invalidated prepToken must abort without touching R2.
+        const take1 = await aiCaller.attempt.prepareNextQuestion({
+          attemptId: "att-inv",
+          previousQuestionKey: "p1-routine-0",
+          nextQuestionKey: "p1-routine-1",
+          previousGeneration: 1,
+          prepToken: "s0-t1",
+        });
+        expect(take1.linked).toBe(false);
+        expect(await loadLinkedPrompt(bucket, { userId: LEARNER.id, attemptId: "att-inv", questionKey: "p1-routine-1" })).toBeNull();
+
+        // Take #2 with fresh prepToken succeeds and survives a delayed invalidation of s0-t1.
+        const take2 = await aiCaller.attempt.prepareNextQuestion({
+          attemptId: "att-inv",
+          previousQuestionKey: "p1-routine-0",
+          nextQuestionKey: "p1-routine-1",
+          previousGeneration: 1,
+          prepToken: "s0-t2",
+        });
+        expect(take2).toEqual({
+          questionKey: "p1-routine-1",
+          questionText: "Take 2 fresh question referencing black coffee?",
+          triggerPhrase: "black coffee",
+          linked: true,
+        });
+        await aiCaller.attempt.invalidateLinkedPrompt({
+          attemptId: "att-inv",
+          questionKey: "p1-routine-1",
+          prepToken: "s0-t1",
+        });
+        const storedAfterDelayedInv = await loadLinkedPrompt(bucket, {
+          userId: LEARNER.id,
+          attemptId: "att-inv",
+          questionKey: "p1-routine-1",
+        });
+        expect(storedAfterDelayedInv?.questionText).toBe("Take 2 fresh question referencing black coffee?");
       } finally {
         await dispose();
       }
