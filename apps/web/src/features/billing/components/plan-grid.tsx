@@ -23,7 +23,7 @@ export function PlanGrid({ onPick, compact }: PlanGridProps) {
           key={p.id}
           onClick={() => onPick(p)}
           className={cx(
-            "group relative flex flex-col rounded-3xl border p-5 text-left transition-all",
+            "group relative flex h-full flex-col rounded-3xl border p-5 text-left transition-all",
             p.best ? "border-ink bg-ink text-paper" : "border-line bg-white hover:border-ink/40",
           )}
         >
@@ -52,7 +52,7 @@ export function PlanGrid({ onPick, compact }: PlanGridProps) {
               ))}
             </ul>
           )}
-          <span className={cx("mt-4 flex items-center gap-1 text-xs font-semibold", p.best ? "text-brand" : "text-ink")}>
+          <span className={cx("mt-auto flex items-center gap-1 pt-4 text-xs font-semibold", p.best ? "text-brand" : "text-ink")}>
             Chọn gói <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
           </span>
         </button>
