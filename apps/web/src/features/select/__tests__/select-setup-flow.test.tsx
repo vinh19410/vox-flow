@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MODES } from "@/features/exam/data";
@@ -202,5 +202,20 @@ describe("Select setup flow", () => {
     const start = screen.getByRole("button", { name: "Đồng ý ghi âm & bắt đầu" });
     fireEvent.click(start);
     expect(h.go).toHaveBeenCalledWith("exam");
+  });
+
+  it("aligns mode cards with h-full flex-col and bottom-pins duration footer with mt-auto", () => {
+    renderWithApp(<ModeGrid />);
+
+    for (const m of MODES) {
+      const btn = screen.getByRole("button", { name: new RegExp(m.title) });
+      expect(btn.className).toContain("h-full");
+      expect(btn.className).toContain("flex-col");
+
+      const durationEl = within(btn).getByText(m.time);
+      expect(durationEl.className).toContain("mt-auto");
+      expect(durationEl.className).toContain("pt-6");
+      expect(durationEl.className).not.toContain("mt-6");
+    }
   });
 });

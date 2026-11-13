@@ -16,7 +16,7 @@ export interface TopicCardProps {
 export function TopicCard({ topic: t, band, saved, onOpen, onToggleSave }: TopicCardProps) {
   const cue = t.items.find((i) => i.cue);
   return (
-    <Card className="group flex cursor-pointer flex-col p-6 transition-all hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-lg" onClick={onOpen}>
+    <Card className="group flex h-full cursor-pointer flex-col p-6 transition-all hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-lg" onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
           <Badge>{t.category}</Badge>
@@ -39,16 +39,16 @@ export function TopicCard({ topic: t, band, saved, onOpen, onToggleSave }: Topic
         </button>
       </div>
       <h3 className="mt-4 text-lg leading-snug font-bold">{t.title}</h3>
-      <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-ink-2">
+      <p className="mt-1.5 mb-5 line-clamp-2 text-[13px] leading-relaxed text-ink-2">
         {cue?.cue?.points?.length ? cue.cue.points.join(" · ") : cue ? cue.text : t.items.map((i) => i.text).join(" · ")}
       </p>
-      <div className="mt-5 flex items-center gap-3 border-t border-line pt-4 text-xs text-subtle">
+      <div className="mt-auto flex items-center gap-3 border-t border-line pt-4 text-xs text-subtle">
         <span className="flex items-center gap-1">
           <Users size={13} /> {t.reports}
         </span>
         <span>{t.items.length} câu</span>
         <span className="truncate">Gặp {t.lastSeen}</span>
-        <span className="ml-auto">{band !== undefined ? <Badge tone="good">Band {band.toFixed(1)}</Badge> : <span className="font-semibold text-ink group-hover:text-brand">Luyện →</span>}</span>
+        <span className="ml-auto inline-flex min-h-7 shrink-0 items-center">{band !== undefined ? <Badge tone="good">Band {band.toFixed(1)}</Badge> : <span className="font-semibold text-ink group-hover:text-brand">Luyện →</span>}</span>
       </div>
     </Card>
   );

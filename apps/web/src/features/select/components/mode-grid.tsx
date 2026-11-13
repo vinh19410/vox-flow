@@ -22,7 +22,7 @@ export function ModeGrid() {
                 go("select-setup");
               }
             }}
-            className={cx("relative flex flex-col rounded-3xl border p-6 text-left transition-all", on ? "border-ink bg-ink text-paper shadow-xl" : "border-line bg-white hover:border-ink/30")}
+            className={cx("relative flex h-full flex-col rounded-3xl border p-6 text-left transition-all", on ? "border-ink bg-ink text-paper shadow-xl" : "border-line bg-white hover:border-ink/30")}
           >
             {m.id === "full" && (
               <Badge tone="accent" className="absolute top-5 right-5">
@@ -32,7 +32,7 @@ export function ModeGrid() {
             <div className={cx("grid h-10 w-10 place-items-center rounded-xl", on ? "bg-white/10" : "bg-paper-2")}>{m.id === "full" ? <Layers size={18} /> : <span className="font-mono text-sm font-bold">P{m.parts[0]}</span>}</div>
             <div className="mt-6 text-xl font-bold">{m.title}</div>
             <div className={cx("mt-1 text-[13px]", on ? "text-white/60" : "text-ink-2")}>{m.sub}</div>
-            <div className={cx("mt-6 flex items-center gap-1.5 text-xs", on ? "text-white/60" : "text-subtle")}>
+            <div className={cx("mt-auto flex items-center gap-1.5 pt-6 text-xs", on ? "text-white/60" : "text-subtle")}>
               <Clock size={13} /> {m.time}
             </div>
             {on && (
