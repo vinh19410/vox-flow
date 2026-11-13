@@ -410,11 +410,12 @@ export function ResultsScreen({
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft text-brand">
           <Repeat size={20} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-48 flex-1">
           <div className="font-bold">Luyện lại câu yếu nhất</div>
           <div className="text-sm text-ink-2">Thực hành nói lại các câu cần cải thiện để so sánh trước và sau.</div>
         </div>
         <Button
+          className="w-full sm:w-auto"
           onClick={() => {
             set({ lastPracticeSession: null });
             go("select");
