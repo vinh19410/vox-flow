@@ -1,7 +1,7 @@
 ---
 title: "Hide redundant inline setup cards below lg on /app/select"
 description: "Hide and unmount VoicePicker and PreExamCard on /app/select when viewport < 1024px, sharing the matchMedia breakpoint with ModeGrid."
-status: in-progress
+status: completed
 priority: P2
 effort: 1h
 issue: 150
@@ -38,4 +38,4 @@ Plan này đồng bộ ranh giới hiển thị của `SelectScreen` với ranh 
 ## Các phase thực thi
 | Phase | Tên | Tệp | Trạng thái |
 |---|---|---|---|
-| 01 | Đồng bộ breakpoint & TDD ẩn inline setup `< 1024px` | [phase-01-hide-mobile-inline-setup.md](./phase-01-hide-mobile-inline-setup.md) | `in-progress` |
+| 01 | Đồng bộ breakpoint & TDD ẩn inline setup `< 1024px` | [phase-01-hide-mobile-inline-setup.md](./phase-01-hide-mobile-inline-setup.md) | `completed` |
