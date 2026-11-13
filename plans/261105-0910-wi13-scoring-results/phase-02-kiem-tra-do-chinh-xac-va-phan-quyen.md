@@ -1,45 +1,52 @@
 ---
 phase: 2
-title: "Kiểm tra độ chính xác và phân quyền"
+title: "Phân quyền kết quả"
 status: pending
 priority: P1
-effort: ""
+effort: "1.5d"
 dependencies: [1]
 ---
 
-# Phase 2: Kiểm tra độ chính xác và phân quyền
+# Phase 2: Phân quyền kết quả
 
 ## Goal
-Pipeline thật đạt ngưỡng và paywall kiểm tra ở server.
+`scoring.getResult` trả khoảng tin cậy, và chỉ trả dữ liệu mà người xem có quyền thấy theo D-04. Đo độ chính xác của pipeline chấm không thuộc phase này; việc đó ở #154.
 
 ## Files to Create / Modify
-- Create: `packages/api/src/routers/results.ts`
-- Modify: `packages/api/src/routers/index.ts`
-- Create: `docs/scoring-accuracy.md`
-- Create: `packages/api/src/entitlements.ts`
+- Modify: `packages/api/src/scoring/aggregate.ts`, `packages/api/src/scoring/aggregate.test.ts`
+- Modify: `packages/api/src/scoring/types.ts`
+- Create: `packages/api/src/entitlements.ts`, `packages/api/src/entitlements.test.ts`
+- Modify: `packages/api/src/routers/scoring.ts`, `packages/api/src/routers/scoring.test.ts`
 
 ## Tasks & Steps
 
-### Task 2.1 — Tạo API kết quả có phân quyền.
-- Goal: Tạo API kết quả có phân quyền.
-- Target files and symbols: `packages/api/src/routers/results.ts` (`getResult`, `retry`), `packages/api/src/entitlements.ts` (`getEntitlement`); test: `packages/api/src/routers/results.test.ts`
+### Task 2.1 — Khoảng tin cậy từ 3 lượt chấm
+- Goal: kết quả có khoảng tin cậy dựa trên dữ liệu thật đã lưu.
+- Target files and symbols: `aggregate.ts` (`confidenceRange`), `types.ts` (`ScoringResult.range`), `scoring.ts` (`getResult`)
 - Steps:
-  1. Người dùng miễn phí chỉ nhận band tổng và khoảng tin cậy. Payload không được chứa tiêu chí và bằng chứng.
-  2. Phạm vi bằng chứng miễn phí làm theo quyết định D-04 của #6.
-  3. Viết test khẳng định trên chính payload trả về.
-  4. Tạo `packages/api/src/entitlements.ts`, export `getEntitlement(db, userId): Promise<'free'|'paid'>` và `canViewDetail(db, userId, attemptId): Promise<boolean>`. `paid` chỉ gồm gói theo thời gian và chỉ dùng để miễn hạn mức. Chưa có `subscription` thì `getEntitlement` trả `free`; chưa có `detail_unlock` thì `canViewDetail` trả theo `getEntitlement`. `getResult` chỉ quyết định qua `canViewDetail`.
-  5. `results.retry` chỉ cho chủ bài, chỉ khi `failed`.
-- Success criteria: Payload miễn phí không có dữ liệu trả phí.
-- Verify: `pnpm --filter @vox-flow/api test src/routers/results.test.ts` thoát với mã 0.
+  1. Viết test trước cho `confidenceRange(overalls: number[]): [number, number]`: trả `[min, max]` của `score_run.overall`, đã làm tròn bước 0.5; một lượt thì hai đầu bằng nhau; mảng rỗng thì ném lỗi.
+  2. `getResult` đọc `score_run.overall` của lượt và thêm `range` vào `ScoringResult`. Không sửa bảng, không cần migration.
+- Success criteria: test tính toán và test router đều qua.
+- Verify: `pnpm --filter @vox-flow/api test src/scoring/aggregate.test.ts src/routers/scoring.test.ts` thoát với mã 0.
 
-### Task 2.2 — Đo pipeline thật trên bộ mẫu.
-- Goal: Đo pipeline thật trên bộ mẫu.
-- Target files and symbols: `docs/scoring-accuracy.md`, `scripts/scoring-eval/report.ts`
+### Task 2.2 — Xác định câu yếu nhất ở server
+- Goal: một quy tắc duy nhất, dùng chung cho paywall (D-04) và luyện lại (D-05).
+- Target files and symbols: `aggregate.ts` (`weakestQuestionKey(criteria, answers)`)
 - Steps:
-  1. Chạy pipeline thật trên 30 bài mẫu của #7.
-  2. Ghi kết quả vào báo cáo, kèm dòng `Đạt ngưỡng: có` hoặc `Đạt ngưỡng: không`.
-- Success criteria: Báo cáo xác nhận đạt.
-- Verify: `grep -c '^Đạt ngưỡng: có' docs/scoring-accuracy.md` in `1`.
+  1. Viết test trước. Quy tắc: câu có nhiều bằng chứng `kind: "minus"` nhất trên cả 4 tiêu chí; hòa thì lấy câu đứng trước theo `partNumber` rồi thứ tự câu; không có bằng chứng `minus` nào thì lấy câu đầu tiên. Trả `null` khi lượt không có câu trả lời.
+  2. Hàm thuần, không gọi dịch vụ ngoài.
+- Success criteria: test qua, gồm trường hợp hòa và trường hợp không có `minus`.
+- Verify: `pnpm --filter @vox-flow/api test src/scoring/aggregate.test.ts` thoát với mã 0.
+
+### Task 2.3 — Paywall ở server theo D-04
+- Goal: client miễn phí không nhận dữ liệu bị khóa.
+- Target files and symbols: `entitlements.ts` (`getEntitlement`, `canViewDetail`), `scoring.ts` (`getResult`)
+- Steps:
+  1. Tạo `entitlements.ts`, export `getEntitlement(db, userId): Promise<'free'|'paid'>` và `canViewDetail(db, userId, attemptId): Promise<boolean>`. Chưa có bảng `subscription` thì `getEntitlement` trả `free`; chưa có `detail_unlock` thì `canViewDetail` trả theo `getEntitlement`. #19 sẽ nối hai bảng này vào đây.
+  2. `getResult` thêm `locked: boolean` và `weakestQuestionKey`. Khi `canViewDetail` là `false`: giữ `overall`, `range`, `oneLiner`; mỗi tiêu chí chỉ giữ `key` và bằng chứng có `questionKey` bằng câu yếu nhất (kèm `improve` nếu trích từ câu đó); bỏ `band` và `summary` của tiêu chí; `answers` chỉ giữ transcript của câu yếu nhất.
+  3. Viết test khẳng định trên chính payload trả về: bản miễn phí không có `band` tiêu chí và không có bằng chứng của câu khác; bản có quyền thì đủ dữ liệu như hiện nay.
+- Success criteria: payload miễn phí không chứa dữ liệu trả phí.
+- Verify: `pnpm --filter @vox-flow/api test src/entitlements.test.ts src/routers/scoring.test.ts` thoát với mã 0.
 
 ## Verification
 Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.
