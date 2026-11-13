@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   unit-test:
+    # Required status check on `dev`: the job must always run and report, so
+    # docs-only PRs skip the heavy steps instead of skipping the workflow.
     name: Unit & Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -18,21 +20,47 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same code paths as deploy-beta.yml, plus this workflow file.
+      - name: Detect app code changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA")
+          echo "Changed files:"; echo "$changed"
+          code=$(echo "$changed" \
+            | grep -E '^(apps/|packages/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|tsconfig\.json$|bunfig\.toml$|\.github/workflows/(ci-pr|deploy-beta)\.yml$)' \
+            | grep -vE '\.md$' || true)
+          if [ -n "$code" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "No app code changes; skipping type check and unit tests."
+          fi
 
       - name: Setup pnpm
+        if: steps.changes.outputs.code == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
+        if: steps.changes.outputs.code == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.changes.outputs.code == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Type check
+        if: steps.changes.outputs.code == 'true'
         run: pnpm check-types
 
       - name: Run unit & integration tests
+        if: steps.changes.outputs.code == 'true'
         run: pnpm run test
