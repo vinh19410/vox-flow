@@ -48,7 +48,7 @@ export function TopicCard({ topic: t, band, saved, onOpen, onToggleSave }: Topic
         </span>
         <span>{t.items.length} câu</span>
         <span className="truncate">Gặp {t.lastSeen}</span>
-        <span className="ml-auto">{band !== undefined ? <Badge tone="good">Band {band.toFixed(1)}</Badge> : <span className="font-semibold text-ink group-hover:text-brand">Luyện →</span>}</span>
+        <span className="ml-auto inline-flex min-h-7 shrink-0 items-center">{band !== undefined ? <Badge tone="good">Band {band.toFixed(1)}</Badge> : <span className="font-semibold text-ink group-hover:text-brand">Luyện →</span>}</span>
       </div>
     </Card>
   );

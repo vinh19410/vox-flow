@@ -86,6 +86,9 @@ describe("TopicCard", () => {
     );
 
     expect(screen.getByText("Luyện →")).toBeTruthy();
+    const ctaSlot = screen.getByText("Luyện →").parentElement as HTMLElement;
+    expect(ctaSlot.classList.contains("min-h-7")).toBe(true);
+    expect(ctaSlot.classList.contains("items-center")).toBe(true);
 
     const bookmarkBtn = screen.getByRole("button", { name: "Lưu chủ đề" });
     fireEvent.click(bookmarkBtn);
@@ -106,7 +109,9 @@ describe("TopicCard", () => {
       />,
     );
 
-    expect(screen.getByText("Band 7.0")).toBeTruthy();
+    const bandBadge = screen.getByText("Band 7.0");
+    expect(bandBadge).toBeTruthy();
+    expect(bandBadge.parentElement?.classList.contains("min-h-7")).toBe(true);
     expect(screen.queryByText("Luyện →")).toBeNull();
   });
 });
