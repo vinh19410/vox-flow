@@ -7,6 +7,8 @@ export interface BandHeroProps {
   band: number;
   /** Confidence range; the range label is hidden when absent. */
   range?: readonly [number, number];
+  /** Overall band of the parent attempt when this attempt is a retake (D-05). */
+  previousOverall?: number | null;
   target: number;
   /** Independent run bands; the runs panel is hidden when absent. */
   runs?: readonly number[];
@@ -17,10 +19,13 @@ export interface BandHeroProps {
 export function BandHero({
   band,
   range,
+  previousOverall,
   target,
   runs,
   oneLiner = "Điểm số và khoảng tin cậy được tính toán từ các lượt chấm độc lập.",
 }: BandHeroProps) {
+  const rawDelta = typeof previousOverall === "number" ? Math.round((band - previousOverall) * 10) / 10 : null;
+  const delta = rawDelta === 0 ? 0 : rawDelta;
   return (
     <div className="rounded-[28px] bg-ink p-7 text-paper">
       <div className="flex items-center justify-between">
@@ -40,6 +45,23 @@ export function BandHero({
           </div>
         )}
       </div>
+      {typeof previousOverall === "number" && delta !== null && (
+        <div
+          data-testid="retake-band-comparison"
+          className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-2xl bg-white/10 px-3.5 py-2 text-xs"
+        >
+          <span className="text-white/65">Band trước {previousOverall.toFixed(1)}</span>
+          <ArrowRight size={13} className="text-white/45" />
+          <span className="font-semibold text-white">Band mới {band.toFixed(1)}</span>
+          <span
+            className={`tnum rounded-full px-2 py-0.5 font-semibold ${
+              delta > 0 ? "bg-good/20 text-good" : delta < 0 ? "bg-bad/20 text-bad" : "bg-white/10 text-white/75"
+            }`}
+          >
+            {delta > 0 ? `+${delta.toFixed(1)}` : delta.toFixed(1)}
+          </span>
+        </div>
+      )}
       <div className="mt-7">
         {/* Without a range the scale shows the point estimate only. */}
         <BandRange band={band} range={range ?? [band, band]} target={target} dark />

@@ -16,14 +16,14 @@ export function CriterionDetail({ c }: CriterionDetailProps) {
         <div className="font-mono text-xs font-semibold text-subtle">{c.name}</div>
         <div className="mt-1 text-xl font-bold">{c.vi}</div>
         <div className="mt-5 flex items-end gap-3">
-          <span className="tnum text-6xl leading-none font-extrabold">{c.band.toFixed(1)}</span>
+          <span className="tnum text-6xl leading-none font-extrabold">{c.band != null ? c.band.toFixed(1) : "—"}</span>
           {c.range && (
             <span className="tnum pb-1 font-mono text-sm text-subtle">
               {c.range[0].toFixed(1)}–{c.range[1].toFixed(1)}
             </span>
           )}
         </div>
-        <p className="mt-4 text-[15px] leading-relaxed text-ink-2">{c.summary}</p>
+        {c.summary && <p className="mt-4 text-[15px] leading-relaxed text-ink-2">{c.summary}</p>}
         {c.metrics && c.metrics.length > 0 && (
           <div className="mt-6 divide-y divide-line border-y border-line">
             {c.metrics.map((m) => (

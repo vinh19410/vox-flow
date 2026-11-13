@@ -18,7 +18,9 @@ export function BandRange({
   dark = false,
   target,
 }: BandRangeProps) {
-  const pct = (v: number) => ((v - min) / (max - min)) * 100;
+  const pct = (v: number) => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+  const widthPct = Math.max(pct(range[1]) - pct(range[0]), 1.5);
+  const leftPct = Math.min(pct(range[0]), 100 - widthPct);
   const ticks = Array.from(
     { length: (max - min) * 2 + 1 },
     (_, i) => min + i * 0.5,
@@ -34,8 +36,8 @@ export function BandRange({
         <div
           className="absolute inset-y-0 rounded-full bg-brand/35"
           style={{
-            left: `${pct(range[0])}%`,
-            width: `${Math.max(pct(range[1]) - pct(range[0]), 1.5)}%`,
+            left: `${leftPct}%`,
+            width: `${widthPct}%`,
           }}
         />
         <div

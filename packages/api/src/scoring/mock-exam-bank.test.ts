@@ -28,6 +28,13 @@ describe("mock-exam-bank", () => {
       expect(getValidMockQuestionKeys("unknown")).toEqual(new Set());
       expect(getValidMockQuestionKeys("daily-practice")).toEqual(new Set());
     });
+
+    it("locks to a single valid questionKey for mock retakes and fails closed on mismatch", () => {
+      expect(getValidMockQuestionKeys("part2", "p2-1")).toEqual(new Set(["p2-1"]));
+      expect(getValidMockQuestionKeys("full", "p1-1-f")).toEqual(new Set(["p1-1-f"]));
+      expect(getValidMockQuestionKeys("part1", "p2-1")).toEqual(new Set());
+      expect(getValidMockQuestionKeys("full", "not-in-bank")).toEqual(new Set());
+    });
   });
 
   describe("resolveCanonicalMockQuestionText", () => {

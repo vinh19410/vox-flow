@@ -3,11 +3,16 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
 
-/** S15 — soft paywall overlay for the locked criteria pane. */
-export function SoftPaywall() {
+export interface SoftPaywallProps {
+  /** Render inline in normal flow (for example below unlocked weakest-question content) instead of bottom-pinned overlay. */
+  inline?: boolean;
+}
+
+/** S15 — soft paywall overlay (or inline card) for locked result details. */
+export function SoftPaywall({ inline = false }: SoftPaywallProps) {
   const { openPaywall } = useApp();
   return (
-    <div className="absolute inset-x-0 bottom-0 flex justify-center px-2 pb-4">
+    <div className={inline ? "mt-4 flex justify-center" : "absolute inset-x-0 bottom-0 flex justify-center px-2 pb-4"}>
       <div className="w-full max-w-lg rounded-3xl border border-line bg-white p-6 text-center shadow-2xl">
         <div className="mx-auto grid h-11 w-11 place-items-center rounded-2xl bg-brand-soft text-brand">
           <Sparkles size={20} />

@@ -6,10 +6,14 @@ const statusSpy = vi.fn();
 const getResultSpy = vi.fn();
 const retrySpy = vi.fn();
 const disputeGetSpy = vi.fn();
+const attemptStartSpy = vi.fn();
 
 // FEATURES.scoring stays at its beta default (off): real results must render regardless.
 vi.mock("@/utils/trpc", () => ({
   trpcClient: {
+    attempt: {
+      start: { mutate: (...a: unknown[]) => attemptStartSpy(...a) },
+    },
     scoring: {
       status: { query: (...a: unknown[]) => statusSpy(...a) },
       getResult: { query: (...a: unknown[]) => getResultSpy(...a) },
@@ -30,6 +34,11 @@ const RESULT: ScoringResult = {
   attemptId: ATTEMPT,
   topicId: "p1-tidiness",
   overall: 6.5,
+  range: [6.0, 7.0],
+  locked: false,
+  weakestQuestionKey: "q2",
+  retakeOfAttemptId: null,
+  previousOverall: null,
   oneLiner: "Trả lời trôi chảy, cần đa dạng cấu trúc câu hơn.",
   criteria: [
     {
@@ -86,13 +95,14 @@ describe("ResultsScreen with real scoring data", () => {
     getResultSpy.mockReset();
     retrySpy.mockReset();
     disputeGetSpy.mockReset().mockResolvedValue({ enabled: false, dispute: null });
+    attemptStartSpy.mockReset();
   });
 
   it("keeps the beta flag off in this suite", () => {
     expect(FEATURES.scoring).toBe(false);
   });
 
-  it("renders real bands, criteria evidence and transcripts with no paywall, range or runs", async () => {
+  it("renders real bands, confidence range, criteria evidence and transcripts without per-run panels when unlocked", async () => {
     statusSpy.mockResolvedValue(status("done"));
     getResultSpy.mockResolvedValue(RESULT);
     const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
@@ -101,6 +111,8 @@ describe("ResultsScreen with real scoring data", () => {
     expect(await screen.findByText("Bạn đạt band 6.5")).toBeTruthy();
     expect(getResultSpy).toHaveBeenCalledWith({ attemptId: ATTEMPT });
     expect(screen.getByText(RESULT.oneLiner)).toBeTruthy();
+    expect(screen.getByText("Khoảng tin cậy")).toBeTruthy();
+    expect(screen.getByText("6.0 – 7.0")).toBeTruthy();
 
     // Criteria grid shows all four real bands, unlocked.
     for (const [label, band] of [
@@ -114,6 +126,7 @@ describe("ResultsScreen with real scoring data", () => {
     expect(screen.queryByText("Mở khóa chi tiết →")).toBeNull();
     expect(screen.queryByText("Xem vì sao bạn được từng band")).toBeNull();
     expect(screen.queryByText(/Mở khóa từ/)).toBeNull();
+    expect(screen.queryByTestId("weakest-question-card")).toBeNull();
 
     // Default selection (GRA) shows real summary, verbatim evidence with its location, and improvements.
     expect(screen.getByText("Chủ yếu dùng câu đơn, còn lỗi chia thì.")).toBeTruthy();
@@ -125,10 +138,9 @@ describe("ResultsScreen with real scoring data", () => {
     expect(screen.getByText("“I always keep my desk tidy”")).toBeTruthy();
     expect(h.openPaywall).not.toHaveBeenCalled();
 
-    // No confidence range, run count or per-run values anywhere.
+    // No raw run count or per-run median strip anywhere.
     const text = document.body.textContent ?? "";
-    expect(text).not.toMatch(/Khoảng tin cậy|lần chấm|Chấm 3 lần|trung vị|lượt chấm/i);
-    expect(text).not.toMatch(/\d\.\d\s?[–-]\s?\d\.\d/);
+    expect(text).not.toMatch(/Chấm 3 lần|trung vị|Chênh lệch giữa các lần/i);
 
     fireEvent.click(screen.getByText("Xem lại từng câu"));
     expect(screen.getByText("Were you tidy as a child?")).toBeTruthy();
@@ -136,6 +148,72 @@ describe("ResultsScreen with real scoring data", () => {
     expect(screen.getAllByText(/^Part 1 · Câu [12]$/).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("Mở khóa đánh dấu lỗi")).toBeNull();
     expect(screen.queryByLabelText("Phát lại")).toBeNull();
+  });
+
+  it("enforces server locked state: renders range and unblurred weakest question card while gating criteria", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue({
+      attemptId: ATTEMPT,
+      topicId: "p1-tidiness",
+      overall: 6.5,
+      range: [6.0, 7.0],
+      locked: true,
+      weakestQuestionKey: "q2",
+      retakeOfAttemptId: null,
+      previousOverall: null,
+      oneLiner: RESULT.oneLiner,
+      criteria: [
+        { key: "FC", evidence: [], improve: [] },
+        {
+          key: "LR",
+          evidence: [
+            { quote: "very very messy", questionKey: "q2", where: "Part 1 · Câu 2", kind: "minus", note: "Lặp từ nhấn mạnh." },
+          ],
+          improve: [{ from: "very very messy", to: "chaotic", why: "Dùng một tính từ mạnh thay vì lặp lại." }],
+        },
+        {
+          key: "GRA",
+          evidence: [
+            { quote: "when I was child I keep", questionKey: "q2", where: "Part 1 · Câu 2", kind: "minus", note: "Thiếu mạo từ." },
+          ],
+          improve: [{ from: "when I was child I keep", to: "when I was a child, I kept", why: "Mạo từ và thì quá khứ." }],
+        },
+        { key: "P", evidence: [], improve: [] },
+      ],
+      answers: [RESULT.answers[1]!],
+      scoredAt: RESULT.scoredAt,
+    } satisfies ScoringResult);
+
+    const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    expect(await screen.findByText("Bạn đạt band 6.5")).toBeTruthy();
+    expect(screen.getByText("Khoảng tin cậy")).toBeTruthy();
+    expect(screen.getByText("6.0 – 7.0")).toBeTruthy();
+
+    // Locked criteria show placeholder dash and open paywall on click.
+    for (const label of ["Độ trôi chảy & mạch lạc", "Vốn từ vựng", "Ngữ pháp", "Phát âm"]) {
+      const card = screen
+        .getAllByText(label)
+        .map((el) => el.closest("button"))
+        .find((btn): btn is HTMLButtonElement => btn !== null);
+      expect(card).toBeTruthy();
+      expect(card!.textContent).toContain("—");
+      expect(card!.textContent).toContain("Mở khóa chi tiết →");
+    }
+    fireEvent.click(screen.getByText("Độ trôi chảy & mạch lạc"));
+    expect(h.openPaywall).toHaveBeenCalledTimes(1);
+
+    // Weakest question card is visible and unblurred above SoftPaywall.
+    const weakestCard = screen.getByTestId("weakest-question-card");
+    expect(weakestCard.textContent).toContain("Were you tidy as a child?");
+    expect(weakestCard.textContent).toContain("when I was child I keep");
+    expect(weakestCard.textContent).toContain("when I was a child, I kept");
+    expect(weakestCard.className).not.toContain("pointer-events-none");
+    expect(screen.getByText("Xem vì sao bạn được từng band")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Xem lại từng câu"));
+    expect(screen.getByText("Were you tidy as a child?")).toBeTruthy();
+    expect(screen.queryByText("Are you a tidy person?")).toBeNull();
+    expect(screen.getByText("Xem vì sao bạn được từng band")).toBeTruthy();
   });
 
   it("links back to the scoring screen while scoring is still in progress", async () => {
@@ -267,5 +345,67 @@ describe("ResultsScreen with real scoring data", () => {
     expect(statusSpy).not.toHaveBeenCalled();
     expect(getResultSpy).not.toHaveBeenCalled();
     expect(screen.getByText("Tính năng chấm điểm AI sắp ra mắt")).toBeTruthy();
+  });
+
+  it("starts a single-question retake on Luyện ngay with server prompt and prestarted attemptId", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue(RESULT);
+    attemptStartSpy.mockResolvedValue({
+      attemptId: "att-retake-1",
+      mode: "part1",
+      topicId: "p1-tidiness",
+      topicTitle: "Tidiness",
+      kind: "p1",
+      questionKey: "q2",
+      part: 1,
+      questionText: "Were you tidy as a child?",
+      hasLinkedPrompt: false,
+      retakeOfAttemptId: ATTEMPT,
+    });
+
+    const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    await screen.findByText("Bạn đạt band 6.5");
+
+    fireEvent.click(screen.getByTestId("retake-weakest-btn"));
+    await waitFor(() => expect(h.go).toHaveBeenCalledWith("exam"));
+    expect(attemptStartSpy).toHaveBeenCalledWith({ retakeOf: ATTEMPT });
+    expect(h.state().practice).toMatchObject({
+      topicId: "p1-tidiness",
+      title: "Tidiness",
+      kind: "p1",
+      singleQuestionId: "q2",
+      attemptId: "att-retake-1",
+      retakeOfAttemptId: ATTEMPT,
+      hasLinkedPrompt: false,
+      items: [{ id: "q2", part: 1, text: "Were you tidy as a child?", answer: "" }],
+    });
+  });
+
+  it("shows inline error alert if retake start fails", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue(RESULT);
+    attemptStartSpy.mockRejectedValue(new Error("network error"));
+
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    await screen.findByText("Bạn đạt band 6.5");
+
+    fireEvent.click(screen.getByTestId("retake-weakest-btn"));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+
+  it("displays before-and-after band comparison on a retake result", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue({
+      ...RESULT,
+      retakeOfAttemptId: "att-parent-0",
+      previousOverall: 5.5,
+      overall: 6.5,
+    });
+
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    const comparison = await screen.findByTestId("retake-band-comparison");
+    expect(comparison.textContent).toContain("Band trước 5.5");
+    expect(comparison.textContent).toContain("Band mới 6.5");
+    expect(comparison.textContent).toContain("+1.0");
   });
 });

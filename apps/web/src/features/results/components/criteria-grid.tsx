@@ -32,7 +32,7 @@ export function CriteriaGrid({ sel, pro, onPick, criteria = [] }: CriteriaGridPr
             <div className="mt-1 text-sm leading-tight font-semibold">{c.vi}</div>
             <div className="mt-auto flex items-end justify-between pt-5">
               <span className={cx("tnum text-[40px] leading-none font-extrabold tracking-tight", !pro && "blur-[9px] select-none")}>
-                {c.band.toFixed(1)}
+                {c.band != null ? c.band.toFixed(1) : "—"}
               </span>
               {c.range && (
                 <span className={cx("tnum font-mono text-xs text-subtle", !pro && "blur-[5px]")}>

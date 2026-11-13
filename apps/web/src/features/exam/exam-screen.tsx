@@ -178,7 +178,7 @@ export function ExamScreen() {
   const exitExam = () => {
     exitedRef.current = true;
     if (submitPhaseRef.current === "flushing") abandonActiveRun();
-    const target = s.practice ? "forecast" : "select";
+    const target = s.practice ? (s.practice.topicId ? "forecast" : "select") : "select";
     set({ practice: null });
     go(target);
   };

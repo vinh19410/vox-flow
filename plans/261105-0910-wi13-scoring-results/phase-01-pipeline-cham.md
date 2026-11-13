@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Kiểm tra nền đã có"
-status: pending
+status: completed
 priority: P1
 effort: "0.5h"
 dependencies: []

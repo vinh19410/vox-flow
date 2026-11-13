@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, Flag, Loader2, Lock, Repeat, SearchX, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, Flag, Lightbulb, Loader2, Lock, Minus, Plus, Repeat, SearchX, Sparkles, TriangleAlert } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
 import { Button } from "@/components/ds/button";
@@ -18,7 +18,7 @@ import { CriterionDetail } from "./components/criterion-detail";
 import { ReportModal } from "./components/report-modal";
 import { ReviewList } from "./components/review-list";
 import { SoftPaywall } from "./components/soft-paywall";
-import { toCriteria, toReviewItems } from "./scored-result";
+import { toCriteria, toReviewItems, toWeakestQuestionDetail } from "./scored-result";
 import { useScoredResult } from "./use-scored-result";
 import type { CritKey, ResultData, ReviewItem } from "./types";
 import type { ExamItem } from "@/features/exam/types";
@@ -59,6 +59,8 @@ export function ResultsScreen({
   const scored = remote.state === "ready" ? remote.result : null;
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [retaking, setRetaking] = useState(false);
+  const [retakeError, setRetakeError] = useState<string | null>(null);
   const [tab, setTab] = useState<"criteria" | "review">("criteria");
   const [sel, setSel] = useState<CritKey>("GRA");
   const [report, setReport] = useState(false);
@@ -87,6 +89,9 @@ export function ResultsScreen({
   }, [isDefaultLatest, attemptId]);
 
   useEffect(() => {
+    setDisputeInfo(null);
+    setRetryError(null);
+    setRetakeError(null);
     loadDispute();
   }, [loadDispute]);
 
@@ -251,13 +256,14 @@ export function ResultsScreen({
 
   const active: Attempt | null = isDefaultLatest ? null : attempt;
   const band = scored ? scored.overall : (active?.band ?? resultData?.overall ?? 6.5);
-  // Scored results show a single band: no confidence range or per-run values.
-  const range = scored ? undefined : (active?.range ?? resultData?.range ?? [6.0, 7.0]);
+  const range: [number, number] | undefined = scored
+    ? scored.range
+    : (active?.range ?? resultData?.range ?? [6.0, 7.0]);
   const runs = scored ? undefined : (resultData?.runs ?? [band, band, band]);
   const oneLiner = scored ? scored.oneLiner : resultData?.oneLiner;
-  // Beta: every scored result is fully unlocked.
-  const pro = scored ? true : !!s.plan;
+  const pro = scored ? !scored.locked : !!s.plan;
   const criteria = scored ? toCriteria(scored) : resultData?.criteria;
+  const weakestQuestion = scored?.locked ? toWeakestQuestionDetail(scored) : null;
   const reviewItems = scored ? toReviewItems(scored) : (reviews ?? resultData?.reviews);
   const lastSession = s.lastPracticeSession;
   const isViewingCurrentPracticeAttempt = Boolean(
@@ -275,7 +281,7 @@ export function ResultsScreen({
       : undefined;
 
   const handleNextQuestion = () => {
-    if (!lastSession || !nextItem) return;
+    if (!lastSession || !lastSession.topicId || !nextItem) return;
     const singleItem: ExamItem = {
       ...nextItem,
       cue: undefined,
@@ -292,6 +298,48 @@ export function ResultsScreen({
       lastPracticeSession: null,
     });
     go("exam");
+  };
+
+  const handleRetakeWeakest = async () => {
+    if (!scored) {
+      set({ lastPracticeSession: null });
+      go("select");
+      return;
+    }
+    if (retaking) return;
+    setRetaking(true);
+    setRetakeError(null);
+    try {
+      const res = await trpcClient.attempt.start.mutate({ retakeOf: scored.attemptId });
+      if (!("questionText" in res) || !res.questionKey || !res.part || !res.questionText) {
+        throw new Error("Retake payload missing question");
+      }
+      const retakeItem: ExamItem = {
+        id: res.questionKey,
+        part: res.part,
+        text: res.questionText,
+        answer: "",
+        ...(res.cue ? { cue: res.cue } : {}),
+      };
+      set({
+        lastPracticeSession: null,
+        practice: {
+          topicId: res.topicId ?? null,
+          title: res.topicTitle ?? "Luyện lại câu yếu",
+          kind: res.kind ?? (res.part === 1 ? "p1" : "p23"),
+          items: [retakeItem],
+          singleQuestionId: res.questionKey,
+          attemptId: res.attemptId,
+          retakeOfAttemptId: scored.attemptId,
+          hasLinkedPrompt: Boolean(res.hasLinkedPrompt),
+        },
+      });
+      go("exam");
+    } catch {
+      setRetakeError("Không thể bắt đầu lượt luyện lại lúc này. Vui lòng thử lại.");
+    } finally {
+      setRetaking(false);
+    }
   };
 
   const eyebrow = scored
@@ -374,7 +422,14 @@ export function ResultsScreen({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.15fr]">
-        <BandHero band={band} range={range} target={s.target} runs={runs} oneLiner={oneLiner} />
+        <BandHero
+          band={band}
+          range={range}
+          previousOverall={scored?.previousOverall ?? null}
+          target={s.target}
+          runs={runs}
+          oneLiner={oneLiner}
+        />
         <CriteriaGrid criteria={criteria} sel={tab === "criteria" ? sel : null} pro={pro} onPick={pickCriterion} />
       </div>
 
@@ -395,14 +450,79 @@ export function ResultsScreen({
 
       <div className="mt-5">
         {tab === "criteria" ? (
-          <div className="relative">
-            <div className={cx(!pro && "pointer-events-none max-h-[420px] overflow-hidden select-none [mask-image:linear-gradient(to_bottom,black_30%,transparent)]")}>
-            {crit && <CriterionDetail key={sel} c={crit} />}
+          <div className="space-y-5">
+            {weakestQuestion && (
+              <Card className="p-7" data-testid="weakest-question-card">
+                <div className="font-mono text-xs font-semibold tracking-wider text-brand uppercase">
+                  Câu cần cải thiện nhất · Part {weakestQuestion.partNumber}
+                </div>
+                <h3 className="mt-2 text-lg font-bold">{weakestQuestion.questionText}</h3>
+                <p className="mt-3 rounded-2xl bg-paper p-4 text-[15px] leading-relaxed text-ink-2">
+                  {weakestQuestion.transcript}
+                </p>
+                {weakestQuestion.evidence.length > 0 && (
+                  <div className="mt-5 space-y-3">
+                    {weakestQuestion.evidence.map((e, k) => (
+                      <div key={k} className="flex gap-4 rounded-2xl bg-paper p-4">
+                        <span
+                          className={cx(
+                            "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
+                            e.kind === "plus" ? "bg-good text-white" : "bg-bad text-white",
+                          )}
+                        >
+                          {e.kind === "plus" ? <Plus size={13} /> : <Minus size={13} />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-1 text-[11px] font-semibold text-subtle">{e.criterionLabel}</div>
+                          <p className="text-[15px] leading-snug font-medium">“{e.quote}”</p>
+                          <p className="mt-1.5 text-[13px] text-ink-2">{e.note}</p>
+                        </div>
+                        {e.where && <span className="hidden shrink-0 text-[11px] text-subtle sm:block">{e.where}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {weakestQuestion.improve.length > 0 && (
+                  <div className="mt-5 space-y-2.5">
+                    <div className="flex items-center gap-2 text-sm font-bold">
+                      <Lightbulb size={15} className="text-warn" /> Gợi ý cải thiện
+                    </div>
+                    {weakestQuestion.improve.map((im, k) => (
+                      <div key={k} className="rounded-2xl border border-line p-4">
+                        <div className="flex flex-wrap items-center gap-2 text-[15px]">
+                          <span className="text-subtle line-through decoration-bad/60">{im.from}</span>
+                          <ArrowRight size={14} className="text-subtle" />
+                          <span className="font-semibold text-good">{im.to}</span>
+                        </div>
+                        <div className="mt-1.5 text-[13px] text-ink-2">{im.why}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+            <div className="relative">
+              {!pro ? (
+                scored ? (
+                  <SoftPaywall inline />
+                ) : (
+                  <>
+                    <div className="pointer-events-none max-h-[420px] overflow-hidden select-none [mask-image:linear-gradient(to_bottom,black_30%,transparent)]">
+                      {crit && <CriterionDetail key={sel} c={crit} />}
+                    </div>
+                    <SoftPaywall />
+                  </>
+                )
+              ) : (
+                crit && <CriterionDetail key={sel} c={crit} />
+              )}
             </div>
-            {!pro && <SoftPaywall />}
           </div>
         ) : (
-          <ReviewList pro={pro} items={reviewItems} playback={!scored} />
+          <div className="space-y-4">
+            <ReviewList pro={pro} items={reviewItems} playback={!scored} />
+            {!pro && <SoftPaywall inline />}
+          </div>
         )}
       </div>
 
@@ -412,16 +532,20 @@ export function ResultsScreen({
         </div>
         <div className="min-w-48 flex-1">
           <div className="font-bold">Luyện lại câu yếu nhất</div>
-          <div className="text-sm text-ink-2">Thực hành nói lại các câu cần cải thiện để so sánh trước và sau.</div>
+          <div className="text-sm text-ink-2">Thực hành nói lại câu yếu nhất để so sánh band trước và sau.</div>
+          {retakeError && (
+            <div role="alert" className="mt-2 text-xs font-medium text-bad">
+              {retakeError}
+            </div>
+          )}
         </div>
         <Button
+          data-testid="retake-weakest-btn"
           className="w-full sm:w-auto"
-          onClick={() => {
-            set({ lastPracticeSession: null });
-            go("select");
-          }}
+          disabled={retaking || (Boolean(scored) && !scored?.weakestQuestionKey)}
+          onClick={() => void handleRetakeWeakest()}
         >
-          Luyện ngay <ArrowRight size={16} />
+          {retaking ? "Đang chuẩn bị..." : "Luyện ngay"} <ArrowRight size={16} />
         </Button>
       </Card>
 

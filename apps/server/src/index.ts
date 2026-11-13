@@ -189,11 +189,16 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
       .from(forecastTopic)
       .where(eq(forecastTopic.id, currentAttempt.topicId))
       .limit(1);
+    if (currentAttempt.retakeOfAttemptId && currentAttempt.questionKey && questionKey !== currentAttempt.questionKey) {
+      return c.json({ error: "Invalid question key for this attempt" }, 400);
+    }
     if (topic) {
       const validKeys = getValidQuestionKeysForTopic(topic, currentAttempt.questionKey);
       if (!validKeys.has(questionKey)) {
         return c.json({ error: "Invalid question key for this attempt" }, 400);
       }
+    } else if (currentAttempt.questionKey && questionKey !== currentAttempt.questionKey) {
+      return c.json({ error: "Invalid question key for this attempt" }, 400);
     }
     // A missing topic row must not shrink the limit to 0 and brick the
     // attempt: fall back to the static cap (answer-limits.ts).
@@ -202,10 +207,10 @@ app.post("/api/attempts/:attemptId/answers/:questionKey/audio", async (c) => {
       return c.json({ error: "Question limit reached for this attempt" }, 400);
     }
   } else {
-    // Topic-less (mock) attempt: only bank keys of the attempt's mode are
-    // accepted. Unknown modes resolve to an empty key set — fail-closed, every
-    // key is rejected.
-    const validMockKeys = getValidMockQuestionKeys(currentAttempt.mode);
+    // Topic-less (mock) attempt: only bank keys of the attempt's mode (and the
+    // locked question key for single-question retakes) are accepted. Unknown modes
+    // resolve to an empty key set — fail-closed, every key is rejected.
+    const validMockKeys = getValidMockQuestionKeys(currentAttempt.mode, currentAttempt.questionKey);
     if (!validMockKeys.has(questionKey)) {
       return c.json({ error: "Invalid question key for this attempt" }, 400);
     }
@@ -550,13 +555,14 @@ app.get("/api/tts/attempt/:attemptId/:voice/:questionKey", async (c) => {
   }
 
   const db = getDb();
-  let attemptRow: { id: string; userId: string; topicId: string | null } | undefined;
+  let attemptRow: { id: string; userId: string; topicId: string | null; retakeOfAttemptId: string | null } | undefined;
   try {
     const [row] = await db
       .select({
         id: attempt.id,
         userId: attempt.userId,
         topicId: attempt.topicId,
+        retakeOfAttemptId: attempt.retakeOfAttemptId,
       })
       .from(attempt)
       .where(eq(attempt.id, attemptId))
@@ -593,7 +599,9 @@ app.get("/api/tts/attempt/:attemptId/:voice/:questionKey", async (c) => {
   let text: string | null = linked?.questionText ?? null;
   if (!text) {
     try {
-      text = await resolveForecastTtsText(db, attemptRow.topicId, questionKey);
+      text = await resolveForecastTtsText(db, attemptRow.topicId, questionKey, {
+        allowArchived: Boolean(attemptRow.retakeOfAttemptId),
+      });
     } catch {
       c.header("Cache-Control", "no-store");
       return c.json({ error: "TTS service unavailable" }, 503);

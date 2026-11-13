@@ -1,7 +1,7 @@
 ---
 title: "Chấm điểm & bằng chứng (`scoring-results`)"
 description: "Phần còn lại sau #90/#130: khoảng tin cậy, paywall phía server theo D-04 và hành động North Star luyện lại câu yếu theo D-05."
-status: in_progress
+status: completed
 priority: P1
 effort: 4d
 issue: 17
@@ -57,16 +57,16 @@ Phần còn thiếu, cũng là toàn bộ phạm vi của plan này:
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Kiểm tra nền đã có](./phase-01-pipeline-cham.md) | Pending |
-| 2 | [Phase 2: Phân quyền kết quả](./phase-02-kiem-tra-do-chinh-xac-va-phan-quyen.md) | Pending |
-| 3 | [Phase 3: Nối giao diện và luyện lại câu yếu](./phase-03-noi-giao-dien.md) | Pending |
+| 1 | [Phase 1: Kiểm tra nền đã có](./phase-01-pipeline-cham.md) | Completed |
+| 2 | [Phase 2: Phân quyền kết quả](./phase-02-kiem-tra-do-chinh-xac-va-phan-quyen.md) | Completed |
+| 3 | [Phase 3: Nối giao diện và luyện lại câu yếu](./phase-03-noi-giao-dien.md) | Completed |
 
 ## Acceptance Criteria
-- [ ] Kết quả có khoảng tin cậy lấy từ 3 lượt chấm trong `score_run`.
-- [ ] Payload `scoring.getResult` của người dùng miễn phí chỉ có band tổng, khoảng tin cậy và bằng chứng của 1 câu yếu nhất; không chứa band tiêu chí hay bằng chứng của câu khác.
-- [ ] Quyền xem chi tiết chỉ quyết định qua `canViewDetail` ở server.
-- [ ] "Luyện ngay" mở lượt luyện đúng câu yếu nhất, lượt đó được chấm qua pipeline hiện hành, và màn kết quả của lượt luyện hiện band trước và sau.
-- [ ] Test của pipeline đã có vẫn qua (không hồi quy).
+- [x] Kết quả có khoảng tin cậy lấy từ 3 lượt chấm trong `score_run`.
+- [x] Payload `scoring.getResult` của người dùng miễn phí chỉ có band tổng, khoảng tin cậy và bằng chứng của 1 câu yếu nhất; không chứa band tiêu chí hay bằng chứng của câu khác.
+- [x] Quyền xem chi tiết chỉ quyết định qua `canViewDetail` ở server.
+- [x] "Luyện ngay" mở lượt luyện đúng câu yếu nhất, lượt đó được chấm qua pipeline hiện hành, và màn kết quả của lượt luyện hiện band trước và sau.
+- [x] Test của pipeline đã có vẫn qua (không hồi quy).
 
 ## Câu hỏi mở (Đã chốt cho Issue #17)
 - Bật paywall ở server ngay lập tức theo mặc định D-04 (`canViewDetail` trả `false` tới khi #19 nối bảng `subscription`/`detail_unlock`).

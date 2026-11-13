@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
@@ -15,11 +15,22 @@ import {
 } from "../exam/linked-prompt-store";
 import { transcribeAudioStrict } from "../exam/transcribe";
 import { isValidAudioKey, QUESTION_KEY_RE } from "../audio";
-import { getValidQuestionKeysForTopic } from "../scoring/forecast-keys";
+import { weakestQuestionKey } from "../scoring/aggregate";
+import {
+  cueCardKey,
+  getValidQuestionKeysForTopic,
+  parseTopicQuestions,
+  part1QuestionKey,
+  part3QuestionKey,
+} from "../scoring/forecast-keys";
 import { findAnswerLimitViolation } from "../scoring/answer-limits";
+import { getMockPromptDetail, getValidMockQuestionKeys } from "../scoring/mock-exam-bank";
 import { sanitizeDelimited } from "../scoring/prompt";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
+import { scoredCriterionSchema } from "../scoring/types";
 import { resolveForecastQuestionDetail } from "../tts/resolver";
+
+const storedCriteriaSchema = z.array(scoredCriterionSchema);
 
 /**
  * Returned (as BAD_REQUEST) when submit is called twice. The web client matches
@@ -32,9 +43,10 @@ export const attemptRouter = router({
     .input(
       z
         .object({
-          mode: z.enum(["full", "part1", "part2", "part3"]).default("full"),
+          mode: z.enum(["full", "part1", "part2", "part3"]).optional(),
           topicId: z.string().regex(QUESTION_KEY_RE, "Invalid topicId format").optional(),
           questionKey: z.string().regex(QUESTION_KEY_RE, "Invalid questionKey format").optional(),
+          retakeOf: z.string().min(1).max(128).optional(),
         })
         .refine(
           (data) => {
@@ -44,12 +56,17 @@ export const attemptRouter = router({
             message: "questionKey requires topicId",
           },
         )
+        .refine(
+          (data) => {
+            return !data.retakeOf || (!data.topicId && !data.questionKey && !data.mode);
+          },
+          {
+            message: "retakeOf cannot be combined with mode, topicId, or questionKey",
+          },
+        )
         .optional(),
     )
     .mutation(async ({ ctx, input }) => {
-      const mode = input?.mode ?? "full";
-      const topicId = input?.topicId;
-      const questionKey = input?.questionKey;
       // Launch gate check: LAUNCH_OPEN === 'true' or email in LAUNCH_ALLOWED_EMAILS
       const isLaunchOpen = ctx.env?.LAUNCH_OPEN === "true";
       const allowedEmails = (ctx.env?.LAUNCH_ALLOWED_EMAILS ?? "")
@@ -65,6 +82,255 @@ export const attemptRouter = router({
           message: "Mock exam is currently restricted to pilot candidates.",
         });
       }
+
+      if (input?.retakeOf) {
+        const [sourceAttempt] = await ctx.db
+          .select()
+          .from(attempt)
+          .where(eq(attempt.id, input.retakeOf))
+          .limit(1);
+        if (!sourceAttempt) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Source attempt not found" });
+        }
+        if (sourceAttempt.userId !== ctx.session.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You do not own this attempt" });
+        }
+
+        const [sourceScore] = await ctx.db
+          .select()
+          .from(attemptScore)
+          .where(eq(attemptScore.attemptId, sourceAttempt.id))
+          .limit(1);
+        if (!sourceScore || sourceScore.status !== "done" || !sourceScore.criteriaJson) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Source attempt has not finished scoring",
+          });
+        }
+
+        let parsedCriteriaRaw: unknown;
+        try {
+          parsedCriteriaRaw = JSON.parse(sourceScore.criteriaJson);
+        } catch {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Source attempt score payload is invalid",
+          });
+        }
+        const parsedCriteria = storedCriteriaSchema.safeParse(parsedCriteriaRaw);
+        if (!parsedCriteria.success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Source attempt score payload is invalid",
+          });
+        }
+
+        const sourceAnswers = await ctx.db
+          .select({
+            questionKey: attemptAnswer.questionKey,
+            partNumber: attemptAnswer.partNumber,
+            orderIndex: attemptAnswer.orderIndex,
+          })
+          .from(attemptAnswer)
+          .where(eq(attemptAnswer.attemptId, sourceAttempt.id))
+          .orderBy(asc(attemptAnswer.partNumber), asc(attemptAnswer.orderIndex));
+
+        const rawWeakestKey = weakestQuestionKey(parsedCriteria.data, sourceAnswers);
+        if (!rawWeakestKey) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "No answer found in source attempt to retake",
+          });
+        }
+
+        const consent = await requireExamConsent(ctx.db, ctx.session.user.id);
+        const attemptId = crypto.randomUUID();
+        const startedAt = new Date();
+
+        if (sourceAttempt.topicId) {
+          const [topic] = await ctx.db
+            .select({
+              id: forecastTopic.id,
+              title: forecastTopic.title,
+              part: forecastTopic.part,
+              questions: forecastTopic.questions,
+              status: forecastTopic.status,
+            })
+            .from(forecastTopic)
+            .where(
+              and(
+                eq(forecastTopic.id, sourceAttempt.topicId),
+                inArray(forecastTopic.status, ["published", "archived"]),
+              ),
+            )
+            .limit(1);
+          if (!topic) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Forecast topic unavailable for retake",
+            });
+          }
+
+          const isFollowUp = rawWeakestKey.endsWith("-f");
+          const resolvedKey = isFollowUp ? rawWeakestKey.slice(0, -2) : rawWeakestKey;
+          if (!getValidQuestionKeysForTopic(topic, null).has(resolvedKey)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Weakest question is no longer valid for this topic",
+            });
+          }
+
+          const parsedQuestions = parseTopicQuestions(topic.questions);
+          let part: 1 | 2 | 3 = 1;
+          let questionText = "";
+          let cue: { title: string; points: string[]; ending: string } | undefined;
+
+          if (topic.part === 1) {
+            const p1 = parsedQuestions.part1Questions ?? [];
+            const idx = p1.findIndex((_, i) => resolvedKey === part1QuestionKey(topic.id, i));
+            if (idx >= 0) {
+              part = 1;
+              questionText = (p1[idx] ?? "").trim();
+            }
+          } else if (resolvedKey === cueCardKey(topic.id)) {
+            part = 2;
+            const title = topic.title.trim();
+            questionText = title;
+            const points =
+              parsedQuestions.cueCards.length > 1
+                ? parsedQuestions.cueCards.slice(0, -1)
+                : parsedQuestions.cueCards;
+            const ending =
+              parsedQuestions.cueCards.length > 1
+                ? (parsedQuestions.cueCards[parsedQuestions.cueCards.length - 1] ?? "")
+                : "";
+            cue = { title, points, ending };
+          } else {
+            const idx = parsedQuestions.part3Questions.findIndex(
+              (_, i) => resolvedKey === part3QuestionKey(topic.id, i),
+            );
+            if (idx >= 0) {
+              part = 3;
+              questionText = (parsedQuestions.part3Questions[idx] ?? "").trim();
+            }
+          }
+
+          if (!questionText) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Canonical question text unavailable for retake",
+            });
+          }
+
+          const baseQuestionText = questionText;
+          let hasLinkedPrompt = false;
+          if (!isFollowUp && ctx.env?.AUDIO_BUCKET) {
+            const linked = await loadLinkedPrompt(ctx.env.AUDIO_BUCKET, {
+              userId: ctx.session.user.id,
+              attemptId: sourceAttempt.id,
+              questionKey: resolvedKey,
+            }).catch(() => null);
+            if (linked?.questionText) {
+              await saveLinkedPrompt(ctx.env.AUDIO_BUCKET, {
+                userId: ctx.session.user.id,
+                attemptId,
+                questionKey: resolvedKey,
+                prompt: {
+                  questionText: linked.questionText,
+                  triggerPhrase: linked.triggerPhrase,
+                  baseQuestionText,
+                  updatedAt: Date.now(),
+                },
+              });
+              questionText = linked.questionText;
+              hasLinkedPrompt = true;
+            }
+          }
+
+          const retakeMode = part === 1 ? "part1" : part === 2 ? "part2" : "part3";
+          const retakeKind = topic.part === 1 ? ("p1" as const) : ("p23" as const);
+
+          await ctx.db.insert(attempt).values({
+            id: attemptId,
+            userId: ctx.session.user.id,
+            mode: retakeMode,
+            status: "in_progress",
+            inHistory: consent.inHistory,
+            calibrationGranted: consent.calibrationGranted,
+            startedAt,
+            topicId: topic.id,
+            questionKey: resolvedKey,
+            retakeOfAttemptId: sourceAttempt.id,
+          });
+
+          return {
+            attemptId,
+            mode: retakeMode,
+            inHistory: consent.inHistory,
+            calibrationGranted: consent.calibrationGranted,
+            startedAt,
+            topicId: topic.id,
+            topicTitle: topic.title,
+            kind: retakeKind,
+            questionKey: resolvedKey,
+            part,
+            questionText,
+            ...(cue ? { cue } : {}),
+            hasLinkedPrompt,
+            retakeOfAttemptId: sourceAttempt.id,
+          };
+        }
+
+        const detail = getMockPromptDetail(rawWeakestKey, sourceAttempt.mode);
+        if (!detail) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Canonical mock question unavailable for retake",
+          });
+        }
+        const retakeMode = detail.part === 1 ? "part1" : detail.part === 2 ? "part2" : "part3";
+        if (!getValidMockQuestionKeys(retakeMode, rawWeakestKey).has(rawWeakestKey)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Mock retake question key invalid for mode",
+          });
+        }
+        const retakeKind = detail.part === 1 ? ("p1" as const) : ("p23" as const);
+
+        await ctx.db.insert(attempt).values({
+          id: attemptId,
+          userId: ctx.session.user.id,
+          mode: retakeMode,
+          status: "in_progress",
+          inHistory: consent.inHistory,
+          calibrationGranted: consent.calibrationGranted,
+          startedAt,
+          topicId: null,
+          questionKey: rawWeakestKey,
+          retakeOfAttemptId: sourceAttempt.id,
+        });
+
+        return {
+          attemptId,
+          mode: retakeMode,
+          inHistory: consent.inHistory,
+          calibrationGranted: consent.calibrationGranted,
+          startedAt,
+          topicId: null,
+          topicTitle: "Thi thử IELTS",
+          kind: retakeKind,
+          questionKey: rawWeakestKey,
+          part: detail.part,
+          questionText: detail.text,
+          ...(detail.cue ? { cue: detail.cue } : {}),
+          hasLinkedPrompt: false,
+          retakeOfAttemptId: sourceAttempt.id,
+        };
+      }
+
+      const mode = input?.mode ?? "full";
+      const topicId = input?.topicId;
+      const questionKey = input?.questionKey;
 
       // Attempts with a topicId are scored, so the topic must be a real published
       // forecast topic rather than any string the client chooses.

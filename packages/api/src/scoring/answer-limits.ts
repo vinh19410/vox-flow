@@ -15,7 +15,12 @@ export const TOPIC_LESS_CAP = 20;
 
 export type AnswerLimitsTopic = { id: string; part: number; questions: string | unknown };
 /** The slice of the attempt row the count guard needs (`mode` only matters when `topicId` is null). */
-export type AnswerLimitsAttempt = { mode?: string; topicId?: string | null; questionKey: string | null };
+export type AnswerLimitsAttempt = {
+  mode?: string;
+  topicId?: string | null;
+  questionKey: string | null;
+  retakeOfAttemptId?: string | null;
+};
 export type AnswerLimitsAnswer = { sizeBytes: number };
 export type AnswerLimitViolation = "ANSWER_COUNT_EXCEEDED" | "TOTAL_AUDIO_LIMIT_EXCEEDED";
 
@@ -26,6 +31,7 @@ export type AnswerLimitViolation = "ANSWER_COUNT_EXCEEDED" | "TOTAL_AUDIO_LIMIT_
  * mock key-set size — 8/4/1/3 — with unknown modes capped at 0 (fail-closed).
  */
 export function maxAnswersForAttempt(attempt: AnswerLimitsAttempt, topic: AnswerLimitsTopic | null): number {
+  if (attempt.retakeOfAttemptId) return 1;
   if (attempt.questionKey) return SINGLE_QUESTION_CAP;
   if (attempt.topicId) {
     if (!topic) return TOPIC_LESS_CAP;

@@ -1,7 +1,7 @@
 ---
 phase: 3
 title: "Nối giao diện và luyện lại câu yếu"
-status: pending
+status: completed
 priority: P1
 effort: "2d"
 dependencies: [1, 2]

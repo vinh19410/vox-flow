@@ -13,12 +13,12 @@ const ExamItemSchema = z.object({
   id: z.string(),
   part: PartSchema,
   text: z.string(),
-  answer: z.string(),
+  answer: z.string().optional().default(""),
   followUp: z
     .object({
       text: z.string(),
       trigger: z.string(),
-      answer: z.string(),
+      answer: z.string().optional().default(""),
     })
     .optional(),
   cue: z
@@ -32,13 +32,15 @@ const ExamItemSchema = z.object({
 
 
 const PracticeSessionSchema = z.object({
-  topicId: z.string(),
+  topicId: z.string().nullable(),
   title: z.string(),
   kind: z.enum(["p1", "p23"]),
   items: z.array(ExamItemSchema),
   singleQuestionId: z.string().optional(),
   topicItems: z.array(ExamItemSchema).optional(),
   attemptId: z.string().optional(),
+  retakeOfAttemptId: z.string().optional(),
+  hasLinkedPrompt: z.boolean().optional(),
 });
 
 const ScoringJobSchema = z.preprocess(
