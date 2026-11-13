@@ -34,8 +34,8 @@ interface MockAudioInstance {
 }
 
 function createMp3Response(bytes = [0xff, 0xfb, 0x90, 0x64]): Response {
-  const blob = new Blob([new Uint8Array(bytes)], { type: "audio/mpeg" });
-  return new Response(blob, {
+  // Pass TypedArray instead of jsdom's Blob (which lacks .stream() on Node 22 undici Response).
+  return new Response(new Uint8Array(bytes), {
     status: 200,
     headers: { "Content-Type": "audio/mpeg" },
   });

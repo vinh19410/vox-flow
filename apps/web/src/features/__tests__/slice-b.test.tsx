@@ -297,8 +297,9 @@ describe("SelectScreen", () => {
       }
     }
 
+    // Pass TypedArray instead of jsdom's Blob (which lacks .stream() on Node 22 undici Response).
     const fetchSpy = vi.fn<typeof fetch>(async () =>
-      new Response(new Blob([new Uint8Array([0xff, 0xfb, 0x90, 0x64])], { type: "audio/mpeg" }), {
+      new Response(new Uint8Array([0xff, 0xfb, 0x90, 0x64]), {
         status: 200,
         headers: { "Content-Type": "audio/mpeg" },
       }),
