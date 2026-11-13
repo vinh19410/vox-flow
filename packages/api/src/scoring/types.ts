@@ -28,6 +28,15 @@ export const scoredCriterionSchema = z.object({
 });
 export type ScoredCriterion = z.infer<typeof scoredCriterionSchema>;
 
+/** Client-facing criterion shape returned by `scoring.getResult` (omits `band`/`summary` when locked per D-04). */
+export type PublicScoredCriterion = {
+  key: CriterionKey;
+  band?: number;
+  summary?: string;
+  evidence: ScoredEvidence[];
+  improve: Array<{ from: string; to: string; why: string }>;
+};
+
 export type ScoreStatusResult = {
   attemptId: string;
   status: ScoreStatus;
@@ -47,8 +56,16 @@ export type ScoringResult = {
   /** Server-side exam mode (`full` / `part1` / `part2` / `part3`); present on every current attempt row. */
   mode?: string;
   overall: number;
+  /** Confidence interval `[min, max]` snapped to 0.5 bands from independent grading runs. */
+  range: [number, number];
   oneLiner: string;
-  criteria: ScoredCriterion[];
+  /** True when the caller lacks detail entitlement (D-04 server paywall). */
+  locked: boolean;
+  /** Weakest question identified by `weakestQuestionKey`, or `null` if no answers. */
+  weakestQuestionKey: string | null;
+  retakeOfAttemptId?: string | null;
+  previousOverall?: number | null;
+  criteria: PublicScoredCriterion[];
   answers: Array<{
     questionKey: string;
     questionText: string;

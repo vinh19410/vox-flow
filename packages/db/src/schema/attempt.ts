@@ -21,11 +21,13 @@ export const attempt = sqliteTable(
     submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
     topicId: text("topic_id"),
     questionKey: text("question_key"),
+    retakeOfAttemptId: text("retake_of_attempt_id"),
   },
   (table) => [
     index("attempt_userId_idx").on(table.userId),
     index("attempt_status_idx").on(table.status),
     index("attempt_topicId_idx").on(table.topicId),
+    index("attempt_retakeOfAttemptId_idx").on(table.retakeOfAttemptId),
   ],
 );
 

@@ -1,7 +1,7 @@
 import type { R2Bucket } from "@cloudflare/workers-types";
 import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attempt, attemptAnswer, forecastTopic, user } from "@vox-flow/db";
+import { attempt, attemptAnswer, attemptScore, consentEvent, forecastTopic, user } from "@vox-flow/db";
 import { buildLinkedPromptKey, loadLinkedPrompt, saveLinkedPrompt } from "../exam/linked-prompt-store";
 import { appRouter } from "./index";
 import { createTestDb } from "../test/db";
@@ -1370,6 +1370,282 @@ describe("attemptRouter", () => {
           questionKey: "p1-routine-1",
         });
         expect(storedAfterDelayedInv?.questionText).toBe("Take 2 fresh question referencing black coffee?");
+      } finally {
+        await dispose();
+      }
+    });
+  });
+
+  describe("retakeOf (D-05 weakest question retake)", () => {
+    const setupCaller = (
+      db: Awaited<ReturnType<typeof createTestDb>>["db"],
+      userId: string,
+      email: string,
+    ) =>
+      appRouter.createCaller({
+        db,
+        session: {
+          user: {
+            id: userId,
+            email,
+            name: userId,
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          session: {
+            id: `sess-${userId}`,
+            userId,
+            token: `tok-${userId}`,
+            expiresAt: new Date(Date.now() + 3600000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+        env: {
+          LAUNCH_OPEN: "true",
+        },
+      });
+
+    it("rejects unknown, non-owned, non-done source attempts and parameter mixing", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const now = new Date();
+        await db.insert(user).values([
+          { id: "u-owner", email: "owner@example.com", name: "Owner", emailVerified: true, createdAt: now, updatedAt: now },
+          { id: "u-other", email: "other@example.com", name: "Other", emailVerified: true, createdAt: now, updatedAt: now },
+        ]);
+        await db.insert(consentEvent).values({
+          id: "con-owner",
+          userId: "u-owner",
+          kind: "save",
+          granted: true,
+          createdAt: now,
+        });
+        await db.insert(attempt).values({
+          id: "att-queued",
+          userId: "u-owner",
+          mode: "full",
+          status: "submitted",
+          startedAt: now,
+        });
+        await db.insert(attemptScore).values({
+          attemptId: "att-queued",
+          userId: "u-owner",
+          status: "queued",
+        });
+
+        const ownerCaller = setupCaller(db, "u-owner", "owner@example.com");
+        const otherCaller = setupCaller(db, "u-other", "other@example.com");
+
+        await expect(ownerCaller.attempt.start({ retakeOf: "non-existent" })).rejects.toMatchObject({
+          code: "NOT_FOUND",
+        });
+        await expect(otherCaller.attempt.start({ retakeOf: "att-queued" })).rejects.toMatchObject({
+          code: "FORBIDDEN",
+        });
+        await expect(ownerCaller.attempt.start({ retakeOf: "att-queued" })).rejects.toMatchObject({
+          code: "BAD_REQUEST",
+        });
+        await expect(
+          ownerCaller.attempt.start({ retakeOf: "att-queued", topicId: "p1-tidiness" }),
+        ).rejects.toThrow();
+        await expect(
+          ownerCaller.attempt.start({ retakeOf: "att-queued", mode: "part1" }),
+        ).rejects.toThrow();
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("resolves canonical forecast prompt (ignoring poisoned questionText), handles -f follow-up and archived topics", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const now = new Date();
+        await db.insert(user).values({
+          id: "u-owner",
+          email: "owner@example.com",
+          name: "Owner",
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await db.insert(consentEvent).values({
+          id: "con-owner",
+          userId: "u-owner",
+          kind: "save",
+          granted: true,
+          createdAt: now,
+        });
+        await db.insert(forecastTopic).values({
+          ...PUBLISHED_TOPIC,
+          status: "archived",
+        });
+        await db.insert(attempt).values({
+          id: "att-parent",
+          userId: "u-owner",
+          mode: "part1",
+          status: "submitted",
+          topicId: PUBLISHED_TOPIC.id,
+          startedAt: now,
+        });
+        await db.insert(attemptAnswer).values([
+          {
+            id: "ans-0",
+            attemptId: "att-parent",
+            questionKey: "p1-tidiness-0",
+            questionText: "POISONED QUESTION 0",
+            partNumber: 1,
+            orderIndex: 0,
+            audioKey: "users/u-owner/attempts/att-parent/p1-tidiness-0.1.webm",
+            durationMs: 5000,
+            sizeBytes: 1000,
+            mimeType: "audio/webm",
+          },
+          {
+            id: "ans-1f",
+            attemptId: "att-parent",
+            questionKey: "p1-tidiness-1-f",
+            questionText: "POISONED FOLLOWUP PROMPT",
+            partNumber: 1,
+            orderIndex: 1,
+            audioKey: "users/u-owner/attempts/att-parent/p1-tidiness-1-f.1.webm",
+            durationMs: 6000,
+            sizeBytes: 1000,
+            mimeType: "audio/webm",
+          },
+        ]);
+        await db.insert(attemptScore).values({
+          attemptId: "att-parent",
+          userId: "u-owner",
+          status: "done",
+          overall: 6.0,
+          scoredAt: now,
+          criteriaJson: JSON.stringify([
+            {
+              key: "GRA",
+              band: 5.5,
+              summary: "Cần chú ý chia thì.",
+              evidence: [
+                {
+                  quote: "always tidy",
+                  questionKey: "p1-tidiness-1-f",
+                  where: "Part 1 · Câu 2",
+                  kind: "minus",
+                  note: "Ngắn.",
+                },
+              ],
+              improve: [],
+            },
+          ]),
+        });
+
+        const ownerCaller = setupCaller(db, "u-owner", "owner@example.com");
+        const started = await ownerCaller.attempt.start({ retakeOf: "att-parent" });
+        expect(started).toMatchObject({
+          mode: "part1",
+          topicId: PUBLISHED_TOPIC.id,
+          questionKey: "p1-tidiness-1",
+          part: 1,
+          questionText: "Do you think it is possible for people to be tidy all the time?",
+          retakeOfAttemptId: "att-parent",
+        });
+
+        const [row] = await db.select().from(attempt).where(eq(attempt.id, started.attemptId));
+        expect(row?.retakeOfAttemptId).toBe("att-parent");
+        expect(row?.questionKey).toBe("p1-tidiness-1");
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("resolves canonical mock Part 2 cue card for mock exam retake without client questionText", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const now = new Date();
+        await db.insert(user).values({
+          id: "u-owner",
+          email: "owner@example.com",
+          name: "Owner",
+          emailVerified: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await db.insert(consentEvent).values({
+          id: "con-owner",
+          userId: "u-owner",
+          kind: "save",
+          granted: true,
+          createdAt: now,
+        });
+        await db.insert(attempt).values({
+          id: "att-mock-parent",
+          userId: "u-owner",
+          mode: "full",
+          status: "submitted",
+          topicId: null,
+          startedAt: now,
+        });
+        await db.insert(attemptAnswer).values([
+          {
+            id: "ans-m1",
+            attemptId: "att-mock-parent",
+            questionKey: "p1-1",
+            questionText: "IGNORED",
+            partNumber: 1,
+            orderIndex: 0,
+            audioKey: "users/u-owner/attempts/att-mock-parent/p1-1.1.webm",
+            durationMs: 5000,
+            sizeBytes: 1000,
+            mimeType: "audio/webm",
+          },
+          {
+            id: "ans-m2",
+            attemptId: "att-mock-parent",
+            questionKey: "p2-1",
+            questionText: "POISONED CUE PROMPT",
+            partNumber: 2,
+            orderIndex: 0,
+            audioKey: "users/u-owner/attempts/att-mock-parent/p2-1.1.webm",
+            durationMs: 25000,
+            sizeBytes: 1000,
+            mimeType: "audio/webm",
+          },
+        ]);
+        await db.insert(attemptScore).values({
+          attemptId: "att-mock-parent",
+          userId: "u-owner",
+          status: "done",
+          overall: 5.5,
+          scoredAt: now,
+          criteriaJson: JSON.stringify([
+            {
+              key: "FC",
+              band: 5.5,
+              summary: "Chưa đủ ý.",
+              evidence: [
+                { quote: "helped my friend", questionKey: "p2-1", where: "Part 2 · Câu 1", kind: "minus", note: "Cần thêm chi tiết." },
+              ],
+              improve: [],
+            },
+          ]),
+        });
+
+        const ownerCaller = setupCaller(db, "u-owner", "owner@example.com");
+        const started = await ownerCaller.attempt.start({ retakeOf: "att-mock-parent" });
+        expect(started).toMatchObject({
+          mode: "part2",
+          topicId: null,
+          questionKey: "p2-1",
+          part: 2,
+          questionText: "Describe a time when you helped someone.",
+          cue: {
+            title: "Describe a time when you helped someone.",
+            points: ["who you helped", "how you helped them", "why you helped them"],
+            ending: "and explain how you felt about helping this person.",
+          },
+          retakeOfAttemptId: "att-mock-parent",
+        });
       } finally {
         await dispose();
       }

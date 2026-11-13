@@ -129,7 +129,9 @@ export function useExamSession(): ExamSessionValue {
   const prepPromisesRef = useRef(new Map<number, Promise<void>>());
   const prepAbortControllersRef = useRef(new Map<number, AbortController>());
   const activePrepCleanupsRef = useRef(new Set<() => void>());
-  const practiceKey = s.practice ? `${s.practice.topicId}::${s.practice.singleQuestionId ?? ""}` : "";
+  const practiceKey = s.practice
+    ? `${s.practice.topicId ?? "mock"}::${s.practice.singleQuestionId ?? ""}::${s.practice.attemptId ?? ""}`
+    : "";
   const prevPracticeKeyRef = useRef(practiceKey);
   useEffect(() => {
     if (prevPracticeKeyRef.current !== practiceKey) {
@@ -149,7 +151,9 @@ export function useExamSession(): ExamSessionValue {
       ? s.practice.singleQuestionId
         ? s.practice.items[0]?.part === 3
           ? ("part3" as const)
-          : ("part1" as const)
+          : s.practice.items[0]?.part === 2
+            ? ("part2" as const)
+            : ("part1" as const)
         : s.practice.kind === "p1"
           ? ("part1" as const)
           : ("part2" as const)
@@ -160,9 +164,10 @@ export function useExamSession(): ExamSessionValue {
           : s.mode === "p3"
             ? ("part3" as const)
             : ("full" as const),
-    topicId: s.practice?.topicId,
+    topicId: s.practice?.topicId ?? undefined,
     questionKey: s.practice?.singleQuestionId,
     isPractice: Boolean(s.practice),
+    prestartedAttemptId: s.practice?.attemptId,
   });
 
   const applyAttemptId = (id: string) => {
@@ -184,7 +189,31 @@ export function useExamSession(): ExamSessionValue {
 
   useEffect(() => {
     let active = true;
-    const { examMode, topicId, questionKey, isPractice } = startParamsRef.current;
+    const { examMode, topicId, questionKey, isPractice, prestartedAttemptId } = startParamsRef.current;
+
+    if (prestartedAttemptId) {
+      applyAttemptId(prestartedAttemptId);
+      trpcClient.attempt.getActive
+        .query()
+        .then((activeAttempt) => {
+          if (!active) return;
+          if (activeAttempt?.attempt?.id === prestartedAttemptId && activeAttempt.answers?.length) {
+            const rehydrated: Record<string, ExamAnswer> = {};
+            for (const a of activeAttempt.answers) {
+              rehydrated[a.questionKey] = {
+                secs: Math.round(a.durationMs / 1000),
+                durationMs: a.durationMs,
+                audioKey: a.audioKey,
+              };
+            }
+            setAnswers((prev) => ({ ...rehydrated, ...prev }));
+          }
+        })
+        .catch(() => {});
+      return () => {
+        active = false;
+      };
+    }
 
     // attemptStatus only leaves "pending" when getActive/start settle. A hung
     // request (httpBatchLink has no timeout) would lock submit forever, so fail
@@ -202,7 +231,8 @@ export function useExamSession(): ExamSessionValue {
         const isPracticeMatch = Boolean(
           isPractice &&
             att &&
-            att.topicId === topicId &&
+            !att.retakeOfAttemptId &&
+            att.topicId === (topicId ?? null) &&
             att.questionKey === (questionKey ?? null),
         );
         const isMockMatch = Boolean(!isPractice && att && !att.topicId && !att.questionKey && att.mode === examMode);
@@ -289,7 +319,12 @@ export function useExamSession(): ExamSessionValue {
     }
   };
   const stepAudioUrl = (targetStep: ExamStep): string | undefined => {
-    if (isLinkedPractice && linkedOverrides[targetStep.key] && attemptId) {
+    if (
+      (Boolean(s.practice?.retakeOfAttemptId && practiceTopicId && !targetStep.follow) ||
+        s.practice?.hasLinkedPrompt ||
+        (isLinkedPractice && linkedOverrides[targetStep.key])) &&
+      attemptId
+    ) {
       return buildAttemptTtsUrl(attemptId, voice.id, targetStep.key, targetStep.text);
     }
     if (practiceTopicId) {

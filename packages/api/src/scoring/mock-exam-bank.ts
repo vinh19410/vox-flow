@@ -82,7 +82,7 @@ export const MOCK_MODE_PARTS: Record<string, readonly (1 | 2 | 3)[]> = {
  * follow-ups). Unknown modes return an EMPTY set — fail-closed, so a legacy or
  * unknown `attempt.mode` can never open the upload gate.
  */
-export function getValidMockQuestionKeys(mode: string): Set<string> {
+export function getValidMockQuestionKeys(mode: string, singleQuestionKey?: string | null): Set<string> {
   const parts = MOCK_MODE_PARTS[mode];
   if (!parts || parts.length === 0) return new Set();
   const keys = new Set<string>();
@@ -91,7 +91,34 @@ export function getValidMockQuestionKeys(mode: string): Set<string> {
     keys.add(item.id);
     if (item.followUp) keys.add(`${item.id}-f`);
   }
+  if (singleQuestionKey) {
+    return keys.has(singleQuestionKey) ? new Set([singleQuestionKey]) : new Set();
+  }
   return keys;
+}
+
+export interface MockPromptDetail {
+  part: 1 | 2 | 3;
+  text: string;
+  cue?: { title: string; points: string[]; ending: string };
+}
+
+/** Canonical UI + prompt detail for a single mock question key (main or `-f` follow-up). */
+export function getMockPromptDetail(key: string, mode?: string): MockPromptDetail | null {
+  if (mode !== undefined && !getValidMockQuestionKeys(mode).has(key)) {
+    return null;
+  }
+  const baseId = key.endsWith("-f") ? key.slice(0, -2) : key;
+  const item = MOCK_EXAM_PROMPTS.find((candidate) => candidate.id === baseId);
+  if (!item) return null;
+  if (key.endsWith("-f")) {
+    return item.followUp ? { part: item.part, text: item.followUp.text } : null;
+  }
+  return {
+    part: item.part,
+    text: item.text,
+    ...(item.cue ? { cue: item.cue } : {}),
+  };
 }
 
 /**

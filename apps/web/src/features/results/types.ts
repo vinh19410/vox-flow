@@ -22,7 +22,7 @@ export interface Criterion {
   key: CritKey;
   name: string;
   vi: string;
-  band: number;
+  band: number | null;
   /** Prototype-only confidence range; hidden when absent (real scoring results). */
   range?: [number, number];
   /** Prototype-only independent run bands; hidden when absent. */

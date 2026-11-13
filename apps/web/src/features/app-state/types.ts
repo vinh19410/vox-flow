@@ -27,16 +27,21 @@ export interface QuestionPracticeRecord {
 }
 
 export interface PracticeSession {
-  topicId: string;
+  /** Forecast topic id, or `null` for a single-question mock retake. */
+  topicId: string | null;
   title: string;
   kind: ForecastKind;
   items: ExamItem[];
-  /** When practicing a single question from a forecast topic */
+  /** When practicing a single question from a forecast topic or retake */
   singleQuestionId?: string;
   /** Full list of topic items to resolve next question on Results screen */
   topicItems?: ExamItem[];
-  /** Attempt ID associated with this practice run */
+  /** Attempt ID associated with this practice run (pre-started for retakes) */
   attemptId?: string;
+  /** Parent attempt ID when retaking the weakest question (D-05) */
+  retakeOfAttemptId?: string;
+  /** True when the server copied a personalized linked prompt from the parent attempt */
+  hasLinkedPrompt?: boolean;
 }
 
 /** Scorable attempt handed from the exam to the scoring screen. */

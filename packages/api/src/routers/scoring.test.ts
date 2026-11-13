@@ -1,8 +1,10 @@
 import type { R2Bucket } from "@cloudflare/workers-types";
 import { eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { attempt, attemptAnswer, attemptScore, scoringRetryLog, user } from "@vox-flow/db/schema";
+import { attempt, attemptAnswer, attemptScore, scoreRun, scoringRetryLog, user } from "@vox-flow/db/schema";
+
+import * as entitlements from "../entitlements";
 
 import { type LinkedPromptBucket, saveLinkedPrompt } from "../exam/linked-prompt-store";
 import { SCORING_ENQUEUE_DELAY_SECONDS, type ScoringQueue } from "../scoring/queue";
@@ -83,6 +85,7 @@ describe("scoringRouter", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await ctx.dispose();
   });
 
@@ -430,6 +433,19 @@ describe("scoringRouter", () => {
       ]);
     });
 
+    const makeScoreRunRow = (id: string, attemptId: string, runIndex: number, overall: number) => ({
+      id,
+      attemptId,
+      runIndex,
+      fc: overall,
+      lr: overall,
+      gra: overall,
+      p: overall,
+      overall,
+      payloadJson: "{}",
+      model: "gpt-6-luna",
+    });
+
     it("returns null until the score is done", async () => {
       const caller = callerFor("owner");
       await expect(caller.scoring.getResult({ attemptId: "att-forecast" })).resolves.toBeNull();
@@ -442,7 +458,8 @@ describe("scoringRouter", () => {
       }
     });
 
-    it("returns the result with answers ordered by part and order, without run data", async () => {
+    it("returns the unlocked result with answers ordered by part and order when canViewDetail is true", async () => {
+      vi.spyOn(entitlements, "canViewDetail").mockResolvedValueOnce(true);
       const scoredAt = new Date("2026-11-10T03:00:00.000Z");
       await ctx.db.insert(attemptScore).values({
         attemptId: "att-forecast",
@@ -462,7 +479,12 @@ describe("scoringRouter", () => {
         topicId: "topic-1",
         mode: "part1",
         overall: 6.5,
+        range: [6.5, 6.5],
         oneLiner: "Khá tốt",
+        locked: false,
+        weakestQuestionKey: "p1-1",
+        retakeOfAttemptId: null,
+        previousOverall: null,
         criteria: CRITERIA,
         answers: [
           { questionKey: "p1-1", questionText: "First", partNumber: 1, durationMs: 8000, transcript: "First answer" },
@@ -477,6 +499,116 @@ describe("scoringRouter", () => {
         ],
         scoredAt: scoredAt.getTime(),
       });
+    });
+
+    it("derives confidence range from stored score_run overalls without exposing raw runs", async () => {
+      const scoredAt = new Date("2026-11-10T03:00:00.000Z");
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-forecast",
+        userId: "owner",
+        status: "done",
+        overall: 6.5,
+        criteriaJson: JSON.stringify(CRITERIA),
+        oneLiner: "Khá tốt",
+        scoredAt,
+      });
+      await ctx.db.insert(scoreRun).values([
+        makeScoreRunRow("r0", "att-forecast", 0, 7.0),
+        makeScoreRunRow("r1", "att-forecast", 1, 6.0),
+        makeScoreRunRow("r2", "att-forecast", 2, 6.5),
+      ]);
+
+      const result = await callerFor("owner").scoring.getResult({ attemptId: "att-forecast" });
+      expect(result?.range).toEqual([6.0, 7.0]);
+      expect(result && "runs" in result).toBe(false);
+    });
+
+    it("enforces D-04 server paywall for free users: strips bands, summaries, other evidence, other improve items, and other transcripts", async () => {
+      const scoredAt = new Date("2026-11-10T03:00:00.000Z");
+      const detailedCriteria: ScoredCriterion[] = [
+        {
+          key: "FC",
+          band: 7,
+          summary: "Nói trôi chảy.",
+          evidence: [
+            { quote: "First answer", questionKey: "p1-1", where: "Part 1 · Câu 1", kind: "plus", note: "Tốt." },
+          ],
+          improve: [{ from: "First answer", to: "My opening point", why: "Tự nhiên hơn." }],
+        },
+        {
+          key: "LR",
+          band: 6,
+          summary: "Từ vựng còn lặp.",
+          evidence: [
+            { quote: "Part two", questionKey: "p2-1", where: "Part 2 · Câu 1", kind: "minus", note: "Cần mở rộng." },
+          ],
+          improve: [{ from: '"Part two answer"', to: "In my experience, that place", why: "Mở bài cụ thể." }],
+        },
+        {
+          key: "GRA",
+          band: 5.5,
+          summary: "Cần thêm câu phức.",
+          evidence: [
+            { quote: "answer", questionKey: "p2-1", where: "Part 2 · Câu 1", kind: "minus", note: "Câu ngắn." },
+          ],
+          improve: [],
+        },
+        {
+          key: "P",
+          band: 6,
+          summary: "Phát âm rõ.",
+          evidence: [],
+          improve: [],
+        },
+      ];
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-forecast",
+        userId: "owner",
+        status: "done",
+        overall: 6.0,
+        criteriaJson: JSON.stringify(detailedCriteria),
+        oneLiner: "Cần mở rộng ý ở Part 2.",
+        scoredAt,
+      });
+      await ctx.db.insert(scoreRun).values([
+        makeScoreRunRow("r0", "att-forecast", 0, 5.5),
+        makeScoreRunRow("r1", "att-forecast", 1, 6.0),
+        makeScoreRunRow("r2", "att-forecast", 2, 6.5),
+      ]);
+
+      const result = await callerFor("owner").scoring.getResult({ attemptId: "att-forecast" });
+      expect(result).not.toBeNull();
+      expect(result?.locked).toBe(true);
+      expect(result?.overall).toBe(6.0);
+      expect(result?.range).toEqual([5.5, 6.5]);
+      expect(result?.oneLiner).toBe("Cần mở rộng ý ở Part 2.");
+      expect(result?.weakestQuestionKey).toBe("p2-1");
+
+      // Criteria must omit `band` and `summary` keys completely and keep ONLY weakest question items
+      for (const criterion of result!.criteria) {
+        expect("band" in criterion).toBe(false);
+        expect("summary" in criterion).toBe(false);
+        for (const ev of criterion.evidence) {
+          expect(ev.questionKey).toBe("p2-1");
+        }
+      }
+      expect(result!.criteria.find((c) => c.key === "FC")?.evidence).toEqual([]);
+      expect(result!.criteria.find((c) => c.key === "FC")?.improve).toEqual([]);
+      expect(result!.criteria.find((c) => c.key === "LR")?.evidence).toHaveLength(1);
+      expect(result!.criteria.find((c) => c.key === "LR")?.improve).toEqual([
+        { from: '"Part two answer"', to: "In my experience, that place", why: "Mở bài cụ thể." },
+      ]);
+
+      // Answers must contain ONLY the weakest question
+      expect(result!.answers).toEqual([
+        {
+          questionKey: "p2-1",
+          questionText: "Describe a place",
+          partNumber: 2,
+          durationMs: 60000,
+          transcript: "Part two answer",
+        },
+      ]);
     });
 
     it("returns the attempt mode for mock exam results (topicId null)", async () => {
@@ -504,6 +636,7 @@ describe("scoringRouter", () => {
     });
 
     it("overlays server-stored R2 linked questionText over attemptAnswer.questionText", async () => {
+      vi.spyOn(entitlements, "canViewDetail").mockResolvedValueOnce(true);
       const store = new Map<string, string>();
       const bucket: LinkedPromptBucket = {
         async put(key, value) {
@@ -548,6 +681,55 @@ describe("scoringRouter", () => {
       expect(result?.answers.find((a) => a.questionKey === "p1-2")?.questionText).toBe("Linked Second from R2?");
       expect(result?.answers.find((a) => a.questionKey === "p1-1")?.questionText).toBe("First");
     });
+
+    it("returns retakeOfAttemptId and previousOverall when parent attempt is owned and done", async () => {
+      const scoredAt = new Date("2026-11-10T04:00:00.000Z");
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-forecast",
+        userId: "owner",
+        status: "done",
+        overall: 5.5,
+        criteriaJson: JSON.stringify(CRITERIA),
+        oneLiner: "Gốc",
+        scoredAt,
+      });
+      await ctx.db.insert(attempt).values({
+        id: "att-retake",
+        userId: "owner",
+        mode: "part1",
+        status: "submitted",
+        topicId: "p1-tidiness",
+        questionKey: "p1-2",
+        retakeOfAttemptId: "att-forecast",
+      });
+      await ctx.db.insert(attemptAnswer).values({
+        id: "ans-retake",
+        attemptId: "att-retake",
+        questionKey: "p1-2",
+        questionText: "Second",
+        partNumber: 1,
+        orderIndex: 1,
+        audioKey: "users/owner/attempts/att-retake/p1-2.1.webm",
+        durationMs: 12000,
+        sizeBytes: 3000,
+        mimeType: "audio/webm",
+        transcript: "Much better answer",
+      });
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-retake",
+        userId: "owner",
+        status: "done",
+        overall: 6.5,
+        criteriaJson: JSON.stringify(CRITERIA),
+        oneLiner: "Cải thiện rõ",
+        scoredAt,
+      });
+
+      const result = await callerFor("owner").scoring.getResult({ attemptId: "att-retake" });
+      expect(result?.retakeOfAttemptId).toBe("att-forecast");
+      expect(result?.previousOverall).toBe(5.5);
+      expect(result?.overall).toBe(6.5);
+    });
   });
 });
 
@@ -562,6 +744,7 @@ describe("attempt.submit scoring enqueue", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await ctx.dispose();
   });
 

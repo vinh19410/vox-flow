@@ -3,14 +3,18 @@ import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "@vox-flow/db";
-import { attempt, attemptAnswer, attemptScore, scoringRetryLog } from "@vox-flow/db/schema";
+import { attempt, attemptAnswer, attemptScore, scoreRun, scoringRetryLog } from "@vox-flow/db/schema";
 
+import { canViewDetail } from "../entitlements";
 import { loadLinkedPrompt } from "../exam/linked-prompt-store";
 import { protectedProcedure, router } from "../index";
+import { confidenceRange, snapToHalfBand, weakestQuestionKey } from "../scoring/aggregate";
+import { cleanQuote, isVerbatimQuote } from "../scoring/prompt";
 import { startOfVietnamDayMs } from "../scoring/retry-limits";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
 import {
   scoredCriterionSchema,
+  type PublicScoredCriterion,
   type ScoreStatusResult,
   type ScoringResult,
 } from "../scoring/types";
@@ -54,7 +58,7 @@ async function countDailyRetries(db: Database, userId: string, nowMs: number) {
   return row?.count ?? 0;
 }
 
-// Per-run data, ranges and errors are deliberately never returned to the learner.
+// Per-run raw scores/errors stay server-only; only aggregate confidence range is exposed per D-04.
 export const scoringRouter = router({
   status: protectedProcedure
     .input(attemptInput)
@@ -216,9 +220,32 @@ export const scoringRouter = router({
         .where(eq(attemptAnswer.attemptId, input.attemptId))
         .orderBy(asc(attemptAnswer.partNumber), asc(attemptAnswer.orderIndex));
 
+      const runRows = await ctx.db
+        .select({ overall: scoreRun.overall })
+        .from(scoreRun)
+        .where(eq(scoreRun.attemptId, input.attemptId))
+        .orderBy(asc(scoreRun.runIndex));
+      const finiteRunOveralls = runRows.map((r) => r.overall).filter((v) => Number.isFinite(v));
+      const fallbackOverall = Number.isFinite(score.overall) ? snapToHalfBand(score.overall) : 0;
+      const range: [number, number] =
+        finiteRunOveralls.length > 0
+          ? confidenceRange(finiteRunOveralls)
+          : [fallbackOverall, fallbackOverall];
+
+      const weakestKey = weakestQuestionKey(criteria.data, answers);
+      const unlocked = await canViewDetail(ctx.db, ctx.session.user.id, input.attemptId);
+      const locked = !unlocked;
+
+      // Filter answers before R2 lookup so locked attempts neither fetch nor leak other questions.
+      const visibleRawAnswers = locked
+        ? weakestKey
+          ? answers.filter((a) => a.questionKey === weakestKey)
+          : []
+        : answers;
+
       const bucket = owned.topicId ? ctx.env?.AUDIO_BUCKET : undefined;
       const resolvedAnswers = await Promise.all(
-        answers.map(async (a) => {
+        visibleRawAnswers.map(async (a) => {
           const linked = bucket
             ? await loadLinkedPrompt(bucket, {
                 userId: ctx.session.user.id,
@@ -234,13 +261,48 @@ export const scoringRouter = router({
         }),
       );
 
+      const weakestTranscript = visibleRawAnswers[0]?.transcript ?? "";
+      const publicCriteria: PublicScoredCriterion[] = locked
+        ? criteria.data.map((c) => ({
+            key: c.key,
+            evidence: weakestKey ? c.evidence.filter((e) => e.questionKey === weakestKey) : [],
+            improve:
+              weakestKey && weakestTranscript
+                ? c.improve.filter((im) => isVerbatimQuote(cleanQuote(im.from), weakestTranscript))
+                : [],
+          }))
+        : criteria.data;
+
+      let previousOverall: number | null = null;
+      if (owned.retakeOfAttemptId) {
+        const [parentScore] = await ctx.db
+          .select({ overall: attemptScore.overall })
+          .from(attemptScore)
+          .where(
+            and(
+              eq(attemptScore.attemptId, owned.retakeOfAttemptId),
+              eq(attemptScore.userId, ctx.session.user.id),
+              eq(attemptScore.status, "done"),
+            ),
+          )
+          .limit(1);
+        if (typeof parentScore?.overall === "number" && Number.isFinite(parentScore.overall)) {
+          previousOverall = parentScore.overall;
+        }
+      }
+
       return {
         attemptId: input.attemptId,
         topicId: owned.topicId,
         mode: owned.mode,
         overall: score.overall,
+        range,
         oneLiner: score.oneLiner ?? "",
-        criteria: criteria.data,
+        locked,
+        weakestQuestionKey: weakestKey,
+        retakeOfAttemptId: owned.retakeOfAttemptId ?? null,
+        previousOverall,
+        criteria: publicCriteria,
         answers: resolvedAnswers,
         scoredAt: score.scoredAt.getTime(),
       };

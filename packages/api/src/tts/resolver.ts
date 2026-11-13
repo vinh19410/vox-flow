@@ -57,6 +57,7 @@ export async function resolveForecastQuestionDetail(
   db: Database,
   topicId: string,
   questionKey: string,
+  options?: { allowArchived?: boolean },
 ): Promise<ForecastQuestionDetail | null> {
   if (!topicId || !questionKey) {
     return null;
@@ -75,7 +76,9 @@ export async function resolveForecastQuestionDetail(
     .limit(1);
 
   const topic = rows[0];
-  if (!topic || topic.status !== "published") {
+  const allowedStatus =
+    topic?.status === "published" || (Boolean(options?.allowArchived) && topic?.status === "archived");
+  if (!topic || !allowedStatus) {
     return null;
   }
 
@@ -115,8 +118,9 @@ export async function resolveForecastTtsText(
   db: Database,
   topicId: string,
   questionKey: string,
+  options?: { allowArchived?: boolean },
 ): Promise<string | null> {
-  const detail = await resolveForecastQuestionDetail(db, topicId, questionKey);
+  const detail = await resolveForecastQuestionDetail(db, topicId, questionKey, options);
   return detail?.text ?? null;
 }
 
