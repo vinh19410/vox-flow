@@ -1,47 +1,84 @@
 import { attempt, attemptAnswer, scoreDispute, user } from "@vox-flow/db/schema";
 import { TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createTestDb, type TestDbContext } from "../test/db";
 import { appRouter } from "./index";
 
+const fixtureTimestamp = new Date("2026-11-05T12:00:00.000Z");
+
+const adminUser = {
+  id: "usr_admin_owner",
+  name: "Product Owner",
+  email: "owner@voxflow.ai",
+  emailVerified: false,
+  image: null,
+  createdAt: fixtureTimestamp,
+  updatedAt: fixtureTimestamp,
+};
+
+const studentUser1 = {
+  id: "usr_student_alpha",
+  name: "Student Alpha",
+  email: "alpha@example.com",
+  emailVerified: false,
+  image: null,
+  createdAt: fixtureTimestamp,
+  updatedAt: fixtureTimestamp,
+};
+
+const studentUser2 = {
+  id: "usr_student_beta",
+  name: "Student Beta",
+  email: "beta@example.com",
+  emailVerified: false,
+  image: null,
+  createdAt: fixtureTimestamp,
+  updatedAt: fixtureTimestamp,
+};
+
+const mockEnv = {
+  ADMIN_EMAILS: "owner@voxflow.ai, admin-backup@voxflow.ai",
+  SCORE_DISPUTE_ENABLED: "true",
+};
+
+function createCallerWithDb(
+  db: TestDbContext["db"],
+  u: typeof adminUser | null,
+  env: { ADMIN_EMAILS?: string; SCORE_DISPUTE_ENABLED?: string } | undefined = mockEnv,
+  now?: () => Date,
+) {
+  return appRouter.createCaller({
+    db,
+    env,
+    now,
+    session: u
+      ? {
+          session: {
+            id: `sess_${u.id}`,
+            userId: u.id,
+            expiresAt: new Date(fixtureTimestamp.getTime() + 3600 * 1000),
+            createdAt: fixtureTimestamp,
+            updatedAt: fixtureTimestamp,
+            token: `tok_${u.id}`,
+          },
+          user: {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            emailVerified: u.emailVerified,
+            image: u.image,
+            createdAt: u.createdAt,
+            updatedAt: u.updatedAt,
+          },
+        }
+      : null,
+  });
+}
+
 describe("dispute-admin router", () => {
   let testCtx: TestDbContext;
-
-  const adminUser = {
-    id: "usr_admin_owner",
-    name: "Product Owner",
-    email: "owner@voxflow.ai",
-    emailVerified: false,
-    image: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const studentUser1 = {
-    id: "usr_student_alpha",
-    name: "Student Alpha",
-    email: "alpha@example.com",
-    emailVerified: false,
-    image: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const studentUser2 = {
-    id: "usr_student_beta",
-    name: "Student Beta",
-    email: "beta@example.com",
-    emailVerified: false,
-    image: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockEnv = {
-    ADMIN_EMAILS: "owner@voxflow.ai, admin-backup@voxflow.ai",
-    SCORE_DISPUTE_ENABLED: "true",
-  };
 
   beforeAll(async () => {
     testCtx = await createTestDb();
@@ -57,32 +94,9 @@ describe("dispute-admin router", () => {
   function createCaller(
     u: typeof adminUser | null,
     env: { ADMIN_EMAILS?: string; SCORE_DISPUTE_ENABLED?: string } | undefined = mockEnv,
+    now?: () => Date,
   ) {
-    return appRouter.createCaller({
-      db: testCtx.db,
-      env,
-      session: u
-        ? {
-            session: {
-              id: `sess_${u.id}`,
-              userId: u.id,
-              expiresAt: new Date(Date.now() + 3600 * 1000),
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              token: `tok_${u.id}`,
-            },
-            user: {
-              id: u.id,
-              name: u.name,
-              email: u.email,
-              emailVerified: u.emailVerified,
-              image: u.image,
-              createdAt: u.createdAt,
-              updatedAt: u.updatedAt,
-            },
-          }
-        : null,
-    });
+    return createCallerWithDb(testCtx.db, u, env, now);
   }
 
   describe("checkAdmin and authentication guard", () => {
@@ -185,7 +199,7 @@ describe("dispute-admin router", () => {
     });
 
     it("queue sorts disputes by dueAt ascending and marks nearOverdue", async () => {
-      const adminCaller = createCaller(adminUser);
+      const adminCaller = createCaller(adminUser, mockEnv, () => baseNow);
       const queue = await adminCaller.disputeAdmin.queue();
 
       expect(queue.length).toBeGreaterThanOrEqual(2);
@@ -197,8 +211,13 @@ describe("dispute-admin router", () => {
 
       const nearOverdueItem = queue[index10h]!;
       expect(nearOverdueItem.isNearOverdue).toBe(true);
+      expect(nearOverdueItem.isOverdue).toBe(false);
       expect(nearOverdueItem.studentName).toBe("Student Beta");
       expect(nearOverdueItem.shareConsent).toBe(false);
+
+      const notDueYetItem = queue[index48h]!;
+      expect(notDueYetItem.isNearOverdue).toBe(false);
+      expect(notDueYetItem.isOverdue).toBe(false);
     });
 
     it("getCase provides playable audioUrl ONLY when student consented", async () => {
@@ -222,7 +241,8 @@ describe("dispute-admin router", () => {
 
   describe("resolve and metrics procedures", () => {
     it("resolves a dispute with updated band and retains previous band", async () => {
-      const adminCaller = createCaller(adminUser);
+      const resolveNow = new Date("2026-11-06T12:00:00.000Z");
+      const adminCaller = createCaller(adminUser, mockEnv, () => resolveNow);
 
       const resolveRes = await adminCaller.disputeAdmin.resolve({
         id: "disp_case_consent",
@@ -236,7 +256,7 @@ describe("dispute-admin router", () => {
       expect(resolveRes.dispute!.status).toBe("resolved");
       expect(resolveRes.dispute!.previousBand).toBe("6.0");
       expect(resolveRes.dispute!.resolvedBand).toBe("6.5");
-      expect(resolveRes.dispute!.resolvedAt).toBeDefined();
+      expect(resolveRes.dispute!.resolvedAt).toEqual(resolveNow);
 
       // Student can observe the resolved reply via dispute.get
       const studentCaller = createCaller(studentUser1);
@@ -263,13 +283,275 @@ describe("dispute-admin router", () => {
     });
 
     it("computes accurate operational metrics (on-time rate and weekly volume)", async () => {
-      const adminCaller = createCaller(adminUser);
+      const metricsNow = new Date("2026-11-06T12:00:00.000Z");
+      const adminCaller = createCaller(adminUser, mockEnv, () => metricsNow);
       const metrics = await adminCaller.disputeAdmin.metrics();
 
       expect(metrics.totalCount).toBeGreaterThanOrEqual(2);
       expect(metrics.resolvedCount).toBeGreaterThanOrEqual(1);
-      expect(metrics.onTimeRate).toBeGreaterThanOrEqual(0);
+      expect(metrics.onTimeRate).toBe(100);
       expect(metrics.weeklyCount).toBeGreaterThanOrEqual(2);
+      expect(metrics.nearOverdueCount).toBeGreaterThanOrEqual(1);
     });
   });
+});
+
+describe("dispute-admin clock boundary behavior", () => {
+  const T0 = new Date("2026-11-05T12:00:00.000Z");
+  const SEVEN_DAYS_MS = 7 * 24 * 3600 * 1000;
+  const TWELVE_HOURS_MS = 12 * 3600 * 1000;
+
+  it("metrics weeklyCount includes disputes at exactly 7 days and excludes 7 days + 1ms", async () => {
+    let isolated: TestDbContext | undefined;
+    try {
+      isolated = await createTestDb();
+      await isolated.db.insert(user).values([adminUser, studentUser1]);
+      await isolated.db.insert(attempt).values({
+        id: "att_weekly_boundary",
+        userId: studentUser1.id,
+        mode: "full",
+        status: "submitted",
+        submittedAt: T0,
+      });
+      await isolated.db.insert(scoreDispute).values({
+        id: "disp_weekly_boundary",
+        attemptId: "att_weekly_boundary",
+        userId: studentUser1.id,
+        targetCriterion: "FC",
+        expectedBand: "6.5",
+        status: "open",
+        dueAt: new Date(T0.getTime() + 72 * 3600 * 1000),
+        createdAt: T0,
+      });
+
+      const atSevenDays = new Date(T0.getTime() + SEVEN_DAYS_MS);
+      const callerAtBoundary = createCallerWithDb(isolated.db, adminUser, mockEnv, () => atSevenDays);
+      const metricsAtBoundary = await callerAtBoundary.disputeAdmin.metrics();
+      expect(metricsAtBoundary.weeklyCount).toBe(1);
+
+      const pastSevenDays = new Date(T0.getTime() + SEVEN_DAYS_MS + 1);
+      const callerPastBoundary = createCallerWithDb(
+        isolated.db,
+        adminUser,
+        mockEnv,
+        () => pastSevenDays,
+      );
+      const metricsPastBoundary = await callerPastBoundary.disputeAdmin.metrics();
+      expect(metricsPastBoundary.weeklyCount).toBe(0);
+    } finally {
+      await isolated?.dispose();
+    }
+  }, 15_000);
+
+  it("metrics onTimeRate counts resolvedAt === dueAt as on-time and dueAt + 1ms as late via resolve", async () => {
+    let isolated: TestDbContext | undefined;
+    try {
+      isolated = await createTestDb();
+      await isolated.db.insert(user).values([adminUser, studentUser1, studentUser2]);
+      await isolated.db.insert(attempt).values([
+        {
+          id: "att_ontime_exact",
+          userId: studentUser1.id,
+          mode: "full",
+          status: "submitted",
+          submittedAt: T0,
+        },
+        {
+          id: "att_ontime_late",
+          userId: studentUser2.id,
+          mode: "full",
+          status: "submitted",
+          submittedAt: T0,
+        },
+      ]);
+
+      const dueAt = new Date(T0.getTime() + 72 * 3600 * 1000);
+      await isolated.db.insert(scoreDispute).values([
+        {
+          id: "disp_ontime_exact",
+          attemptId: "att_ontime_exact",
+          userId: studentUser1.id,
+          targetCriterion: "FC",
+          expectedBand: "6.5",
+          status: "open",
+          dueAt,
+          createdAt: T0,
+        },
+        {
+          id: "disp_ontime_late",
+          attemptId: "att_ontime_late",
+          userId: studentUser2.id,
+          targetCriterion: "LR",
+          expectedBand: "7.0",
+          status: "open",
+          dueAt,
+          createdAt: T0,
+        },
+      ]);
+
+      const onTimeCaller = createCallerWithDb(isolated.db, adminUser, mockEnv, () => dueAt);
+      const resOnTime = await onTimeCaller.disputeAdmin.resolve({
+        id: "disp_ontime_exact",
+        status: "resolved",
+        resolvedBand: "6.5",
+        replyText: "Resolved exactly at deadline",
+      });
+      expect(resOnTime.dispute.resolvedAt).toEqual(dueAt);
+
+      const lateNow = new Date(dueAt.getTime() + 1);
+      const lateCaller = createCallerWithDb(isolated.db, adminUser, mockEnv, () => lateNow);
+      const resLate = await lateCaller.disputeAdmin.resolve({
+        id: "disp_ontime_late",
+        status: "resolved",
+        resolvedBand: "7.0",
+        replyText: "Resolved 1ms past deadline",
+      });
+      expect(resLate.dispute.resolvedAt).toEqual(lateNow);
+
+      const metricsCaller = createCallerWithDb(
+        isolated.db,
+        adminUser,
+        mockEnv,
+        () => new Date(dueAt.getTime() + 1000),
+      );
+      const metrics = await metricsCaller.disputeAdmin.metrics();
+      expect(metrics.resolvedCount).toBe(2);
+      expect(metrics.onTimeRate).toBe(50);
+    } finally {
+      await isolated?.dispose();
+    }
+  }, 15_000);
+
+  it("queue evaluates isNearOverdue (< 12h) and isOverdue (< now) boundaries deterministically", async () => {
+    let isolated: TestDbContext | undefined;
+    try {
+      isolated = await createTestDb();
+      await isolated.db.insert(user).values([adminUser, studentUser1]);
+
+      const queryNow = new Date("2026-11-06T12:00:00.000Z");
+      await isolated.db.insert(attempt).values([
+        { id: "att_q_12h", userId: studentUser1.id, mode: "full", status: "submitted", submittedAt: T0 },
+        { id: "att_q_near", userId: studentUser1.id, mode: "full", status: "submitted", submittedAt: T0 },
+        { id: "att_q_exact", userId: studentUser1.id, mode: "full", status: "submitted", submittedAt: T0 },
+        { id: "att_q_late", userId: studentUser1.id, mode: "full", status: "submitted", submittedAt: T0 },
+      ]);
+
+      await isolated.db.insert(scoreDispute).values([
+        {
+          id: "disp_q_12h",
+          attemptId: "att_q_12h",
+          userId: studentUser1.id,
+          targetCriterion: "FC",
+          expectedBand: "6.5",
+          status: "open",
+          warnedAt: null,
+          dueAt: new Date(queryNow.getTime() + TWELVE_HOURS_MS),
+          createdAt: T0,
+        },
+        {
+          id: "disp_q_near",
+          attemptId: "att_q_near",
+          userId: studentUser1.id,
+          targetCriterion: "FC",
+          expectedBand: "6.5",
+          status: "open",
+          warnedAt: null,
+          dueAt: new Date(queryNow.getTime() + TWELVE_HOURS_MS - 1),
+          createdAt: T0,
+        },
+        {
+          id: "disp_q_exact",
+          attemptId: "att_q_exact",
+          userId: studentUser1.id,
+          targetCriterion: "FC",
+          expectedBand: "6.5",
+          status: "open",
+          warnedAt: null,
+          dueAt: queryNow,
+          createdAt: T0,
+        },
+        {
+          id: "disp_q_late",
+          attemptId: "att_q_late",
+          userId: studentUser1.id,
+          targetCriterion: "FC",
+          expectedBand: "6.5",
+          status: "open",
+          warnedAt: null,
+          dueAt: new Date(queryNow.getTime() - 1),
+          createdAt: T0,
+        },
+      ]);
+
+      const caller = createCallerWithDb(isolated.db, adminUser, mockEnv, () => queryNow);
+      const queue = await caller.disputeAdmin.queue();
+      const byId = new Map(queue.map((item) => [item.id, item]));
+
+      expect(byId.get("disp_q_12h")).toMatchObject({ isNearOverdue: false, isOverdue: false });
+      expect(byId.get("disp_q_near")).toMatchObject({ isNearOverdue: true, isOverdue: false });
+      expect(byId.get("disp_q_exact")).toMatchObject({ isNearOverdue: true, isOverdue: false });
+      expect(byId.get("disp_q_late")).toMatchObject({ isNearOverdue: true, isOverdue: true });
+    } finally {
+      await isolated?.dispose();
+    }
+  }, 15_000);
+
+  it("rejects invalid Context.now dates fail-closed with INTERNAL_SERVER_ERROR", async () => {
+    let isolated: TestDbContext | undefined;
+    try {
+      isolated = await createTestDb();
+      await isolated.db.insert(user).values([adminUser, studentUser1]);
+      await isolated.db.insert(attempt).values({
+        id: "att_invalid_clock",
+        userId: studentUser1.id,
+        mode: "full",
+        status: "submitted",
+        submittedAt: T0,
+      });
+      await isolated.db.insert(scoreDispute).values({
+        id: "disp_invalid_clock",
+        attemptId: "att_invalid_clock",
+        userId: studentUser1.id,
+        targetCriterion: "GRA",
+        expectedBand: "7.0",
+        status: "open",
+        dueAt: new Date(T0.getTime() + 72 * 3600 * 1000),
+        createdAt: T0,
+      });
+
+      const invalidCaller = createCallerWithDb(
+        isolated.db,
+        adminUser,
+        mockEnv,
+        () => new Date(Number.NaN),
+      );
+
+      await expect(invalidCaller.disputeAdmin.queue()).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
+      await expect(invalidCaller.disputeAdmin.metrics()).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
+      await expect(
+        invalidCaller.disputeAdmin.resolve({
+          id: "disp_invalid_clock",
+          status: "resolved",
+          resolvedBand: "7.0",
+          replyText: "Should fail closed on invalid clock",
+        }),
+      ).rejects.toMatchObject({
+        code: "INTERNAL_SERVER_ERROR",
+      });
+
+      const [persisted] = await isolated.db
+        .select()
+        .from(scoreDispute)
+        .where(eq(scoreDispute.id, "disp_invalid_clock"))
+        .limit(1);
+      expect(persisted?.status).toBe("open");
+      expect(persisted?.resolvedAt).toBeNull();
+    } finally {
+      await isolated?.dispose();
+    }
+  }, 15_000);
 });
