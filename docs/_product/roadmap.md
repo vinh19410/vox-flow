@@ -1,7 +1,7 @@
 ---
 type: roadmap
 status: active
-updated: 2026-11-05
+updated: 2026-11-13
 format: now-next-later
 replaces: docs/roadmap-chamro.md
 replaced_at: 2026-11-05
@@ -143,20 +143,21 @@ graph LR
 ## 7. Câu hỏi mở
 
 > **Ghi chú liên kết nguồn đơn (Single Source of Truth):**
-> Trạng thái chi tiết của các câu hỏi mở OQ-5 (chọn dịch vụ nhận dạng giọng nói + AI) và OQ-6 (tư vấn luật sư về chuyển audio ra nước ngoài) đang được duy trì và cập nhật trực tiếp tại `docs/roadmap-chamro.md#7-câu-hỏi-mở` cho tới khi issue #7 và #8 đóng.
+> Trạng thái chi tiết của câu hỏi mở OQ-6 (tư vấn luật sư về chuyển audio ra nước ngoài) đang được duy trì và cập nhật trực tiếp tại `docs/roadmap-chamro.md#7-câu-hỏi-mở` cho tới khi issue #8 đóng.
 > 
 > **Tóm tắt các câu hỏi đã chốt:**
 > - **OQ-1:** 3 điểm/ngày cho học viên miễn phí, trần hệ thống ~33.000đ/ngày.
 > - **OQ-2:** Công cụ admin đề forecast do PO trực tiếp vận hành từ 3 nguồn.
 > - **OQ-3:** Nhắc luyện tối đa 1 lần/ngày qua email/push.
 > - **OQ-4:** PO trực tiếp xử lý báo lỗi chấm điểm trong 72 giờ, đưa bản tối thiểu lên Next.
-> - **OQ-5 & OQ-6:** Đang chờ thực hiện tại #7 và #8.
+> - **OQ-5:** Đã chốt ngày 2026-11-13 (#7 đã đóng): dùng pipeline chấm nội bộ hiện hành (`whisper-1` + 3 lượt `gpt-6-luna` trung vị) làm chính, chuyển sang tự eval và hiệu chuẩn dần trên dữ liệu dự án tại #154 (`docs/decisions/scoring-self-eval.md`).
+> - **OQ-6:** Đang chờ thực hiện tại #8.
 
 ---
 
 ## 8. Bước tiếp theo
 
-1. Thử nghiệm chấm 30 bài mẫu và chốt OQ-5 (#7) để xác định dịch vụ giọng nói và chi phí AI thực tế.
+1. Theo dõi và triển khai vòng lặp tự eval & hiệu chuẩn chấm điểm trên dữ liệu dự án tại #154 (Next / Later) khi có dữ liệu thực tế từ `score_run`, `score_dispute`, `real-band-report`.
 2. Tư vấn luật sư về Nghị định 356/2025 và Luật 91/2025/QH15 tại OQ-6 (#8) để hoàn thiện hồ sơ chuyển dữ liệu âm thanh.
 3. Kiểm chứng mức sẵn lòng trả cho `billing` (#9).
 4. Viết tài liệu SRS cho từng tính năng của vòng lõi (bắt đầu từ `mock-exam` và `onboarding`).

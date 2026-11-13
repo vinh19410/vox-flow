@@ -1,7 +1,7 @@
 ---
 type: roadmap-work-items
 status: draft
-updated: 2026-11-11
+updated: 2026-11-13
 links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.md, docs/roadmap-chamro.md]
 ---
 
@@ -15,7 +15,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 |---|---|---|---|---|---|---|
 | 01 | Clone UI prototype vào `apps/web` | Nền | ✅ | [#1](https://github.com/vinh19410/vox-flow/issues/1) (đã đóng) | – | PR #2 đã merge vào `dev` (`ee91229`). Vẫn còn dữ liệu giả ở bản prototype gốc (đã thay dần ở các issue sau). |
 | 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | ✅ | [#6](https://github.com/vinh19410/vox-flow/issues/6) (đã đóng) | – | PR #32 đã merge vào `dev` (`a09b69a`). Đã chốt 12 quyết định tại `docs/product-decisions.md`, dựng lại PRD và roadmap chính thức tại `docs/_product/`. Mở khóa việc viết SRS. |
-| 03 | Thử chấm 30 bài mẫu, chọn dịch vụ giọng nói + AI (OQ-5) | Nền | ⏸️ | [#7](https://github.com/vinh19410/vox-flow/issues/7) | 30 bài mẫu có đồng ý bằng văn bản | Rủi ro lớn nhất. Kết quả cũng quyết định trần miễn phí và giá. Từ 2026-11-11 ghi là nợ kỹ thuật TD-01 (`docs/tech-debt.md`) vì chưa có nguồn nhãn chuẩn; phải trả trước mốc 17. |
+| 03 | Thử chấm 30 bài mẫu, chọn dịch vụ giọng nói + AI (OQ-5) | Nền | ✅ | [#7](https://github.com/vinh19410/vox-flow/issues/7) (đã đóng) | – | Đóng ngày 2026-11-13 theo quyết định PO: chốt pipeline hiện tại (`whisper-1` + 3 lượt `gpt-6-luna` trung vị, `#90`/`#130`) làm chính, gỡ cổng chặn 30 bài mẫu ngoài; chuyển sang tự eval & hiệu chuẩn dần trên dữ liệu dự án tại [#154](https://github.com/vinh19410/vox-flow/issues/154) (`docs/decisions/scoring-self-eval.md`). |
 | 04 | Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6) | Nền | ⏸️ | [#8](https://github.com/vinh19410/vox-flow/issues/8) | Buổi tư vấn | Hồ sơ câu hỏi sẵn sàng tại `docs/legal/oq-6-tu-van-luat-su.md`. Đang chờ buổi tư vấn luật sư để thực hiện Phase 2. Không chặn việc xây sản phẩm, chỉ chặn mở cho học viên thật. |
 | 05 | Kiểm chứng mức sẵn lòng trả | Nền | ⏸️ | [#9](https://github.com/vinh19410/vox-flow/issues/9) | PO chốt ngưỡng & phỏng vấn học viên thật | Hồ sơ kiểm chứng sẵn sàng tại `docs/research/wtp-validation.md`. Đang chờ PO chốt ngưỡng (Gate A) và phỏng vấn học viên thật để thực hiện Phase 2. |
 | 06 | Dựng môi trường backend Cloudflare | Nền | 🟢 | [#10](https://github.com/vinh19410/vox-flow/issues/10) | – | Thêm ngoài roadmap. Báo cáo so giao diện ghi backend chưa chạy được vì thiếu thông tin xác thực Cloudflare. |
@@ -25,8 +25,8 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 10 | Tài khoản & mục tiêu (`onboarding`) | Now | ✅ | [#14](https://github.com/vinh19410/vox-flow/issues/14) (đã đóng) | 02, 07 (mềm), 09 (mềm) | PR #52 đã merge vào `dev` (`5c56897`). Đã hoàn thành schema D1 `user_profile`, router `profile` và giao diện onboarding. |
 | 11 | Quyền riêng tư (`privacy-controls`) | Now | ✅ | [#15](https://github.com/vinh19410/vox-flow/issues/15) (đã đóng) | – | PR #39 đã merge vào `dev` (`167f3fd`). Đã hoàn thành bảng `consent_event`, router `privacy` (`getConsent`, `setConsent`, `exportData`), kiểm tra `requireConsent`, danh sách `DATA_REGISTRY` và nối giao diện `ConsentRows`, `PrivacyScreen` theo D-10. Luồng xóa tự động 24h đang hold theo OQ-6 Câu 7. |
 | 12 | Thi thử AI (`mock-exam`) | Now | ✅ | [#16](https://github.com/vinh19410/vox-flow/issues/16) (đã đóng) | 03, 10, 11 | PR #40 đã merge vào `dev` (`385e963`). Ghi âm thật qua MediaRecorder, lưu R2 riêng tư, IndexedDB cache chống mất mạng, AI follow-up có dự phòng. |
-| 13 | Chấm điểm & bằng chứng (`scoring-results`) | Now | 🔒 | [#17](https://github.com/vinh19410/vox-flow/issues/17) | 03, 11, 12 | Chưa có tài liệu. Ngưỡng đạt: ≥ 80% bài lệch trong 0.5 band. |
-| 14 | Hạn mức miễn phí (`free-quota`) | Now | 🔒 | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã chốt 3 điểm/ngày. Trần toàn hệ thống còn chỉnh theo 03. |
+| 13 | Chấm điểm & bằng chứng (`scoring-results`) | Now | 🔒 | [#17](https://github.com/vinh19410/vox-flow/issues/17) | 11, 12 | Pipeline chấm 3 lần cho mọi mode đã chạy thật (`#90`, `#130`). Phần còn lại: phân quyền paywall phía server (D-04) & luyện lại câu yếu (D-05); đánh giá độ sát điểm liên tục chuyển sang [#154](https://github.com/vinh19410/vox-flow/issues/154). |
+| 14 | Hạn mức miễn phí (`free-quota`) | Now | 🔒 | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã chốt 3 điểm/ngày. Trần toàn hệ thống chỉnh theo unit cost của pipeline chính (`#130`). |
 | 15 | Mua gói & QR (`billing`) | Now | 🔒 | [#19](https://github.com/vinh19410/vox-flow/issues/19) | 08, 10, 13, 05 (mềm) | Gói 49k: 3 lượt mở chi tiết, không hết hạn, không miễn hạn mức. Sửa `billing-screen.tsx:34`, đang ghi "Band tổng không giới hạn". |
 | 16 | Đối soát thanh toán (`payment-reconciliation`) | Now | 🔒 | [#20](https://github.com/vinh19410/vox-flow/issues/20) | 08, 15 | Phải xong trước khi thu tiền thật. |
 | 17 | **Mốc: mở cho học viên thật đầu tiên** | Now | 🔒 | [#21](https://github.com/vinh19410/vox-flow/issues/21) | 04, 09–16 | Thêm ngoài roadmap theo OQ-6. Đây là cổng kiểm tra, không phải tính năng. |
