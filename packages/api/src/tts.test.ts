@@ -20,6 +20,7 @@ import {
   resolveElevenLabsApiKey,
   resolveElevenLabsModelId,
   resolveElevenLabsVoiceId,
+  resolveForecastQuestionDetail,
   TtsUnavailableError,
   type TtsAudioBucket,
 } from "./tts";
@@ -240,6 +241,70 @@ describe("@vox-flow/api/tts", () => {
           topicId: "tts-archived-p1",
           questionKey: part1QuestionKey("tts-archived-p1", 0),
         }),
+      ).resolves.toBeNull();
+    });
+
+    it("resolveForecastQuestionDetail returns { text, part } for Part 1, Part 2 cue card, and Part 3 keys, and null for unpublished/missing", async () => {
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-pub-p1",
+          part1QuestionKey("tts-pub-p1", 1),
+        ),
+      ).resolves.toEqual({
+        text: "Has your hometown changed much?",
+        part: 1,
+      });
+
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-pub-p2",
+          cueCardKey("tts-pub-p2"),
+        ),
+      ).resolves.toEqual({
+        text: "Describe a book that inspired you",
+        part: 2,
+      });
+
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-pub-p2",
+          part3QuestionKey("tts-pub-p2", 0),
+        ),
+      ).resolves.toEqual({
+        text: "Do young people read less nowadays?",
+        part: 3,
+      });
+
+      // Unpublished (draft / archived) and missing topic/key return null
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-draft-p1",
+          part1QuestionKey("tts-draft-p1", 0),
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-archived-p1",
+          part1QuestionKey("tts-archived-p1", 0),
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        resolveForecastQuestionDetail(
+          testCtx.db,
+          "tts-does-not-exist",
+          part1QuestionKey("tts-does-not-exist", 0),
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        resolveForecastQuestionDetail(testCtx.db, "tts-pub-p2", "unknown-key"),
+      ).resolves.toBeNull();
+      await expect(
+        resolveForecastQuestionDetail(testCtx.db, "", part1QuestionKey("tts-pub-p1", 0)),
       ).resolves.toBeNull();
     });
 

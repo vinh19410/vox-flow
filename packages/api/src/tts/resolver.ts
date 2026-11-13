@@ -44,15 +44,20 @@ export function resolveMockTtsText(questionKey: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export type ForecastQuestionDetail = {
+  text: string;
+  part: 1 | 2 | 3;
+};
+
 /**
- * Resolves canonical spoken text for a published forecast topic question key.
- * Rejects missing, `draft`, or `archived` topics with `null`.
+ * Resolves canonical spoken text and speaking part for a published forecast
+ * topic question key. Rejects missing, `draft`, or `archived` topics with `null`.
  */
-export async function resolveForecastTtsText(
+export async function resolveForecastQuestionDetail(
   db: Database,
   topicId: string,
   questionKey: string,
-): Promise<string | null> {
+): Promise<ForecastQuestionDetail | null> {
   if (!topicId || !questionKey) {
     return null;
   }
@@ -81,7 +86,7 @@ export async function resolveForecastTtsText(
     for (let i = 0; i < part1Questions.length; i++) {
       if (questionKey === part1QuestionKey(topic.id, i)) {
         const text = part1Questions[i]?.trim();
-        return text && text.length > 0 ? text : null;
+        return text && text.length > 0 ? { text, part: 1 } : null;
       }
     }
     return null;
@@ -89,17 +94,30 @@ export async function resolveForecastTtsText(
 
   if (questionKey === cueCardKey(topic.id)) {
     const title = typeof topic.title === "string" ? topic.title.trim() : "";
-    return title.length > 0 ? title : null;
+    return title.length > 0 ? { text: title, part: 2 } : null;
   }
 
   for (let i = 0; i < parsed.part3Questions.length; i++) {
     if (questionKey === part3QuestionKey(topic.id, i)) {
       const text = parsed.part3Questions[i]?.trim();
-      return text && text.length > 0 ? text : null;
+      return text && text.length > 0 ? { text, part: 3 } : null;
     }
   }
 
   return null;
+}
+
+/**
+ * Resolves canonical spoken text for a published forecast topic question key.
+ * Rejects missing, `draft`, or `archived` topics with `null`.
+ */
+export async function resolveForecastTtsText(
+  db: Database,
+  topicId: string,
+  questionKey: string,
+): Promise<string | null> {
+  const detail = await resolveForecastQuestionDetail(db, topicId, questionKey);
+  return detail?.text ?? null;
 }
 
 export type TtsCanonicalTarget =

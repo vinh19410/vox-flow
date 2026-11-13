@@ -31,23 +31,27 @@ export function QuestionStage({ voice, phase, typed, step }: QuestionStageProps)
                 ? "Đang lắng nghe"
                 : phase === "prep"
                   ? "Đang chờ bạn chuẩn bị"
-                  : voice.accent}
+                  : phase === "examiner-thinking"
+                    ? "Đang chuẩn bị câu tiếp theo…"
+                    : voice.accent}
           </div>
         </div>
       </div>
 
-      {step.follow && (
+      {step.follow && phase !== "examiner-thinking" && (
         <div className="mt-6 flex w-fit animate-fade items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-brand">
           <CornerDownRight size={13} /> Hỏi nối tiếp · dựa trên “{step.follow}” trong câu trả lời của bạn
         </div>
       )}
 
-      <h2 className={cx("mt-5 text-[26px] leading-snug font-semibold tracking-tight sm:text-[32px]", step.cue && "sr-only")}>
-        {step.text.slice(0, phase === "asking" ? typed : undefined)}
-        {phase === "asking" && typed < step.text.length && (
-          <span className="ml-0.5 inline-block h-7 w-0.5 animate-pulse bg-brand align-middle" />
-        )}
-      </h2>
+      {phase !== "examiner-thinking" && (
+        <h2 className={cx("mt-5 text-[26px] leading-snug font-semibold tracking-tight sm:text-[32px]", step.cue && "sr-only")}>
+          {step.text.slice(0, phase === "asking" ? typed : undefined)}
+          {phase === "asking" && typed < step.text.length && (
+            <span className="ml-0.5 inline-block h-7 w-0.5 animate-pulse bg-brand align-middle" />
+          )}
+        </h2>
+      )}
     </>
   );
 }

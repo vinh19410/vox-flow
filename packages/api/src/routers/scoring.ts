@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Database } from "@vox-flow/db";
 import { attempt, attemptAnswer, attemptScore, scoringRetryLog } from "@vox-flow/db/schema";
 
+import { loadLinkedPrompt } from "../exam/linked-prompt-store";
 import { protectedProcedure, router } from "../index";
 import { startOfVietnamDayMs } from "../scoring/retry-limits";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
@@ -215,6 +216,24 @@ export const scoringRouter = router({
         .where(eq(attemptAnswer.attemptId, input.attemptId))
         .orderBy(asc(attemptAnswer.partNumber), asc(attemptAnswer.orderIndex));
 
+      const bucket = owned.topicId ? ctx.env?.AUDIO_BUCKET : undefined;
+      const resolvedAnswers = await Promise.all(
+        answers.map(async (a) => {
+          const linked = bucket
+            ? await loadLinkedPrompt(bucket, {
+                userId: ctx.session.user.id,
+                attemptId: input.attemptId,
+                questionKey: a.questionKey,
+              }).catch(() => null)
+            : null;
+          return {
+            ...a,
+            questionText: linked?.questionText ?? a.questionText,
+            transcript: a.transcript ?? "",
+          };
+        }),
+      );
+
       return {
         attemptId: input.attemptId,
         topicId: owned.topicId,
@@ -222,7 +241,7 @@ export const scoringRouter = router({
         overall: score.overall,
         oneLiner: score.oneLiner ?? "",
         criteria: criteria.data,
-        answers: answers.map((a) => ({ ...a, transcript: a.transcript ?? "" })),
+        answers: resolvedAnswers,
         scoredAt: score.scoredAt.getTime(),
       };
     }),

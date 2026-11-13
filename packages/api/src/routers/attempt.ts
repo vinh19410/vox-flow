@@ -4,12 +4,22 @@ import { z } from "zod";
 import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
 import { protectedProcedure, router } from "../index";
 import { requireExamConsent } from "../exam/consent";
-import { generateFollowUp } from "../exam/follow-up";
-import { QUESTION_KEY_RE } from "../audio";
+import { generateFollowUp, generateLinkedQuestion } from "../exam/follow-up";
+import {
+  deleteLinkedPrompt,
+  isLinkedPromptInvalidated,
+  loadLinkedPrompt,
+  markLinkedPromptInvalidated,
+  PREP_TOKEN_RE,
+  saveLinkedPrompt,
+} from "../exam/linked-prompt-store";
+import { transcribeAudioStrict } from "../exam/transcribe";
+import { isValidAudioKey, QUESTION_KEY_RE } from "../audio";
 import { getValidQuestionKeysForTopic } from "../scoring/forecast-keys";
 import { findAnswerLimitViolation } from "../scoring/answer-limits";
 import { sanitizeDelimited } from "../scoring/prompt";
 import { enqueueScoring, SCORING_ENQUEUE_DELAY_SECONDS } from "../scoring/queue";
+import { resolveForecastQuestionDetail } from "../tts/resolver";
 
 /**
  * Returned (as BAD_REQUEST) when submit is called twice. The web client matches
@@ -198,6 +208,290 @@ export const attemptRouter = router({
           trigger: sanitizeDelimited(result.triggerPhrase),
         },
       };
+    }),
+
+  prepareNextQuestion: protectedProcedure
+    .input(
+      z.object({
+        attemptId: z.string().min(1),
+        previousQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        nextQuestionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        previousGeneration: z.number().int().nonnegative().optional(),
+        prepToken: z.string().regex(PREP_TOKEN_RE, "Invalid prepToken format").optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [currentAttempt] = await ctx.db
+        .select()
+        .from(attempt)
+        .where(eq(attempt.id, input.attemptId))
+        .limit(1);
+
+      if (!currentAttempt) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Attempt not found",
+        });
+      }
+
+      if (currentAttempt.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to access this attempt",
+        });
+      }
+
+      if (currentAttempt.status !== "in_progress") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot prepare next question for a finalized attempt",
+        });
+      }
+
+      if (!currentAttempt.topicId || currentAttempt.questionKey) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Linked practice preparation is only supported for whole-topic forecast attempts",
+        });
+      }
+
+      const [prevDetail, nextDetail] = await Promise.all([
+        resolveForecastQuestionDetail(ctx.db, currentAttempt.topicId, input.previousQuestionKey),
+        resolveForecastQuestionDetail(ctx.db, currentAttempt.topicId, input.nextQuestionKey),
+      ]);
+
+      if (!prevDetail || !nextDetail) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Invalid questionKey for topic",
+        });
+      }
+
+      const unlinkedFallback = () => ({
+        questionKey: input.nextQuestionKey,
+        questionText: nextDetail.text,
+        triggerPhrase: null as string | null,
+        linked: false,
+      });
+
+      const bucket = ctx.env?.AUDIO_BUCKET;
+      const isPrepInvalidated = async (): Promise<boolean> => {
+        if (!bucket || !input.prepToken) return false;
+        return isLinkedPromptInvalidated(bucket, {
+          userId: ctx.session.user.id,
+          attemptId: input.attemptId,
+          questionKey: input.nextQuestionKey,
+          prepToken: input.prepToken,
+        }).catch(() => false);
+      };
+
+      if (await isPrepInvalidated()) {
+        return unlinkedFallback();
+      }
+
+      const prevLinked = bucket
+        ? await loadLinkedPrompt(bucket, {
+            userId: ctx.session.user.id,
+            attemptId: input.attemptId,
+            questionKey: input.previousQuestionKey,
+          }).catch(() => null)
+        : null;
+      const previousQuestionText = prevLinked?.questionText ?? prevDetail.text;
+
+      const [answerRow] = await ctx.db
+        .select()
+        .from(attemptAnswer)
+        .where(
+          and(
+            eq(attemptAnswer.attemptId, input.attemptId),
+            eq(attemptAnswer.questionKey, input.previousQuestionKey),
+          ),
+        )
+        .limit(1);
+
+      if (
+        input.previousGeneration !== undefined &&
+        answerRow &&
+        answerRow.generation > input.previousGeneration
+      ) {
+        // Stale prepare call superseded by a newer recording; leave R2 untouched.
+        return unlinkedFallback();
+      }
+
+      let candidateTranscript = answerRow?.transcript?.trim() ?? "";
+      const openAiKey = ctx.env?.OPENAI_API_KEY;
+      if (!candidateTranscript && answerRow && bucket && openAiKey) {
+        try {
+          if (isValidAudioKey(answerRow.audioKey, ctx.session.user.id, input.attemptId)) {
+            const obj = await bucket.get(answerRow.audioKey);
+            if (obj) {
+              const transcribed = await transcribeAudioStrict({
+                audioBuffer: await obj.arrayBuffer(),
+                mimeType: answerRow.mimeType,
+                apiKey: openAiKey,
+                timeoutMs: 6000,
+              });
+              if (transcribed) {
+                candidateTranscript = transcribed;
+                await ctx.db
+                  .update(attemptAnswer)
+                  .set({ transcript: transcribed })
+                  .where(
+                    and(
+                      eq(attemptAnswer.id, answerRow.id),
+                      eq(attemptAnswer.generation, answerRow.generation),
+                    ),
+                  );
+              }
+            }
+          }
+        } catch {
+          // Best-effort STT; fall back to unlinked canonical question on error
+        }
+      }
+
+      const result = await generateLinkedQuestion({
+        previousQuestionText,
+        candidateTranscript,
+        nextQuestionText: nextDetail.text,
+        previousPart: prevDetail.part,
+        part: nextDetail.part,
+        apiKey: openAiKey,
+        timeoutMs: 3500,
+      });
+
+      if (input.previousGeneration !== undefined) {
+        const [latestRow] = await ctx.db
+          .select({ generation: attemptAnswer.generation })
+          .from(attemptAnswer)
+          .where(
+            and(
+              eq(attemptAnswer.attemptId, input.attemptId),
+              eq(attemptAnswer.questionKey, input.previousQuestionKey),
+            ),
+          )
+          .limit(1);
+        if (latestRow && latestRow.generation > input.previousGeneration) {
+          return unlinkedFallback();
+        }
+      }
+
+      if (await isPrepInvalidated()) {
+        return unlinkedFallback();
+      }
+
+      const sanitizedQuestion = sanitizeDelimited(result.questionText).slice(0, 300).trim();
+      const rawTrigger =
+        result.linked && result.triggerPhrase
+          ? sanitizeDelimited(result.triggerPhrase).slice(0, 160).trim()
+          : "";
+      const effectiveLinked = result.linked && sanitizedQuestion.length >= 5;
+
+      if (bucket) {
+        if (effectiveLinked) {
+          try {
+            await saveLinkedPrompt(bucket, {
+              userId: ctx.session.user.id,
+              attemptId: input.attemptId,
+              questionKey: input.nextQuestionKey,
+              prompt: {
+                questionText: sanitizedQuestion,
+                triggerPhrase: rawTrigger || undefined,
+                baseQuestionText: nextDetail.text,
+                ...(input.prepToken ? { prepToken: input.prepToken } : {}),
+                updatedAt: Date.now(),
+              },
+            });
+            if (await isPrepInvalidated()) {
+              const currentStored = await loadLinkedPrompt(bucket, {
+                userId: ctx.session.user.id,
+                attemptId: input.attemptId,
+                questionKey: input.nextQuestionKey,
+              }).catch(() => null);
+              if (!currentStored || !currentStored.prepToken || currentStored.prepToken === input.prepToken) {
+                await deleteLinkedPrompt(bucket, {
+                  userId: ctx.session.user.id,
+                  attemptId: input.attemptId,
+                  questionKey: input.nextQuestionKey,
+                }).catch(() => {});
+              }
+              return unlinkedFallback();
+            }
+          } catch {
+            return unlinkedFallback();
+          }
+        } else {
+          const existing = input.prepToken
+            ? await loadLinkedPrompt(bucket, {
+                userId: ctx.session.user.id,
+                attemptId: input.attemptId,
+                questionKey: input.nextQuestionKey,
+              }).catch(() => null)
+            : null;
+          if (!input.prepToken || !existing?.prepToken || existing.prepToken === input.prepToken) {
+            await deleteLinkedPrompt(bucket, {
+              userId: ctx.session.user.id,
+              attemptId: input.attemptId,
+              questionKey: input.nextQuestionKey,
+            }).catch(() => {});
+          }
+        }
+      }
+
+      if (!effectiveLinked) {
+        return unlinkedFallback();
+      }
+
+      return {
+        questionKey: input.nextQuestionKey,
+        questionText: sanitizedQuestion,
+        triggerPhrase: rawTrigger || null,
+        linked: true,
+      };
+    }),
+
+  invalidateLinkedPrompt: protectedProcedure
+    .input(
+      z.object({
+        attemptId: z.string().min(1),
+        questionKey: z.string().max(128).regex(QUESTION_KEY_RE, "Invalid questionKey format"),
+        prepToken: z.string().regex(PREP_TOKEN_RE, "Invalid prepToken format").optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [currentAttempt] = await ctx.db
+        .select({
+          id: attempt.id,
+          userId: attempt.userId,
+          status: attempt.status,
+        })
+        .from(attempt)
+        .where(eq(attempt.id, input.attemptId))
+        .limit(1);
+
+      if (!currentAttempt) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Attempt not found" });
+      }
+      if (currentAttempt.userId !== ctx.session.user.id) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not authorized to access this attempt",
+        });
+      }
+      if (currentAttempt.status !== "in_progress") {
+        return { cleared: false };
+      }
+
+      if (ctx.env?.AUDIO_BUCKET) {
+        await markLinkedPromptInvalidated(ctx.env.AUDIO_BUCKET, {
+          userId: ctx.session.user.id,
+          attemptId: input.attemptId,
+          questionKey: input.questionKey,
+          ...(input.prepToken ? { prepToken: input.prepToken } : {}),
+        }).catch(() => {});
+      }
+
+      return { cleared: true };
     }),
 
   submit: protectedProcedure

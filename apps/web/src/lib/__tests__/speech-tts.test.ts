@@ -17,6 +17,7 @@ import { renderWithApp } from "@/test/harness";
 import { ENV } from "../../env.public";
 import { cancelSpeech, clearSpeechPrefetchCache, prefetchSpeech, speakText } from "../speech";
 import {
+  buildAttemptTtsUrl,
   buildForecastTtsUrl,
   buildMockTtsUrl,
   buildPreviewTtsUrl,
@@ -47,13 +48,16 @@ describe("tts-url builders", () => {
     ENV.VITE_SERVER_URL = originalServerUrl;
   });
 
-  it("builds canonical preview, mock, and forecast URLs with encoded segments and trimmed base URL", () => {
+  it("builds canonical preview, mock, forecast, and attempt URLs with encoded segments and trimmed base URL", () => {
     ENV.VITE_SERVER_URL = "https://api.voxflow.test///";
 
     expect(buildPreviewTtsUrl("uk-f")).toBe("https://api.voxflow.test/api/tts/preview/uk-f");
     expect(buildMockTtsUrl("us-m", "p1-1")).toBe("https://api.voxflow.test/api/tts/mock/us-m/p1-1");
     expect(buildForecastTtsUrl("au-f", "topic/a b", "q:0")).toBe(
       "https://api.voxflow.test/api/tts/forecast/au-f/topic%2Fa%20b/q%3A0",
+    );
+    expect(buildAttemptTtsUrl("att/1 2", "uk-f", "q:0")).toBe(
+      "https://api.voxflow.test/api/tts/attempt/att%2F1%202/uk-f/q%3A0",
     );
   });
 
@@ -85,6 +89,20 @@ describe("tts-url builders", () => {
     expect(fUrl1).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home-0?v=${v1}`);
     expect(fUrl2).toBe(`http://localhost:3000/api/tts/forecast/uk-f/f-home/f-home-0?v=${v2}`);
     expect(fUrl1).not.toBe(fUrl2);
+
+    const aUrl1 = buildAttemptTtsUrl("att-1", "uk-f", "p1-0", "Where is your hometown?");
+    const aUrl2 = buildAttemptTtsUrl(
+      "att-1",
+      "uk-f",
+      "p1-0",
+      "How has your hometown changed recently?",
+    );
+    expect(aUrl1).toBe(`http://localhost:3000/api/tts/attempt/att-1/uk-f/p1-0?v=${v1}`);
+    expect(aUrl2).toBe(`http://localhost:3000/api/tts/attempt/att-1/uk-f/p1-0?v=${v2}`);
+    expect(aUrl1).not.toBe(aUrl2);
+    expect(buildAttemptTtsUrl("att-1", "uk-f", "p1-0", "   ")).toBe(
+      "http://localhost:3000/api/tts/attempt/att-1/uk-f/p1-0",
+    );
   });
 });
 
@@ -141,7 +159,7 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
     vi.restoreAllMocks();
   });
 
-  it("fetches MP3 once, plays via HTMLAudioElement, fires onEnd, and reuses cached Blob on repeat", async () => {
+  it("fetches MP3 once with credentials: 'include', plays via HTMLAudioElement, fires onEnd, and reuses cached Blob on repeat", async () => {
     const audioUrl = "http://localhost:3000/api/tts/mock/uk-f/p1-1?v=abcd1234";
     fetchSpy.mockImplementation(async () => createMp3Response());
 
@@ -150,6 +168,13 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
 
     await vi.waitFor(() => expect(audioInstances).toHaveLength(1));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      audioUrl,
+      expect.objectContaining({
+        credentials: "include",
+        signal: expect.any(AbortSignal),
+      }),
+    );
     expect(audioInstances[0]!.play).toHaveBeenCalledTimes(1);
     expect(speakSpy).not.toHaveBeenCalled();
 
@@ -166,6 +191,22 @@ describe("speech remote audio playback, prefetch cache & fallback", () => {
     expect(audioInstances[1]!.play).toHaveBeenCalledTimes(1);
     audioInstances[1]!.onended?.();
     expect(onEnd2).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends credentials: 'include' when prefetching authenticated attempt TTS endpoints", async () => {
+    const attemptUrl = "http://localhost:3000/api/tts/attempt/att-xyz/uk-f/p1-1?v=12345678";
+    fetchSpy.mockResolvedValueOnce(createMp3Response());
+
+    const blob = await prefetchSpeech(attemptUrl);
+    expect(blob).toBeInstanceOf(Blob);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      attemptUrl,
+      expect.objectContaining({
+        credentials: "include",
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("reuses prefetched audio Blob with zero extra fetch calls when speakText runs", async () => {

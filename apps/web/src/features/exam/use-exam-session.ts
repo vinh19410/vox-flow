@@ -4,7 +4,7 @@ import { useApp } from "@/features/app-state/types";
 import { useMicLevel } from "@/hooks/use-mic-level";
 import { useRecorder } from "@/hooks/use-recorder";
 import { cancelSpeech, prefetchSpeech, speakText } from "@/lib/speech";
-import { buildForecastTtsUrl, buildMockTtsUrl } from "@/lib/tts-url";
+import { buildAttemptTtsUrl, buildForecastTtsUrl, buildMockTtsUrl } from "@/lib/tts-url";
 import { trpcClient } from "@/utils/trpc";
 
 import { ITEMS, MODES, VOICES } from "./data";
@@ -14,6 +14,36 @@ import type { ExamAnswer, ExamPhase, ExamStep, ExaminerVoice, Part } from "./typ
 export type { ExamAnswer, ExamPhase, ExamStep } from "./types";
 
 const ATTEMPT_SYNC_TIMEOUT_MS = 15_000; // hung attempt.start/getActive must not lock submit forever (#106)
+const PREP_TIMEOUT_MS = 12_000; // safety cap so linked question prep never traps learner in examiner-thinking
+
+interface LinkedOverride {
+  text: string;
+  trigger?: string;
+}
+
+interface PrepareNextQuestionResult {
+  linked: boolean;
+  questionText?: string | null;
+  triggerPhrase?: string | null;
+}
+
+type AttemptClientWithPrepare = typeof trpcClient.attempt & {
+  prepareNextQuestion?: {
+    mutate: (
+      input: {
+        attemptId: string;
+        previousQuestionKey: string;
+        nextQuestionKey: string;
+        previousGeneration?: number;
+        prepToken?: string;
+      },
+      options?: { signal?: AbortSignal },
+    ) => Promise<PrepareNextQuestionResult>;
+  };
+  invalidateLinkedPrompt?: {
+    mutate: (input: { attemptId: string; questionKey: string; prepToken?: string }) => Promise<unknown>;
+  };
+};
 
 export interface ExamSessionValue {
   parts: Part[];
@@ -46,7 +76,7 @@ export function useExamSession(): ExamSessionValue {
     [s.practice, s.mode],
   );
 
-  const steps = useMemo<ExamStep[]>(() => {
+  const baseSteps = useMemo<ExamStep[]>(() => {
     const out: ExamStep[] = [];
     for (const i of source) {
       if (!parts.includes(i.part)) continue;
@@ -55,6 +85,22 @@ export function useExamSession(): ExamSessionValue {
     }
     return out;
   }, [parts, source]);
+
+  const isLinkedPractice = Boolean(s.practice && !s.practice.singleQuestionId && baseSteps.length >= 2);
+  const [linkedOverrides, setLinkedOverrides] = useState<Record<string, LinkedOverride>>({});
+
+  const steps = useMemo<ExamStep[]>(() => {
+    if (!isLinkedPractice) return baseSteps;
+    return baseSteps.map((base) => {
+      const override = linkedOverrides[base.key];
+      if (!override) return base;
+      return {
+        ...base,
+        text: override.text,
+        follow: override.trigger ?? base.follow,
+      };
+    });
+  }, [baseSteps, isLinkedPractice, linkedOverrides]);
 
   const [idx, setIdx] = useState(0);
   const [phase, setPhase] = useState<ExamPhase>("intro");
@@ -78,6 +124,25 @@ export function useExamSession(): ExamSessionValue {
   // entry promise only settles once the device copy has been written, so the
   // backfill can never delete a session copy mid-write.
   const pendingSessionRef = useRef(new Map<string, Promise<AnswerUpload | null>>());
+  const mountedRef = useRef(true);
+  const prepTokensRef = useRef(new Map<number, number>());
+  const prepPromisesRef = useRef(new Map<number, Promise<void>>());
+  const prepAbortControllersRef = useRef(new Map<number, AbortController>());
+  const activePrepCleanupsRef = useRef(new Set<() => void>());
+  const practiceKey = s.practice ? `${s.practice.topicId}::${s.practice.singleQuestionId ?? ""}` : "";
+  const prevPracticeKeyRef = useRef(practiceKey);
+  useEffect(() => {
+    if (prevPracticeKeyRef.current !== practiceKey) {
+      prevPracticeKeyRef.current = practiceKey;
+      setLinkedOverrides({});
+      for (const cleanup of [...activePrepCleanupsRef.current]) cleanup();
+      activePrepCleanupsRef.current.clear();
+      prepTokensRef.current.clear();
+      prepPromisesRef.current.clear();
+      for (const controller of prepAbortControllersRef.current.values()) controller.abort();
+      prepAbortControllersRef.current.clear();
+    }
+  }, [practiceKey]);
   const recorder = useRecorder();
   const startParamsRef = useRef({
     examMode: s.practice
@@ -184,7 +249,49 @@ export function useExamSession(): ExamSessionValue {
   // All exam timers pause while the exit or pre-submit modal is open.
   const paused = exitOpen || review;
   const practiceTopicId = s.practice?.topicId?.trim();
+  const clearLinkedOverride = (questionKey: string) => {
+    setLinkedOverrides((prev) => {
+      if (!(questionKey in prev)) return prev;
+      const nextOverrides = { ...prev };
+      delete nextOverrides[questionKey];
+      return nextOverrides;
+    });
+  };
+  const invalidateServerLinkedPrompt = (
+    activeAttemptId: string | null | undefined,
+    questionKey: string,
+    prepToken?: string,
+  ) => {
+    if (!activeAttemptId) return;
+    const attemptClient = trpcClient.attempt as AttemptClientWithPrepare | undefined;
+    if (typeof attemptClient?.invalidateLinkedPrompt?.mutate === "function") {
+      void attemptClient.invalidateLinkedPrompt
+        .mutate({ attemptId: activeAttemptId, questionKey, ...(prepToken ? { prepToken } : {}) })
+        .catch(() => {});
+    }
+  };
+  const invalidatePrep = (stepIndex: number, clearNextOverride: boolean) => {
+    const prevToken = prepTokensRef.current.get(stepIndex);
+    const prevPrepToken = prevToken !== undefined ? `s${stepIndex}-t${prevToken}` : undefined;
+    prepTokensRef.current.set(stepIndex, (prevToken ?? 0) + 1);
+    const controller = prepAbortControllersRef.current.get(stepIndex);
+    if (controller) {
+      controller.abort();
+      prepAbortControllersRef.current.delete(stepIndex);
+    }
+    prepPromisesRef.current.delete(stepIndex);
+    if (clearNextOverride) {
+      const nextBase = baseSteps[stepIndex + 1];
+      if (nextBase) {
+        clearLinkedOverride(nextBase.key);
+        invalidateServerLinkedPrompt(attemptIdRef.current ?? attemptId, nextBase.key, prevPrepToken);
+      }
+    }
+  };
   const stepAudioUrl = (targetStep: ExamStep): string | undefined => {
+    if (isLinkedPractice && linkedOverrides[targetStep.key] && attemptId) {
+      return buildAttemptTtsUrl(attemptId, voice.id, targetStep.key, targetStep.text);
+    }
     if (practiceTopicId) {
       if (targetStep.follow) return undefined;
       return buildForecastTtsUrl(voice.id, practiceTopicId, targetStep.key, targetStep.text);
@@ -198,13 +305,19 @@ export function useExamSession(): ExamSessionValue {
   }, []);
 
   // Prefetch current and next examiner prompts so audio is warm before "asking" starts.
+  // In linked practice, skip prefetching the static forecast audio for the upcoming step
+  // until prepareNextQuestion completes (or attempt bootstrap failed offline).
   useEffect(() => {
     if (muted || steps.length === 0) return;
     const currentUrl = steps[idx] ? stepAudioUrl(steps[idx]) : undefined;
     if (currentUrl) void prefetchSpeech(currentUrl);
-    const upcomingUrl = steps[idx + 1] ? stepAudioUrl(steps[idx + 1]) : undefined;
+    const upcomingStep = steps[idx + 1];
+    const shouldPrefetchNext =
+      Boolean(upcomingStep) &&
+      (!isLinkedPractice || attemptStatus === "failed" || Boolean(linkedOverrides[upcomingStep!.key]));
+    const upcomingUrl = shouldPrefetchNext && upcomingStep ? stepAudioUrl(upcomingStep) : undefined;
     if (upcomingUrl) void prefetchSpeech(upcomingUrl);
-  }, [idx, muted, steps, practiceTopicId, voice.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [idx, muted, steps, practiceTopicId, voice.id, isLinkedPractice, attemptStatus, linkedOverrides, attemptId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Examiner reads the question aloud while the text reveals char by char.
   useEffect(() => {
@@ -257,9 +370,14 @@ export function useExamSession(): ExamSessionValue {
 
   function stopRec() {
     const currentRecT = recT;
+    const stepIdx = idx;
+    const currentStep = step;
+    const nextStep = baseSteps[stepIdx + 1];
+    const activeAttemptId = attemptIdRef.current ?? attemptId;
+
     setAnswers((a) => ({
       ...a,
-      [step.key]: {
+      [currentStep.key]: {
         secs: Math.round(currentRecT),
         durationMs: Math.round(currentRecT * 1000),
       },
@@ -273,9 +391,9 @@ export function useExamSession(): ExamSessionValue {
 
       setAnswers((a) => ({
         ...a,
-        [step.key]: {
+        [currentStep.key]: {
           secs: Math.round(currentRecT),
-            durationMs,
+          durationMs,
           blob: audio.blob,
         },
       }));
@@ -285,21 +403,122 @@ export function useExamSession(): ExamSessionValue {
       // device copy, later flush) carries the same generation.
       return withGeneration({
         attemptId: attemptIdRef.current ?? clientSessionIdRef.current,
-        questionKey: step.key,
+        questionKey: currentStep.key,
         blob: audio.blob,
         durationMs,
         mimeType,
-        part: step.part,
-        order: idx,
-        questionText: step.text,
+        part: currentStep.part,
+        order: stepIdx,
+        questionText: currentStep.text,
       });
     });
 
-    if (attemptId) {
+    if (activeAttemptId) {
       // Tracked from the moment recording stops, so the scoring screen waits for
       // (and retries) this upload before submitting, even if the user submits
       // before the recorder has finished encoding.
-      void trackAnswerUpload(attemptId, recorded);
+      const uploadPromise = trackAnswerUpload(activeAttemptId, recorded);
+      const attemptClient = trpcClient.attempt as AttemptClientWithPrepare | undefined;
+      if (
+        isLinkedPractice &&
+        !returnToReview &&
+        nextStep &&
+        typeof attemptClient?.prepareNextQuestion?.mutate === "function"
+      ) {
+        const token = (prepTokensRef.current.get(stepIdx) ?? 0) + 1;
+        const prepToken = `s${stepIdx}-t${token}`;
+        prepTokensRef.current.set(stepIdx, token);
+        prepAbortControllersRef.current.get(stepIdx)?.abort();
+        const abortController = new AbortController();
+        prepAbortControllersRef.current.set(stepIdx, abortController);
+        const isCurrentToken = () => mountedRef.current && prepTokensRef.current.get(stepIdx) === token;
+
+        let prepPromise!: Promise<void>;
+        prepPromise = (async () => {
+          let timedOut = false;
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
+          let resolveTimeout: (value: "timeout") => void = () => {};
+          const timeoutPromise = new Promise<"timeout">((resolve) => {
+            resolveTimeout = resolve;
+          });
+          const settleTimeout = (asTimeout: boolean) => {
+            if (timeoutId !== null) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+            activePrepCleanupsRef.current.delete(cleanupOnUnmount);
+            if (asTimeout) {
+              timedOut = true;
+              abortController.abort();
+            }
+            resolveTimeout("timeout");
+          };
+          const cleanupOnUnmount = () => {
+            abortController.abort();
+            settleTimeout(false);
+          };
+          activePrepCleanupsRef.current.add(cleanupOnUnmount);
+          timeoutId = setTimeout(() => settleTimeout(true), PREP_TIMEOUT_MS);
+
+          const workPromise = (async (): Promise<"done"> => {
+            try {
+              const [ok, record] = await Promise.all([uploadPromise, recorded]);
+              if (!ok || !record || timedOut || !isCurrentToken()) {
+                if (isCurrentToken()) {
+                  clearLinkedOverride(nextStep.key);
+                  invalidateServerLinkedPrompt(activeAttemptId, nextStep.key, prepToken);
+                }
+                return "done";
+              }
+              const res = await attemptClient.prepareNextQuestion!.mutate(
+                {
+                  attemptId: activeAttemptId,
+                  previousQuestionKey: currentStep.key,
+                  nextQuestionKey: nextStep.key,
+                  previousGeneration: record.generation,
+                  prepToken,
+                },
+                { signal: abortController.signal },
+              );
+              if (timedOut || !isCurrentToken()) return "done";
+              if (res.linked && res.questionText) {
+                const trigger = res.triggerPhrase?.trim() || undefined;
+                setLinkedOverrides((prev) => ({
+                  ...prev,
+                  [nextStep.key]: { text: res.questionText!, trigger },
+                }));
+                if (!muted) {
+                  void prefetchSpeech(buildAttemptTtsUrl(activeAttemptId, voice.id, nextStep.key, res.questionText));
+                }
+              } else {
+                clearLinkedOverride(nextStep.key);
+              }
+            } catch {
+              if (!timedOut && isCurrentToken()) {
+                clearLinkedOverride(nextStep.key);
+                invalidateServerLinkedPrompt(activeAttemptId, nextStep.key, prepToken);
+              }
+            }
+            return "done";
+          })();
+
+          const winner = await Promise.race([workPromise, timeoutPromise]);
+          if (winner === "timeout" && isCurrentToken()) {
+            clearLinkedOverride(nextStep.key);
+            invalidateServerLinkedPrompt(activeAttemptId, nextStep.key, prepToken);
+          }
+          settleTimeout(false);
+        })().finally(() => {
+          if (prepAbortControllersRef.current.get(stepIdx) === abortController) {
+            prepAbortControllersRef.current.delete(stepIdx);
+          }
+          if (prepPromisesRef.current.get(stepIdx) === prepPromise) {
+            prepPromisesRef.current.delete(stepIdx);
+          }
+        });
+
+        prepPromisesRef.current.set(stepIdx, prepPromise);
+      }
       return;
     }
     // attempt.start has not answered yet: keep the recording pending. The
@@ -312,19 +531,29 @@ export function useExamSession(): ExamSessionValue {
       if (!record) return;
       const id = attemptIdRef.current;
       if (id) {
-        pendingSessionRef.current.delete(step.key);
+        pendingSessionRef.current.delete(currentStep.key);
         void trackAnswerUpload(id, record);
         return;
       }
       pendingSessionRef.current.set(
-        step.key,
+        currentStep.key,
         saveAudioBlob(record).catch(() => {}).then(() => record),
       );
     });
   }
   // Leaving the exam with pending recordings: only forget them in memory. The
   // session-id device copies stay — they may be the only remaining copy.
-  useEffect(() => () => pendingSessionRef.current.clear(), []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      pendingSessionRef.current.clear();
+      for (const cleanup of [...activePrepCleanupsRef.current]) cleanup();
+      activePrepCleanupsRef.current.clear();
+      prepAbortControllersRef.current.clear();
+      prepPromisesRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (phase === "recording" && recT >= maxRec && !paused) stopRec();
@@ -334,7 +563,19 @@ export function useExamSession(): ExamSessionValue {
     if (phase === "prep" && prepT <= 0 && !paused) startRec();
   }, [prepT, phase, paused]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function advanceToStep(nextIdx: number, previousPart: Part) {
+    const nextStep = baseSteps[nextIdx];
+    if (!nextStep) return;
+    const newPart = nextStep.part !== previousPart;
+    setIdx(nextIdx);
+    if (newPart) {
+      setPartT(0);
+      setPhase("intro");
+    } else setPhase("asking");
+  }
+
   function next() {
+    if (phase === "examiner-thinking") return;
     if (returnToReview) {
       setReturnToReview(false);
       setReview(true);
@@ -345,12 +586,20 @@ export function useExamSession(): ExamSessionValue {
       setReview(true);
       return;
     }
-    const newPart = steps[n].part !== step.part;
-    setIdx(n);
-    if (newPart) {
-      setPartT(0);
-      setPhase("intro");
-    } else setPhase("asking");
+    const activePrep = isLinkedPractice ? prepPromisesRef.current.get(idx) : undefined;
+    if (activePrep) {
+      const waitingIdx = idx;
+      const previousPart = step.part;
+      const tokenAtWait = prepTokensRef.current.get(waitingIdx);
+      setPhase("examiner-thinking");
+      void activePrep.then(() => {
+        if (!mountedRef.current) return;
+        if (prepTokensRef.current.get(waitingIdx) !== tokenAtWait) return;
+        advanceToStep(n, previousPart);
+      });
+      return;
+    }
+    advanceToStep(n, step.part);
   }
 
   // Space = record / stop, Enter = next; never while a modal is open or when a focusable control holds focus.
@@ -376,11 +625,13 @@ export function useExamSession(): ExamSessionValue {
   };
   const begin = () => setPhase("asking");
   const restart = () => {
+    invalidatePrep(idx, !returnToReview);
     recorder.cancel();
     setRecT(0);
     setPhase("ready");
   };
   const retryStep = (k: number) => {
+    invalidatePrep(k, false);
     setReview(false);
     setIdx(k);
     setReturnToReview(true);

@@ -89,7 +89,10 @@ function fetchOrReuseAudioBlob(
   }
 
   const blobPromise = (async (): Promise<Blob> => {
-    const res = await globalThis.fetch(audioUrl, { signal: controller.signal });
+    const res = await globalThis.fetch(audioUrl, {
+      signal: controller.signal,
+      credentials: "include",
+    });
     if (!res.ok) {
       throw new Error(`TTS HTTP ${res.status}`);
     }

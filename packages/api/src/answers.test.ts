@@ -131,4 +131,52 @@ describe("upsertAnswerRecording (real D1)", () => {
     expect(row?.generation).toBe(300);
     expect(row?.durationMs).toBe(1000);
   });
+
+  it("clears stale saved transcript on strictly higher generation, while equal-generation retry preserves it", async () => {
+    await testCtx.db.insert(attemptAnswer).values(
+      values({
+        id: "ans_gen_transcript",
+        questionKey: "p1-5",
+        audioKey: `users/${userId}/attempts/${attemptId}/p1-5.100.webm`,
+        generation: 100,
+        durationMs: 1200,
+        transcript: "Original transcript from generation 100",
+      }),
+    );
+
+    // Equal-generation network retry without transcript preserves existing transcript
+    const retryUpdated = await upsertAnswerRecording(
+      testCtx.db,
+      values({
+        id: "ans_gen_transcript",
+        questionKey: "p1-5",
+        audioKey: `users/${userId}/attempts/${attemptId}/p1-5.100.webm`,
+        generation: 100,
+        durationMs: 1200,
+      }),
+    );
+    expect(retryUpdated).toHaveLength(1);
+    expect(retryUpdated[0]?.transcript).toBe("Original transcript from generation 100");
+    expect((await currentRow("p1-5"))?.transcript).toBe(
+      "Original transcript from generation 100",
+    );
+
+    // Higher-generation re-recording without transcript clears stale transcript to null
+    const newerUpdated = await upsertAnswerRecording(
+      testCtx.db,
+      values({
+        id: "ans_gen_transcript",
+        questionKey: "p1-5",
+        audioKey: `users/${userId}/attempts/${attemptId}/p1-5.200.webm`,
+        generation: 200,
+        durationMs: 1500,
+      }),
+    );
+    expect(newerUpdated).toHaveLength(1);
+    expect(newerUpdated[0]?.generation).toBe(200);
+    expect(newerUpdated[0]?.transcript).toBeNull();
+    const row = await currentRow("p1-5");
+    expect(row?.generation).toBe(200);
+    expect(row?.transcript).toBeNull();
+  });
 });

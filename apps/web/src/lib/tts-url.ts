@@ -31,6 +31,19 @@ export function buildMockTtsUrl(voiceId: string, questionKey: string, text?: str
   return base;
 }
 
+export function buildAttemptTtsUrl(
+  attemptId: string,
+  voiceId: string,
+  questionKey: string,
+  text?: string,
+): string {
+  const base = `${getServerBaseUrl()}/api/tts/attempt/${encodeURIComponent(attemptId)}/${encodeURIComponent(voiceId)}/${encodeURIComponent(questionKey)}`;
+  if (text && text.trim().length > 0) {
+    return `${base}?v=${shortTextFingerprint(text)}`;
+  }
+  return base;
+}
+
 export function buildForecastTtsUrl(
   voiceId: string,
   topicId: string,
