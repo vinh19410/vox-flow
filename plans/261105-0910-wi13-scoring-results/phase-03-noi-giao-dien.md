@@ -1,43 +1,50 @@
 ---
 phase: 3
-title: "Nối giao diện"
+title: "Nối giao diện và luyện lại câu yếu"
 status: pending
 priority: P1
-effort: ""
+effort: "2d"
 dependencies: [1, 2]
 ---
 
-# Phase 3: Nối giao diện
+# Phase 3: Nối giao diện và luyện lại câu yếu
 
 ## Goal
-Màn chấm và kết quả dùng dữ liệu thật.
+Màn kết quả hiển thị đúng phần server cho phép, và "Luyện ngay" đưa học viên vào luyện đúng câu yếu nhất rồi so sánh band trước và sau (D-05).
 
 ## Files to Create / Modify
-- Modify: `apps/web/src/features/scoring/scoring-screen.tsx`
 - Modify: `apps/web/src/features/results/results-screen.tsx`
+- Modify: `apps/web/src/features/results/scored-result.ts`
 - Modify: `apps/web/src/features/results/components/band-hero.tsx`
-- Modify: `apps/web/src/features/results/components/criteria-grid.tsx`
 - Modify: `apps/web/src/features/results/components/soft-paywall.tsx`
-- Modify: `apps/web/src/features/__tests__/slice-c.test.tsx`
-- Delete: `apps/web/src/features/results/data.ts`
-- Delete: `apps/web/src/features/scoring/data.ts`
-- Create: `apps/web/src/features/landing/sample-result.ts`
-- Modify: `apps/web/src/features/landing/components/hero.tsx`
-- Modify: `apps/web/src/features/results/components/report-modal.tsx`
-- Modify: `apps/web/src/features/app-state/__tests__/state-and-data.test.ts`
+- Modify: `apps/web/src/features/results/__tests__/scored-results.test.tsx`
+- Modify: `packages/db/src/schema/attempt.ts` (thêm cột) và migration sinh bằng `pnpm --filter @vox-flow/db db:generate`
+- Modify: `packages/api/src/routers/attempt.ts`, `packages/api/src/routers/attempt.test.ts`
 
 ## Tasks & Steps
 
-### Task 3.1 — Thay mô phỏng bằng dữ liệu thật.
-- Goal: Thay mô phỏng bằng dữ liệu thật.
-- Target files and symbols: `scoring-screen.tsx` (đang dùng `RESULT` và `setTimeout`), `results-screen.tsx`
+### Task 3.1 — Giao diện theo quyền từ server
+- Goal: bỏ mở khóa cứng trên giao diện.
+- Target files and symbols: `results-screen.tsx` (`pro`, `range`), `scored-result.ts`, `band-hero.tsx`, `soft-paywall.tsx`
 - Steps:
-  1. Màn chấm theo dõi trạng thái thật của lượt, có màn lỗi và nút thử lại, thay các `setTimeout` giả.
-  2. Màn kết quả đọc từ `results.getResult`.
-  3. Chuyển dữ liệu mẫu của thẻ hero sang `apps/web/src/features/landing/sample-result.ts`, rồi xóa `results/data.ts` và `scoring/data.ts` sau khi sửa mọi nơi dùng.
-  4. Sửa test `ScoringScreen` và test kết quả.
-- Success criteria: Hai file dữ liệu mô phỏng đã bị xóa.
-- Verify: `test ! -f apps/web/src/features/results/data.ts && test ! -f apps/web/src/features/scoring/data.ts` thoát với mã 0; `pnpm --filter web test` và `pnpm check-types` đều thoát với mã 0.
+  1. Thay `const pro = scored ? true : !!s.plan` bằng `!scored.locked` cho kết quả đã chấm.
+  2. Hiển thị `range` của server trên `band-hero` thay cho `undefined`.
+  3. Khi `locked`: hiện bằng chứng của câu yếu nhất, các tiêu chí còn lại hiện `SoftPaywall`. Giao diện không tự suy ra dữ liệu bị khóa.
+  4. Sửa test kết quả cho cả hai trường hợp `locked` và không `locked`.
+- Success criteria: test kết quả qua.
+- Verify: `pnpm --filter web test src/features/results/__tests__/scored-results.test.tsx` thoát với mã 0.
+
+### Task 3.2 — Luyện lại đúng câu yếu nhất
+- Goal: hành động North Star của D-05 chạy thật.
+- Target files and symbols: `attempt.ts` (`start`), bảng `attempt` (cột `retake_of_attempt_id`), `results-screen.tsx` (nút "Luyện ngay")
+- Steps:
+  1. Thêm cột `retake_of_attempt_id` (nullable) vào bảng `attempt`, sinh migration bằng lệnh của repo. Không sửa tay migration.
+  2. `attempt.start` nhận thêm `retakeOf: attemptId`. Server kiểm tra lượt gốc thuộc người gọi và đã chấm xong, lấy câu yếu nhất bằng `weakestQuestionKey`, lấy câu hỏi chuẩn của câu đó từ lượt gốc (forecast topic hoặc `mock-exam-bank`), rồi tạo lượt một câu có `retake_of_attempt_id`. Không nhận `questionText` hay `questionKey` từ client cho đường này.
+  3. Lượt luyện lại đi qua pipeline chấm hiện có, không thêm nhánh chấm riêng.
+  4. "Luyện ngay" gọi `attempt.start({ retakeOf })` thay vì về màn chọn đề. Màn kết quả của lượt luyện lại hiện band của lượt gốc cạnh band mới.
+  5. Viết test router: lượt của người khác bị từ chối; lượt chưa chấm bị từ chối; câu hỏi lấy từ server.
+- Success criteria: test router và test giao diện qua; cả repo qua kiểm tra kiểu.
+- Verify: `pnpm --filter @vox-flow/api test src/routers/attempt.test.ts`, `pnpm --filter web test src/features/results/__tests__/scored-results.test.tsx` và `pnpm check-types` đều thoát với mã 0.
 
 ## Verification
 Mọi Verify trong phase này đều đạt đúng điều kiện đã nêu.
