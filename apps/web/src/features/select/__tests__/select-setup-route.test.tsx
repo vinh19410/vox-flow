@@ -8,13 +8,12 @@
  * router so the registered route structure itself is what gets verified.
  */
 import { RouterProvider, createRouter, createMemoryHistory } from "@tanstack/react-router";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SELECT_MOBILE_QUERY } from "@/features/select/use-select-mobile-viewport";
 import { routeTree } from "@/routeTree.gen";
 import { queryClient, trpc } from "@/utils/trpc";
-
-const MOBILE_QUERY = "(max-width: 1023.98px)";
 
 vi.mock("@/lib/auth-guard", () => ({
   requireOnboarded: vi.fn().mockResolvedValue({ onboarded: true }),
@@ -61,7 +60,7 @@ function mockMobileViewport(matches: boolean) {
   return vi.spyOn(window, "matchMedia").mockImplementation(
     (query: string) =>
       ({
-        matches: matches && query === MOBILE_QUERY,
+        matches: matches && query === SELECT_MOBILE_QUERY,
         media: query,
         onchange: null,
         addListener: () => {},
@@ -101,22 +100,73 @@ describe("Select setup route (router integration)", () => {
 
     await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
 
+    for (const title of ["Full Test", "Part 1", "Part 2", "Part 3"]) {
+      expect(screen.getByRole("button", { name: new RegExp(title) })).toBeTruthy();
+    }
+    expect(screen.queryByText("Giọng giám khảo")).toBeNull();
+    expect(screen.queryByText("Trước khi bắt đầu")).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /Part 2 Cue card/ }));
 
     const heading = await screen.findByRole("heading", { level: 1, name: "Part 2" });
     expect(heading.textContent).toBe("Part 2");
     expect(router.state.location.pathname).toBe("/app/select/setup");
+    expect(screen.getByText("Giọng giám khảo")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Chọn bài thi" }));
+    await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
+    expect(router.state.location.pathname).toBe("/app/select");
+    expect(screen.getByRole("button", { name: /Part 2 Cue card/ }).className).toContain("bg-ink");
+    expect(screen.queryByText("Giọng giám khảo")).toBeNull();
+    expect(screen.queryByText("Trước khi bắt đầu")).toBeNull();
+  });
+
+  it("mobile: browser history back/forward preserves mode highlight and hides inline setup on /app/select", async () => {
+    mockMobileViewport(true);
+    const router = await renderRouterAt("/app/select");
+    await router.preloadRoute({ to: "/app/select/setup" });
+
+    await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
+    fireEvent.click(screen.getByRole("button", { name: /Part 2 Cue card/ }));
+
+    await screen.findByRole("heading", { level: 1, name: "Part 2" });
+    expect(router.state.location.pathname).toBe("/app/select/setup");
+    expect(screen.getByText("Giọng giám khảo")).toBeTruthy();
+
+    act(() => {
+      router.history.back();
+    });
+
+    await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
+    expect(router.state.location.pathname).toBe("/app/select");
+    expect(screen.getByRole("button", { name: /Part 2 Cue card/ }).className).toContain("bg-ink");
+    expect(screen.queryByText("Giọng giám khảo")).toBeNull();
+    expect(screen.queryByText("Trước khi bắt đầu")).toBeNull();
+
+    act(() => {
+      router.history.forward();
+    });
+
+    await screen.findByRole("heading", { level: 1, name: "Part 2" });
+    expect(router.state.location.pathname).toBe("/app/select/setup");
+    expect(screen.getByText("Giọng giám khảo")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ })).toBeTruthy();
   });
 
   it("desktop: tapping a mode card keeps the user on /app/select", async () => {
-    // Default matchMedia stub resolves matches: false (desktop).
+    mockMobileViewport(false);
     const router = await renderRouterAt("/app/select");
 
     await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
+    expect(screen.getByText("Giọng giám khảo")).toBeTruthy();
+    expect(screen.getByText("Trước khi bắt đầu")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Part 2 Cue card/ }));
 
     await screen.findByRole("heading", { level: 1, name: "Chọn bài thi" });
     expect(router.state.location.pathname).toBe("/app/select");
+    expect(screen.getByText("Giọng giám khảo")).toBeTruthy();
+    expect(screen.getByText("Trước khi bắt đầu")).toBeTruthy();
   });
 });

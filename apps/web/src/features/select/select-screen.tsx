@@ -3,8 +3,11 @@ import { PageHead } from "@/layouts/page-head";
 import { ModeGrid } from "./components/mode-grid";
 import { PreExamCard } from "./components/pre-exam-card";
 import { VoicePicker } from "./components/voice-picker";
+import { useSelectMobileViewport } from "./use-select-mobile-viewport";
 
 export function SelectScreen() {
+  const isMobileViewport = useSelectMobileViewport();
+
   return (
     <>
       <PageHead
@@ -15,10 +18,12 @@ export function SelectScreen() {
 
       <ModeGrid />
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[1.4fr_1fr]">
-        <VoicePicker />
-        <PreExamCard />
-      </div>
+      {!isMobileViewport && (
+        <div className="mt-5 hidden gap-5 lg:grid lg:grid-cols-[1.4fr_1fr]">
+          <VoicePicker />
+          <PreExamCard />
+        </div>
+      )}
     </>
   );
 }

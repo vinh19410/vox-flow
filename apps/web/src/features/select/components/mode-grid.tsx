@@ -5,6 +5,8 @@ import { useApp } from "@/features/app-state/types";
 import { MODES } from "@/features/exam/data";
 import { cx } from "@/lib/cx";
 
+import { isSelectMobileViewport } from "../use-select-mobile-viewport";
+
 export function ModeGrid() {
   const { s, set, go } = useApp();
   return (
@@ -16,7 +18,7 @@ export function ModeGrid() {
             key={m.id}
             onClick={() => {
               set({ mode: m.id });
-              if (window.matchMedia("(max-width: 1023.98px)").matches) {
+              if (isSelectMobileViewport()) {
                 go("select-setup");
               }
             }}
