@@ -1,0 +1,10 @@
+{"file_name": "band65_large.wav", "transcription": "I usually spend weekends with my family.", "band_score": 6.5}
+{"file_name": "band65_small.wav", "transcription": "Reading helps me relax after work.", "band_score": 6.5}
+{"file_name": "band80_small.wav", "transcription": "Urban planning requires balancing transit and green spaces.", "band_score": 8.0}
+{"file_name": "band55_only.wav", "transcription": "My hometown is quiet and nice.", "band_score": 5.5}
+{"file_name": "band80_large.wav", "transcription": "Technological innovation reshapes lifelong learning.", "band_score": 8.0}
+{"file_name": "invalid_ext.mp3", "transcription": "Should be skipped because not wav.", "band_score": 7.0}
+{"file_name": "empty_transcript.wav", "transcription": "   ", "band_score": 7.0}
+{"file_name": "invalid_quarter_band.wav", "transcription": "Quarter band should be skipped.", "band_score": 6.25}
+{"file_name": "invalid_bool_band.wav", "transcription": "Bool band should be skipped.", "band_score": true}
+{"file_name": "invalid_high_band.wav", "transcription": "Out of range band.", "band_score": 9.5}
