@@ -216,7 +216,7 @@ describe("ExamScreen (mock test)", () => {
     expect(screen.getByText("8 câu có thể làm giảm điểm. Bạn có thể nói lại trước khi chấm.")).toBeTruthy();
     const panel = screen.getByText("Kiểm tra trước khi nộp").parentElement as HTMLElement;
     expect(within(panel).getAllByText(/^Part \d · /)).toHaveLength(8);
-    expect(within(panel).getAllByText(/^\d+ từ$/)).toHaveLength(8);
+    expect(within(panel).getAllByText(/^\d+:\d{2}$/)).toHaveLength(8);
   });
 
   it("shows the Part 2 prep phase with a mm:ss countdown before recording", () => {
@@ -237,7 +237,7 @@ describe("ExamScreen (mock test)", () => {
     expect(screen.getByLabelText("Dừng ghi")).toBeTruthy();
   });
 
-  it("flags answers below MIN_WORDS", () => {
+  it("flags answers shorter than MIN_SECS", () => {
     renderWithApp(<ExamScreen />);
     fireEvent.click(screen.getByText("Bắt đầu Part 1"));
     act(() => {
@@ -245,10 +245,10 @@ describe("ExamScreen (mock test)", () => {
     });
     fireEvent.click(screen.getByLabelText("Bắt đầu ghi"));
     act(() => {
-      vi.advanceTimersByTime(1000); // ~2 words < MIN_WORDS[1] = 12
+      vi.advanceTimersByTime(1000); // 1s < MIN_SECS[1] = 6
     });
     fireEvent.click(screen.getByLabelText("Dừng ghi"));
-    expect(screen.getByText("Câu trả lời khá ngắn (2 từ).")).toBeTruthy();
+    expect(screen.getByText("Câu trả lời khá ngắn (1 giây).")).toBeTruthy();
     expect(screen.getByText(/Part 1 vẫn hợp lệ nếu đủ ý/)).toBeTruthy();
   });
 
@@ -287,7 +287,7 @@ describe("ExamScreen (mock test)", () => {
       vi.advanceTimersByTime(1000);
     });
     fireEvent.keyDown(window, { code: "Space" });
-    expect(screen.getByText("Câu trả lời khá ngắn (2 từ).")).toBeTruthy();
+    expect(screen.getByText("Câu trả lời khá ngắn (1 giây).")).toBeTruthy();
     fireEvent.keyDown(window, { code: "Enter" });
     expect(screen.getByText(/Hỏi nối tiếp · dựa trên “quite noisy at night”/)).toBeTruthy();
 

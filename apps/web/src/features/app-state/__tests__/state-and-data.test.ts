@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PLANS } from "../../billing/data";
 import { planUntil } from "../../billing/plan-utils";
-import { ITEMS, MIN_WORDS, MODES, PART_INFO, VOICES, modeLabel } from "../../exam/data";
+import { ITEMS, MIN_SECS, MODES, PART_INFO, VOICES, isShortAnswer, modeLabel } from "../../exam/data";
 import { mapApiTopicToForecastTopic, p1 } from "../../forecast/builders";
 import { QUARTER } from "../../forecast/data";
 import { HISTORY, resolveAttemptView } from "../../history/data";
@@ -34,7 +34,7 @@ describe("exam data & types", () => {
     expect(VOICES).toHaveLength(3);
     expect(VOICES[0]).toMatchObject({ id: "uk-f", name: "Emma", accent: "Anh · Nữ" });
 
-    expect(MIN_WORDS).toEqual({ 1: 12, 2: 90, 3: 22 });
+    expect(MIN_SECS).toEqual({ 1: 6, 2: 45, 3: 12 });
     expect(PART_INFO[1].title).toContain("Part 1");
     expect(PART_INFO[2].title).toContain("Part 2");
     expect(PART_INFO[3].title).toContain("Part 3");
@@ -350,5 +350,26 @@ describe("useAppStateStore & ProtoToast", () => {
 
     const shown = render(createElement(ProtoToast, { message: "Đã xóa dữ liệu bài làm" }));
     expect(shown.getByText("Đã xóa dữ liệu bài làm")).toBeTruthy();
+  });
+});
+
+describe("isShortAnswer", () => {
+  it("judges length by real speaking time per part", () => {
+    expect(isShortAnswer({ secs: 5 }, 1)).toBe(true);
+    expect(isShortAnswer({ secs: 6 }, 1)).toBe(false);
+    expect(isShortAnswer({ secs: 44 }, 2)).toBe(true);
+    expect(isShortAnswer({ secs: 45 }, 2)).toBe(false);
+    expect(isShortAnswer({ secs: 11 }, 3)).toBe(true);
+    expect(isShortAnswer({ secs: 12 }, 3)).toBe(false);
+  });
+
+  it("does not flag a long Part 2/3 answer restored after reload", () => {
+    // Restored answers come from attempt.getActive with only durationMs; secs is derived from it.
+    expect(isShortAnswer({ secs: 70, durationMs: 70_000, audioKey: "k" }, 2)).toBe(false);
+    expect(isShortAnswer({ secs: 30, durationMs: 30_000, audioKey: "k" }, 3)).toBe(false);
+  });
+
+  it("treats a missing answer as not short", () => {
+    expect(isShortAnswer(undefined, 2)).toBe(false);
   });
 });

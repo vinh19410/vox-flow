@@ -5,7 +5,7 @@ import { useApp } from "@/features/app-state/types";
 import { isAlreadySubmittedError, isBadRequestError } from "@/features/scoring/use-scoring-job";
 import { trpcClient } from "@/utils/trpc";
 import { flushAnswerUploads } from "./answer-uploads";
-import { MIN_WORDS } from "./data";
+import { isShortAnswer } from "./data";
 import { CueCardPanel } from "./components/cue-card-panel";
 import { ExamControls } from "./components/exam-controls";
 import { ExamHeader } from "./components/exam-header";
@@ -53,7 +53,7 @@ export function ExamScreen() {
   };
 
   const ans = answers[step.key];
-  const short = (k: string, p: Part) => (answers[k]?.words ?? 0) < MIN_WORDS[p];
+  const short = (k: string, p: Part) => isShortAnswer(answers[k], p);
   const flagged = steps.filter((st) => answers[st.key] && short(st.key, st.part));
   const doneCount = Object.keys(answers).length;
 
@@ -222,7 +222,7 @@ export function ExamScreen() {
               <div className="mt-4 flex animate-rise items-start gap-3 rounded-2xl bg-warn-soft px-4 py-3 text-sm text-warn">
                 <TriangleAlert size={18} className="mt-0.5 shrink-0" />
                 <div>
-                  <b>Câu trả lời khá ngắn ({ans.words} từ).</b>{" "}
+                  <b>Câu trả lời khá ngắn ({ans.secs} giây).</b>{" "}
                   {step.part === 1
                     ? "Part 1 vẫn hợp lệ nếu đủ ý — thử thêm 1 lý do hoặc ví dụ để giữ band Fluency."
                     : step.part === 2
