@@ -66,3 +66,11 @@ scripts/scoring-eval/transcripts/
 .claude
 .agentkit
 actions-runner/
+
+# Speaking sample scraper (local TD-01)
+scripts/speaking-scraper/.venv/
+scripts/speaking-scraper/*.egg-info/
+scripts/speaking-scraper/__pycache__/
+scripts/speaking-scraper/.pytest_cache/
+raw-data/speaking-samples-public.json
+scripts/scoring-eval/samples.public.csv
