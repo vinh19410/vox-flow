@@ -102,4 +102,56 @@ describe("useScoringJob retry budget", () => {
     );
     expect(result.current.view.kind).toBe("failed");
   });
+
+  it("maps QUOTA_EXCEEDED and GLOBAL_CAP_REACHED on scoring.retry to Vietnamese quota messages", async () => {
+    statusSpy.mockResolvedValue({
+      attemptId: ATTEMPT,
+      status: "failed",
+      scorable: true,
+      manualRetries: 0,
+      canRetry: true,
+    });
+
+    const { result } = renderHook(
+      () => useScoringJob({ kind: "attempt", attemptId: ATTEMPT, submitted: true }, handlers),
+    );
+    await waitFor(() => expect(result.current.view.kind).toBe("failed"));
+
+    retrySpy.mockRejectedValueOnce(
+      Object.assign(new Error("QUOTA_EXCEEDED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    await act(async () => {
+      await result.current.retryScoring();
+    });
+    expect(result.current.actionError).toBe(
+      "Bạn không đủ điểm miễn phí hôm nay để chấm lại bài này. Điểm sẽ đặt lại lúc 00:00 (giờ Việt Nam).",
+    );
+    expect(result.current.view.kind).toBe("failed");
+
+    retrySpy.mockRejectedValueOnce(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    await act(async () => {
+      await result.current.retryScoring();
+    });
+    expect(result.current.actionError).toBe(
+      "Hạn mức miễn phí toàn hệ thống hôm nay đã tạm đầy nên chưa thể chấm lại. Điểm miễn phí (nếu còn trong hạn mức hoàn 3 lần/ngày) được hoàn tự động; vui lòng thử lại sau 00:00 (giờ Việt Nam) hoặc nâng cấp gói trả phí.",
+    );
+    expect(result.current.view.kind).toBe("failed");
+  });
+
+  it("shows QUOTA_SUBMIT_CAP_MESSAGE with submit_error view when attempt.submit hits GLOBAL_CAP_REACHED", async () => {
+    submitSpy.mockRejectedValueOnce(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+
+    const { result } = renderHook(
+      () => useScoringJob({ kind: "attempt", attemptId: ATTEMPT, submitted: false }, handlers),
+    );
+
+    await waitFor(() => expect(result.current.view).toEqual({ kind: "submit_error" }));
+    expect(result.current.actionError).toBe(
+      "Hạn mức miễn phí hôm nay đã chạm trần khi nộp bài. Bản ghi âm của bạn vẫn được giữ nguyên — vui lòng nộp lại sau 00:00 (giờ Việt Nam) hoặc nâng cấp gói trả phí.",
+    );
+  });
 });

@@ -802,6 +802,67 @@ describe("ExamScreen submit", () => {
     });
     expect(screen.getByTestId("attempt-status").textContent).toBe("failed");
   });
+
+  it("blocks entering the exam instead of falling back to local_only when attempt.start returns QUOTA_EXCEEDED", async () => {
+    startSpy.mockRejectedValue(
+      Object.assign(new Error("QUOTA_EXCEEDED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    const blocked = screen.getByTestId("exam-quota-blocked");
+    expect(blocked.getAttribute("role")).toBe("alert");
+    expect(blocked.textContent).toContain("Bạn đã dùng hết 3/3 điểm miễn phí hôm nay");
+    expect(blocked.textContent).toContain("00:00 (giờ Việt Nam)");
+    expect(screen.queryByText(/Bắt đầu Part 1/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem gói trả phí" }));
+    expect(h.go).toHaveBeenCalledWith("billing");
+  });
+
+  it("blocks entering the exam with a neutral global message without VND amounts on GLOBAL_CAP_REACHED", async () => {
+    startSpy.mockRejectedValue(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    const h = renderWithApp(<ExamScreen />, { practice: PRACTICE });
+    await flush();
+
+    const blocked = screen.getByTestId("exam-quota-blocked");
+    expect(blocked.textContent).toContain("Hạn mức miễn phí toàn hệ thống hôm nay đã tạm đầy");
+    expect(blocked.textContent).not.toMatch(/33\.?000|vnđ|vnd/i);
+
+    fireEvent.click(screen.getByRole("button", { name: "Quay lại" }));
+    expect(h.go).toHaveBeenCalledWith("forecast");
+  });
+
+  it("preserves audio recordings and shows submit cap message when attempt.submit hits GLOBAL_CAP_REACHED or QUOTA_EXCEEDED", async () => {
+    startSpy.mockResolvedValue({ attemptId: "att-mock-cap" });
+    const h = renderWithApp(<ExamScreen />, { mode: "p1" });
+    await flush();
+
+    for (let k = 0; k < 4; k += 1) answerStep();
+    submitSpy.mockRejectedValueOnce(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(
+      screen.getByText(/Hạn mức miễn phí hôm nay đã chạm trần khi nộp bài\. Bản ghi âm của bạn vẫn được giữ nguyên/),
+    ).toBeTruthy();
+
+    submitSpy.mockRejectedValueOnce(
+      Object.assign(new Error("QUOTA_EXCEEDED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    fireEvent.click(screen.getByText(/nộp & chấm/i));
+    await flush();
+
+    expect(h.go).not.toHaveBeenCalledWith("scoring");
+    expect(
+      screen.getByText(/Hạn mức miễn phí hôm nay đã chạm trần khi nộp bài\. Bản ghi âm của bạn vẫn được giữ nguyên/),
+    ).toBeTruthy();
+  });
 });
 
 function SessionProbe() {

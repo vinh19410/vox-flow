@@ -1,7 +1,7 @@
 ---
 type: roadmap-work-items
 status: draft
-updated: 2026-11-13
+updated: 2026-11-14
 links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.md, docs/roadmap-chamro.md]
 ---
 
@@ -26,7 +26,7 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 11 | Quyền riêng tư (`privacy-controls`) | Now | ✅ | [#15](https://github.com/vinh19410/vox-flow/issues/15) (đã đóng) | – | PR #39 đã merge vào `dev` (`167f3fd`). Đã hoàn thành bảng `consent_event`, router `privacy` (`getConsent`, `setConsent`, `exportData`), kiểm tra `requireConsent`, danh sách `DATA_REGISTRY` và nối giao diện `ConsentRows`, `PrivacyScreen` theo D-10. Luồng xóa tự động 24h đang hold theo OQ-6 Câu 7. |
 | 12 | Thi thử AI (`mock-exam`) | Now | ✅ | [#16](https://github.com/vinh19410/vox-flow/issues/16) (đã đóng) | 03, 10, 11 | PR #40 đã merge vào `dev` (`385e963`). Ghi âm thật qua MediaRecorder, lưu R2 riêng tư, IndexedDB cache chống mất mạng, AI follow-up có dự phòng. |
 | 13 | Chấm điểm & bằng chứng (`scoring-results`) | Now | 🔒 | [#17](https://github.com/vinh19410/vox-flow/issues/17) | 11, 12 | Pipeline chấm 3 lần cho mọi mode đã chạy thật (`#90`, `#130`). Phần còn lại: phân quyền paywall phía server (D-04) & luyện lại câu yếu (D-05); đánh giá độ sát điểm liên tục chuyển sang [#154](https://github.com/vinh19410/vox-flow/issues/154). |
-| 14 | Hạn mức miễn phí (`free-quota`) | Now | 🔒 | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã chốt 3 điểm/ngày. Trần toàn hệ thống chỉnh theo unit cost của pipeline chính (`#130`). |
+| 14 | Hạn mức miễn phí (`free-quota`) | Now | ✅ | [#18](https://github.com/vinh19410/vox-flow/issues/18) | 13 | Đã hoàn thành 3 điểm/ngày (đặt lại 00:00 giờ VN), trần ngân sách `FREE_DAILY_BUDGET_VND` (mặc định 33.000đ), hoàn điểm khi chấm lỗi (tối đa 3 lần/ngày), giữ chỗ TTL 30 phút và hiển thị điểm trên toàn bộ UI Select/Forecast/Exam/Results. |
 | 15 | Mua gói & QR (`billing`) | Now | 🔒 | [#19](https://github.com/vinh19410/vox-flow/issues/19) | 08, 10, 13, 05 (mềm) | Gói 49k: 3 lượt mở chi tiết, không hết hạn, không miễn hạn mức. Sửa `billing-screen.tsx:34`, đang ghi "Band tổng không giới hạn". |
 | 16 | Đối soát thanh toán (`payment-reconciliation`) | Now | 🔒 | [#20](https://github.com/vinh19410/vox-flow/issues/20) | 08, 15 | Phải xong trước khi thu tiền thật. |
 | 17 | **Mốc: mở cho học viên thật đầu tiên** | Now | 🔒 | [#21](https://github.com/vinh19410/vox-flow/issues/21) | 04, 09–16 | Thêm ngoài roadmap theo OQ-6. Đây là cổng kiểm tra, không phải tính năng. |

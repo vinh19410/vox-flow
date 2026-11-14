@@ -3,23 +3,26 @@ import { Bookmark, BookmarkCheck, Flame, Users } from "lucide-react";
 import { Badge } from "@/components/ds/badge";
 import { Card } from "@/components/ds/card";
 import type { ForecastTopic } from "@/features/forecast/types";
+import { forecastPointCost } from "@/features/select/use-quota-status";
 import { cx } from "@/lib/cx";
 
 export interface TopicCardProps {
   topic: ForecastTopic;
   band?: number;
   saved: boolean;
+  isPaid?: boolean;
   onOpen: () => void;
   onToggleSave: () => void;
 }
 
-export function TopicCard({ topic: t, band, saved, onOpen, onToggleSave }: TopicCardProps) {
+export function TopicCard({ topic: t, band, saved, isPaid = false, onOpen, onToggleSave }: TopicCardProps) {
   const cue = t.items.find((i) => i.cue);
   return (
     <Card className="group flex h-full cursor-pointer flex-col p-6 transition-all hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-lg" onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-wrap gap-1.5">
           <Badge>{t.category}</Badge>
+          <Badge>{isPaid ? "Không giới hạn" : `${forecastPointCost(t.kind)} điểm`}</Badge>
           {t.tag === "hot" && (
             <Badge tone="accent">
               <Flame size={11} /> Hay gặp

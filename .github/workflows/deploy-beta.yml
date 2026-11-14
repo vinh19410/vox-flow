@@ -94,6 +94,7 @@ jobs:
           ADMIN_EMAILS: ${{ vars.ADMIN_EMAILS || '' }}
           SCORE_DISPUTE_ENABLED: ${{ vars.SCORE_DISPUTE_ENABLED || 'false' }}
           SCORING_MODEL: ${{ vars.SCORING_MODEL || 'gpt-6-luna' }}
+          FREE_DAILY_BUDGET_VND: ${{ vars.FREE_DAILY_BUDGET_VND || '33000' }}
         run: pnpm --filter @vox-flow/infra run deploy --yes
 
       - name: Seed forecast topics into D1 (first time initialization only)

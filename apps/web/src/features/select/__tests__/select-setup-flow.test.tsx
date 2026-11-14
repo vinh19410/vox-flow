@@ -1,12 +1,19 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QuotaStatus } from "@vox-flow/api/quota/quota";
 import { act, fireEvent, screen, within } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MODES } from "@/features/exam/data";
+import { TopicDetailModal } from "@/features/forecast/components/topic-detail-modal";
+import type { ForecastTopic } from "@/features/forecast/types";
 import { ModeGrid } from "@/features/select/components/mode-grid";
 import { SelectScreen } from "@/features/select/select-screen";
 import { SelectSetupScreen } from "@/features/select/select-setup-screen";
+import { GLOBAL_CAP_NEUTRAL_MESSAGE } from "@/features/select/use-quota-status";
 import { SELECT_MOBILE_QUERY } from "@/features/select/use-select-mobile-viewport";
 import { renderWithApp } from "@/test/harness";
+import { trpc } from "@/utils/trpc";
 
 function mockMatchMedia(matchesMobile: boolean) {
   return vi.spyOn(window, "matchMedia").mockImplementation(
@@ -217,5 +224,156 @@ describe("Select setup flow", () => {
       expect(durationEl.className).toContain("pt-6");
       expect(durationEl.className).not.toContain("mt-6");
     }
+  });
+});
+
+function makeQuotaStatus(overrides: Partial<QuotaStatus> = {}): QuotaStatus {
+  const remainingPoints = overrides.remainingPoints ?? 3;
+  const globalCapReached = overrides.globalCapReached ?? false;
+  return {
+    entitlement: "free",
+    dailyLimit: 3,
+    usedPoints: 3 - remainingPoints,
+    remainingPoints,
+    globalCapReached,
+    globalRemainingCanAfford: {
+      full: !globalCapReached,
+      part: !globalCapReached,
+      forecastP1: !globalCapReached,
+      forecastP23: !globalCapReached,
+      singleQuestion: !globalCapReached,
+      retake: !globalCapReached,
+    },
+    resetAtMs: Date.UTC(2026, 10, 14, 17, 0, 0),
+    costs: {
+      full: 3,
+      part: 1,
+      forecastP1: 1,
+      forecastP23: 2,
+      singleQuestion: 1,
+      firstRetake: 0,
+      extraRetake: 1,
+    },
+    ...overrides,
+  };
+}
+
+function renderWithQuota(ui: ReactNode, status: QuotaStatus, mode: "full" | "p1" | "p2" | "p3" = "full") {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  qc.setQueryData(trpc.quota.status.queryKey(), status, { updatedAt: Date.now() });
+  return renderWithApp(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>, { mode });
+}
+
+const P23_TOPIC: ForecastTopic = {
+  id: "p23-env",
+  title: "Describe an environmental initiative",
+  category: "Society",
+  kind: "p23",
+  reports: 120,
+  lastSeen: "Hôm qua",
+  items: [
+    {
+      id: "p23-env-cue",
+      part: 2,
+      text: "Describe an environmental initiative",
+      answer: "",
+      cue: { title: "Describe an environmental initiative", points: ["What it is", "How it helps"], ending: "Why it matters" },
+    },
+    { id: "p23-env-q1", part: 3, text: "How can cities reduce waste?", answer: "" },
+  ],
+};
+
+describe("Select & Forecast quota transparency and gating", () => {
+  it("shows remaining points, reset time, and per-mode point costs for a free user with 3/3 points", () => {
+    mockMatchMedia(false);
+    renderWithQuota(<SelectScreen />, makeQuotaStatus({ remainingPoints: 3 }));
+
+    expect(screen.getByTestId("quota-banner").textContent).toContain("Còn 3/3 điểm hôm nay");
+    expect(screen.getByTestId("quota-banner").textContent).toContain("Đặt lại lúc 00:00 (giờ Việt Nam)");
+    expect(within(screen.getByRole("button", { name: /Full Test/ })).getByText("3 điểm")).toBeTruthy();
+    expect(screen.getAllByText("1 điểm")).toHaveLength(3);
+
+    const startBtn = screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ }) as HTMLButtonElement;
+    expect(startBtn.disabled).toBe(false);
+  });
+
+  it("auto-switches full -> p1 when 2/3 points remain, dims Full Test, and blocks insufficient forecast topic", () => {
+    mockMatchMedia(false);
+    const h = renderWithQuota(<SelectScreen />, makeQuotaStatus({ remainingPoints: 2 }), "full");
+
+    expect(h.set).toHaveBeenCalledWith({ mode: "p1" });
+    const fullCard = screen.getByRole("button", { name: /Full Test/ });
+    expect(fullCard.className).toContain("opacity-60");
+    expect(within(fullCard).getByText("Không đủ điểm")).toBeTruthy();
+
+    // Forecast Part 2&3 topic needs 2 pts -> allowed at 2 pts, blocked at 1 pt.
+    h.unmount();
+    const modalHarness = renderWithQuota(
+      <TopicDetailModal
+        topic={P23_TOPIC}
+        practicedBand={undefined}
+        saved={false}
+        onClose={vi.fn()}
+        onToggleSave={vi.fn()}
+        onStart={vi.fn()}
+        onStartQuestion={vi.fn()}
+      />,
+      makeQuotaStatus({ remainingPoints: 1 }),
+    );
+    expect(screen.getByText("2 điểm")).toBeTruthy();
+    const startTopicBtn = screen.getByRole("button", { name: /Luyện chủ đề này/ }) as HTMLButtonElement;
+    expect(startTopicBtn.disabled).toBe(true);
+    const singleQBtn = screen.getByRole("button", { name: /Luyện câu này/ }) as HTMLButtonElement;
+    expect(singleQBtn.disabled).toBe(false);
+    fireEvent.click(within(screen.getByTestId("forecast-modal-quota-alert")).getByRole("button", { name: "Xem gói trả phí" }));
+    expect(modalHarness.go).toHaveBeenCalledWith("billing");
+  });
+
+  it("shows 0/3 alert with billing CTA on SelectSetupScreen when points are exhausted", () => {
+    const h = renderWithQuota(<SelectSetupScreen />, makeQuotaStatus({ remainingPoints: 0 }), "p1");
+
+    const banner = screen.getByTestId("quota-banner");
+    expect(banner.getAttribute("role")).toBe("alert");
+    expect(banner.textContent).toContain("Còn 0/3 điểm hôm nay");
+
+    const startBtn = screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ }) as HTMLButtonElement;
+    expect(startBtn.disabled).toBe(true);
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Xem gói trả phí" }));
+    expect(h.go).toHaveBeenCalledWith("billing");
+  });
+
+  it("shows neutral global cap alert without leaking VND numbers when FREE_DAILY_BUDGET_VND is reached", () => {
+    mockMatchMedia(false);
+    const h = renderWithQuota(
+      <SelectScreen />,
+      makeQuotaStatus({ remainingPoints: 3, globalCapReached: true }),
+    );
+
+    const banner = screen.getByTestId("quota-banner");
+    expect(banner.getAttribute("role")).toBe("alert");
+    expect(banner.textContent).toContain(GLOBAL_CAP_NEUTRAL_MESSAGE);
+    expect(banner.textContent?.toLowerCase()).not.toContain("vnd");
+    expect(banner.textContent).not.toContain("33000");
+
+    const startBtn = screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ }) as HTMLButtonElement;
+    expect(startBtn.disabled).toBe(true);
+    fireEvent.click(within(screen.getByTestId("pre-exam-quota-alert")).getByRole("button", { name: "Xem gói trả phí" }));
+    expect(h.go).toHaveBeenCalledWith("billing");
+  });
+
+  it("renders unlimited badge and keeps all modes unlocked for paid learners", () => {
+    mockMatchMedia(false);
+    renderWithQuota(
+      <SelectScreen />,
+      makeQuotaStatus({ entitlement: "paid", remainingPoints: 0, globalCapReached: true }),
+    );
+
+    expect(screen.getByTestId("quota-banner").textContent).toContain("Gói trả phí · Luyện không giới hạn");
+    expect(screen.getAllByText("Không giới hạn")).toHaveLength(4);
+    const startBtn = screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ }) as HTMLButtonElement;
+    expect(startBtn.disabled).toBe(false);
   });
 });

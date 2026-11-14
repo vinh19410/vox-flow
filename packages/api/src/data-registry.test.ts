@@ -8,6 +8,7 @@ import {
   consentEvent,
   forecastReport,
   forecastTopic,
+  quotaReservation,
   scoreDispute,
   scoreRun,
   session,
@@ -24,6 +25,7 @@ import {
   exportUserData,
   NON_PERSONAL_TABLES,
 } from "./data-registry";
+import { vnDay } from "./quota/vn-time";
 import { createTestDb, type TestDbContext } from "./test/db";
 
 /**
@@ -262,6 +264,39 @@ describe("Data registry for personal data discovery and erasure", () => {
       },
     ]);
 
+    const todayVn = vnDay(Date.now());
+    const yesterdayVn = vnDay(Date.now() - 24 * 60 * 60 * 1000);
+    await testCtx.db.insert(quotaReservation).values([
+      {
+        attemptId: "att_reg_1",
+        reservationId: "res_reg_1_today",
+        userId: user1Id,
+        vnDay: todayVn,
+        points: 3,
+        costVnd: 2500,
+        retakeOfAttemptId: "att_root_secret",
+        status: "active",
+      },
+      {
+        attemptId: "att_reg_1_old",
+        reservationId: "res_reg_1_old",
+        userId: user1Id,
+        vnDay: yesterdayVn,
+        points: 1,
+        costVnd: 1000,
+        status: "active",
+      },
+      {
+        attemptId: "att_reg_2",
+        reservationId: "res_reg_2_today",
+        userId: user2Id,
+        vnDay: todayVn,
+        points: 3,
+        costVnd: 2500,
+        status: "active",
+      },
+    ]);
+
     // Test export
     const exportUser1 = await exportUserData(testCtx.db, user1Id);
     expect(exportUser1.userId).toBe(user1Id);
@@ -274,6 +309,7 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(exportUser1.data.score_dispute).toHaveLength(1);
     expect(exportUser1.data.attempt_score).toHaveLength(1);
     expect(exportUser1.data.score_run).toHaveLength(0);
+    expect(exportUser1.data.quota_reservation).toHaveLength(2);
 
     // Test erase with mock audioBucket
     const deletedAudioKeys: string[] = [];
@@ -312,6 +348,23 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser1.data.score_dispute).toHaveLength(0);
     expect(afterEraseUser1.data.attempt_score).toHaveLength(0);
     expect(afterEraseUser1.data.score_run).toHaveLength(0);
+    expect(afterEraseUser1.data.quota_reservation).toHaveLength(0);
+
+    // Today's reservation survives with userId anonymized so daily budget cannot reset via delete-account.
+    const [todayRes] = await testCtx.db
+      .select()
+      .from(quotaReservation)
+      .where(eq(quotaReservation.attemptId, "att_reg_1"));
+    expect(todayRes).toBeDefined();
+    expect(todayRes?.userId).toBeNull();
+    expect(todayRes?.retakeOfAttemptId).toBeNull();
+    expect(todayRes?.costVnd).toBe(2500);
+    // Yesterday's reservation is deleted physically.
+    const [oldRes] = await testCtx.db
+      .select()
+      .from(quotaReservation)
+      .where(eq(quotaReservation.attemptId, "att_reg_1_old"));
+    expect(oldRes).toBeUndefined();
 
     // Verify user2 remains completely intact
     const afterEraseUser2 = await exportUserData(testCtx.db, user2Id);
@@ -324,6 +377,7 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser2.data.score_dispute).toHaveLength(1);
     expect(afterEraseUser2.data.attempt_score).toHaveLength(1);
     expect(afterEraseUser2.data.score_run).toHaveLength(0);
+    expect(afterEraseUser2.data.quota_reservation).toHaveLength(1);
 
     // Erase vẫn xóa vật lý (behavior-lock; bằng chứng handler nằm ở assertion
     // params.length — cascade FK làm đếm row sau erase trở nên vacuous, #92)
@@ -435,6 +489,18 @@ describe("Data registry for personal data discovery and erasure", () => {
         model: "test-model",
       },
     ]);
+    const todayScaleVn = vnDay(Date.now());
+    const scaleQuotas = scaleAttempts.map((att, idx) => ({
+      attemptId: att.id,
+      reservationId: `res_${att.id}`,
+      userId: scaleUserId,
+      vnDay: idx % 2 === 0 ? todayScaleVn : "2020-01-01",
+      points: 1,
+      costVnd: 1000,
+    }));
+    for (let i = 0; i < scaleQuotas.length; i += 6) {
+      await testCtx.db.insert(quotaReservation).values(scaleQuotas.slice(i, i + 6));
+    }
 
     // Bật đo SAU khi seed xong
     const { recording, captured } = createRecordingD1(testCtx.d1);
@@ -460,6 +526,7 @@ describe("Data registry for personal data discovery and erasure", () => {
     const exported = await exportUserData(testCtx.db, scaleUserId);
     expect(exported.data.attempt).toHaveLength(120);
     expect(exported.data.attempt_answer).toHaveLength(120);
+    expect(exported.data.quota_reservation).toHaveLength(120);
 
     // Erase sweep (reset trước khi đo) — cùng pattern .then(() => null, e => e)
     captured.length = 0;
@@ -479,17 +546,19 @@ describe("Data registry for personal data discovery and erasure", () => {
       (e: unknown) => e,
     );
     const deleteCaptures = captured.filter((c) => c.sql.startsWith("delete"));
+    const updateCaptures = captured.filter((c) => c.sql.startsWith("update"));
     // (a) guard chống capture rỗng
     expect(deleteCaptures.length).toBeGreaterThanOrEqual(2);
     // (b) RED fail đúng lý do: delete score_run với 120 params
-    for (const capture of deleteCaptures) {
-      expect(capture.params, `delete vượt trần bind D1: ${capture.sql}`).toBeLessThanOrEqual(100);
+    for (const capture of [...deleteCaptures, ...updateCaptures]) {
+      expect(capture.params, `write vượt trần bind D1: ${capture.sql}`).toBeLessThanOrEqual(100);
     }
     // (c) GREEN không được còn lỗi runtime D1
     expect(eraseErr).toBeNull();
     // (d) khóa đúng handler: delete phải chạm đúng bảng score_run & attempt_answer
     expect(deleteCaptures.some((c) => c.sql.includes('"score_run"'))).toBe(true);
     expect(deleteCaptures.some((c) => c.sql.includes('"attempt_answer"'))).toBe(true);
+    expect(updateCaptures.some((c) => c.sql.includes('"quota_reservation"'))).toBe(true);
 
     // Behavior-lock: dữ liệu của scale user bị xóa sạch, control nguyên vẹn
     const remainingRuns = await testCtx.db
@@ -556,11 +625,31 @@ describe("Data registry for personal data discovery and erasure", () => {
       model: "test-model",
       costUsd: 0.02,
     });
+    await testCtx.db.insert(quotaReservation).values({
+      attemptId: "att_shape_1",
+      reservationId: "res_shape_1",
+      userId: uid,
+      vnDay: vnDay(Date.now()),
+      points: 1,
+      costVnd: 1000,
+      sunkCostVnd: 500,
+      refundCount: 1,
+      retakeOfAttemptId: "att_root_shape",
+      status: "active",
+    });
 
     const exported = await exportUserData(testCtx.db, uid);
 
     // score_run là dữ liệu vận hành chấm điểm — không thuộc export cá nhân (#92)
     expect(exported.data.score_run).toEqual([]);
+
+    // quota_reservation chỉ trả trường hạn mức của học viên, bỏ userId/costVnd/sunkCostVnd/reservationId
+    const quotaRows = exported.data.quota_reservation ?? [];
+    expect(quotaRows).toHaveLength(1);
+    const qr = quotaRows[0];
+    expect(qr && typeof qr === "object" ? Object.keys(qr).sort() : []).toEqual(
+      ["attemptId", "createdAt", "points", "status", "vnDay"].sort(),
+    );
 
     // attempt_score chỉ trả trường kết quả học viên — exact key set loại trừ
     // userId/model/tries/lastError/costUsd/updatedAt
@@ -731,5 +820,69 @@ describe("Data registry for personal data discovery and erasure", () => {
     for (const ttsKey of sharedTtsKeys) {
       expect(bucketObjects.has(ttsKey)).toBe(true);
     }
+  });
+
+  it("eraseUserData deletes fresh (<30m) in_progress quota_reservation when its attempt is deleted so global budget is not leaked", async () => {
+    const uid = "usr_fresh_erase_1";
+    const now = new Date();
+    const todayVn = vnDay(now.getTime());
+
+    await testCtx.db.insert(user).values({
+      id: uid,
+      name: "Fresh Erase",
+      email: "freshrase@voxflow.vn",
+    });
+    await testCtx.db.insert(attempt).values([
+      { id: "att_fresh_inp", userId: uid, mode: "full", status: "in_progress", startedAt: now },
+      { id: "att_today_sub", userId: uid, mode: "part1", status: "submitted", startedAt: now },
+    ]);
+    await testCtx.db.insert(quotaReservation).values([
+      {
+        attemptId: "att_fresh_inp",
+        reservationId: "res_fresh_inp",
+        userId: uid,
+        vnDay: todayVn,
+        points: 3,
+        costVnd: 2500,
+        sunkCostVnd: 0,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        attemptId: "att_today_sub",
+        reservationId: "res_today_sub",
+        userId: uid,
+        vnDay: todayVn,
+        points: 1,
+        costVnd: 1000,
+        sunkCostVnd: 0,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    const mockAudioBucket = {
+      delete: vi.fn(async () => {}),
+      list: vi.fn(async () => ({ objects: [], truncated: false })),
+    };
+
+    await eraseUserData({ db: testCtx.db, audioBucket: mockAudioBucket }, uid);
+
+    // Fresh in_progress hold (sunkCostVnd = 0) must be deleted along with its attempt.
+    const [freshRow] = await testCtx.db
+      .select()
+      .from(quotaReservation)
+      .where(eq(quotaReservation.attemptId, "att_fresh_inp"));
+    expect(freshRow).toBeUndefined();
+
+    // Submitted reservation from today stays anonymized to preserve global daily spend accounting.
+    const [subRow] = await testCtx.db
+      .select()
+      .from(quotaReservation)
+      .where(eq(quotaReservation.attemptId, "att_today_sub"));
+    expect(subRow).toBeDefined();
+    expect(subRow?.userId).toBeNull();
   });
 });

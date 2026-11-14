@@ -1,8 +1,17 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { attempt, attemptAnswer, attemptScore, forecastTopic } from "@vox-flow/db";
+import { attempt, attemptAnswer, attemptScore, type Database, forecastTopic, quotaReservation } from "@vox-flow/db";
+import type { Context } from "../context";
+import { getEntitlement } from "../entitlements";
 import { protectedProcedure, router } from "../index";
+import {
+  buildReserveStatement,
+  diagnoseReserveFailure,
+  parseFreeDailyBudgetVnd,
+  refreshHoldOnSubmit,
+  type QuotaChargeTarget,
+} from "../quota/quota";
 import { requireExamConsent } from "../exam/consent";
 import { generateFollowUp, generateLinkedQuestion } from "../exam/follow-up";
 import {
@@ -37,6 +46,142 @@ const storedCriteriaSchema = z.array(scoredCriterionSchema);
  * this exact text to recover by re-enqueueing scoring, so keep them in sync.
  */
 export const ATTEMPT_ALREADY_SUBMITTED_MESSAGE = "Attempt is already submitted";
+
+type StartAttemptValues = {
+  id: string;
+  userId: string;
+  mode: string;
+  inHistory: boolean;
+  calibrationGranted: boolean;
+  startedAt: Date;
+  topicId?: string | null;
+  questionKey?: string | null;
+  retakeOfAttemptId?: string | null;
+};
+
+type QuotaEnabledContext = Pick<Context, "db" | "env" | "getEntitlement" | "now"> & {
+  session: NonNullable<Context["session"]>;
+};
+
+function insertAttemptWhereReserved(
+  db: Database,
+  values: StartAttemptValues,
+  reservationId: string,
+) {
+  const attemptId = values.id;
+  return db
+    .insert(attempt)
+    .select((qb) =>
+      qb
+        .select({
+          id: sql<string>`${attemptId}`.as("id"),
+          userId: sql<string>`${values.userId}`.as("user_id"),
+          mode: sql<string>`${values.mode}`.as("mode"),
+          status: sql<"in_progress">`'in_progress'`.as("status"),
+          inHistory: sql<boolean>`${values.inHistory ? 1 : 0}`.as("in_history"),
+          calibrationGranted: sql<boolean>`${values.calibrationGranted ? 1 : 0}`.as(
+            "calibration_granted",
+          ),
+          startedAt: sql<Date>`${values.startedAt.getTime()}`.as("started_at"),
+          submittedAt: sql<Date | null>`NULL`.as("submitted_at"),
+          topicId: sql<string | null>`${values.topicId ?? null}`.as("topic_id"),
+          questionKey: sql<string | null>`${values.questionKey ?? null}`.as("question_key"),
+          retakeOfAttemptId: sql<string | null>`${values.retakeOfAttemptId ?? null}`.as(
+            "retake_of_attempt_id",
+          ),
+        })
+        .from(quotaReservation)
+        .where(
+          and(
+            eq(quotaReservation.attemptId, attemptId),
+            eq(quotaReservation.reservationId, reservationId),
+          ),
+        ),
+    )
+    .returning({ id: attempt.id });
+}
+
+async function resolveUserEntitlement(ctx: QuotaEnabledContext) {
+  return (ctx.getEntitlement ?? getEntitlement)(ctx.db, ctx.session.user.id);
+}
+
+async function tryReserveAndInsertAttempt(
+  ctx: QuotaEnabledContext,
+  values: StartAttemptValues,
+  target: QuotaChargeTarget,
+  reservationRetakeId: string | null = null,
+) {
+  const nowMs = values.startedAt.getTime();
+  const budgetCapVnd = parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND);
+  const reservationId = crypto.randomUUID();
+  const [reserved, inserted] = await ctx.db.batch([
+    buildReserveStatement(ctx.db, {
+      userId: ctx.session.user.id,
+      attemptId: values.id,
+      reservationId,
+      target,
+      budgetCapVnd,
+      nowMs,
+      retakeOfAttemptId: reservationRetakeId,
+    }),
+    insertAttemptWhereReserved(ctx.db, values, reservationId),
+  ]);
+  if ((reserved?.length ?? 0) > 0 && (inserted?.length ?? 0) > 0) {
+    return { ok: true as const };
+  }
+  const reason = await diagnoseReserveFailure(ctx.db, {
+    userId: ctx.session.user.id,
+    target,
+    budgetCapVnd,
+    nowMs,
+    retakeOfAttemptId: reservationRetakeId,
+  });
+  return { ok: false as const, reason };
+}
+
+async function insertAttemptWithQuota(
+  ctx: QuotaEnabledContext,
+  values: StartAttemptValues,
+  target: QuotaChargeTarget,
+  retakeSource?: { id: string; retakeOfAttemptId: string | null },
+) {
+  if ((await resolveUserEntitlement(ctx)) === "paid") {
+    await ctx.db.insert(attempt).values({ ...values, status: "in_progress" });
+    return;
+  }
+
+  if (retakeSource) {
+    if (retakeSource.retakeOfAttemptId === null) {
+      const firstTry = await tryReserveAndInsertAttempt(
+        ctx,
+        values,
+        { kind: "retake", isFirstRootRetake: true },
+        retakeSource.id,
+      );
+      if (firstTry.ok) {
+        return;
+      }
+      if (firstTry.reason !== "FIRST_RETAKE_TAKEN") {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: firstTry.reason });
+      }
+    }
+    const extraTry = await tryReserveAndInsertAttempt(
+      ctx,
+      values,
+      { kind: "retake", isFirstRootRetake: false },
+      null,
+    );
+    if (!extraTry.ok) {
+      throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: extraTry.reason });
+    }
+    return;
+  }
+
+  const attemptRes = await tryReserveAndInsertAttempt(ctx, values, target);
+  if (!attemptRes.ok) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: attemptRes.reason });
+  }
+}
 
 export const attemptRouter = router({
   start: protectedProcedure
@@ -145,7 +290,7 @@ export const attemptRouter = router({
 
         const consent = await requireExamConsent(ctx.db, ctx.session.user.id);
         const attemptId = crypto.randomUUID();
-        const startedAt = new Date();
+        const startedAt = ctx.now?.() ?? new Date();
 
         if (sourceAttempt.topicId) {
           const [topic] = await ctx.db
@@ -224,6 +369,7 @@ export const attemptRouter = router({
 
           const baseQuestionText = questionText;
           let hasLinkedPrompt = false;
+          let linkedToCopy: { questionText: string; triggerPhrase?: string } | null = null;
           if (!isFollowUp && ctx.env?.AUDIO_BUCKET) {
             const linked = await loadLinkedPrompt(ctx.env.AUDIO_BUCKET, {
               userId: ctx.session.user.id,
@@ -231,17 +377,10 @@ export const attemptRouter = router({
               questionKey: resolvedKey,
             }).catch(() => null);
             if (linked?.questionText) {
-              await saveLinkedPrompt(ctx.env.AUDIO_BUCKET, {
-                userId: ctx.session.user.id,
-                attemptId,
-                questionKey: resolvedKey,
-                prompt: {
-                  questionText: linked.questionText,
-                  triggerPhrase: linked.triggerPhrase,
-                  baseQuestionText,
-                  updatedAt: Date.now(),
-                },
-              });
+              linkedToCopy = {
+                questionText: linked.questionText,
+                triggerPhrase: linked.triggerPhrase,
+              };
               questionText = linked.questionText;
               hasLinkedPrompt = true;
             }
@@ -250,18 +389,36 @@ export const attemptRouter = router({
           const retakeMode = part === 1 ? "part1" : part === 2 ? "part2" : "part3";
           const retakeKind = topic.part === 1 ? ("p1" as const) : ("p23" as const);
 
-          await ctx.db.insert(attempt).values({
-            id: attemptId,
-            userId: ctx.session.user.id,
-            mode: retakeMode,
-            status: "in_progress",
-            inHistory: consent.inHistory,
-            calibrationGranted: consent.calibrationGranted,
-            startedAt,
-            topicId: topic.id,
-            questionKey: resolvedKey,
-            retakeOfAttemptId: sourceAttempt.id,
-          });
+          await insertAttemptWithQuota(
+            ctx,
+            {
+              id: attemptId,
+              userId: ctx.session.user.id,
+              mode: retakeMode,
+              inHistory: consent.inHistory,
+              calibrationGranted: consent.calibrationGranted,
+              startedAt,
+              topicId: topic.id,
+              questionKey: resolvedKey,
+              retakeOfAttemptId: sourceAttempt.id,
+            },
+            { kind: "retake", isFirstRootRetake: sourceAttempt.retakeOfAttemptId === null },
+            { id: sourceAttempt.id, retakeOfAttemptId: sourceAttempt.retakeOfAttemptId },
+          );
+
+          if (linkedToCopy && ctx.env?.AUDIO_BUCKET) {
+            await saveLinkedPrompt(ctx.env.AUDIO_BUCKET, {
+              userId: ctx.session.user.id,
+              attemptId,
+              questionKey: resolvedKey,
+              prompt: {
+                questionText: linkedToCopy.questionText,
+                triggerPhrase: linkedToCopy.triggerPhrase,
+                baseQuestionText,
+                updatedAt: startedAt.getTime(),
+              },
+            });
+          }
 
           return {
             attemptId,
@@ -297,18 +454,22 @@ export const attemptRouter = router({
         }
         const retakeKind = detail.part === 1 ? ("p1" as const) : ("p23" as const);
 
-        await ctx.db.insert(attempt).values({
-          id: attemptId,
-          userId: ctx.session.user.id,
-          mode: retakeMode,
-          status: "in_progress",
-          inHistory: consent.inHistory,
-          calibrationGranted: consent.calibrationGranted,
-          startedAt,
-          topicId: null,
-          questionKey: rawWeakestKey,
-          retakeOfAttemptId: sourceAttempt.id,
-        });
+        await insertAttemptWithQuota(
+          ctx,
+          {
+            id: attemptId,
+            userId: ctx.session.user.id,
+            mode: retakeMode,
+            inHistory: consent.inHistory,
+            calibrationGranted: consent.calibrationGranted,
+            startedAt,
+            topicId: null,
+            questionKey: rawWeakestKey,
+            retakeOfAttemptId: sourceAttempt.id,
+          },
+          { kind: "retake", isFirstRootRetake: sourceAttempt.retakeOfAttemptId === null },
+          { id: sourceAttempt.id, retakeOfAttemptId: sourceAttempt.retakeOfAttemptId },
+        );
 
         return {
           attemptId,
@@ -334,6 +495,7 @@ export const attemptRouter = router({
 
       // Attempts with a topicId are scored, so the topic must be a real published
       // forecast topic rather than any string the client chooses.
+      let topicPart: number | undefined;
       if (topicId) {
         const [topic] = await ctx.db
           .select({
@@ -350,6 +512,7 @@ export const attemptRouter = router({
             message: "Unknown or unpublished forecast topic",
           });
         }
+        topicPart = topic.part;
         if (questionKey) {
           const validKeys = getValidQuestionKeysForTopic(topic, null);
           if (!validKeys.has(questionKey)) {
@@ -363,19 +526,27 @@ export const attemptRouter = router({
 
       const consent = await requireExamConsent(ctx.db, ctx.session.user.id);
       const attemptId = crypto.randomUUID();
-      const startedAt = new Date();
+      const startedAt = ctx.now?.() ?? new Date();
+      const target: QuotaChargeTarget = topicId
+        ? questionKey
+          ? { kind: "forecast_question" }
+          : { kind: "forecast_topic", topicPart: topicPart! }
+        : { kind: "mock", mode };
 
-      await ctx.db.insert(attempt).values({
-        id: attemptId,
-        userId: ctx.session.user.id,
-        mode,
-        status: "in_progress",
-        inHistory: consent.inHistory,
-        calibrationGranted: consent.calibrationGranted,
-        startedAt,
-        topicId,
-        questionKey,
-      });
+      await insertAttemptWithQuota(
+        ctx,
+        {
+          id: attemptId,
+          userId: ctx.session.user.id,
+          mode,
+          inHistory: consent.inHistory,
+          calibrationGranted: consent.calibrationGranted,
+          startedAt,
+          topicId,
+          questionKey,
+        },
+        target,
+      );
 
       return {
         attemptId,
@@ -827,14 +998,26 @@ export const attemptRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Attempt has no recorded answers" });
       }
 
-      const submittedAt = new Date();
+      const submittedAt = ctx.now?.() ?? new Date();
+      if ((await resolveUserEntitlement(ctx)) === "free") {
+        const hold = await refreshHoldOnSubmit(
+          ctx.db,
+          input.attemptId,
+          parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND),
+          submittedAt,
+        );
+        if (!hold.ok) {
+          throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: hold.reason });
+        }
+      }
+
       const markSubmitted = ctx.db
         .update(attempt)
         .set({
           status: "submitted",
           submittedAt,
         })
-        .where(eq(attempt.id, input.attemptId));
+        .where(and(eq(attempt.id, input.attemptId), eq(attempt.status, "in_progress")));
 
       // Every attempt with recorded answers is scored asynchronously, mock and
       // forecast alike. The status change and the score row are written in one

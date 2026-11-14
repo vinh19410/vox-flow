@@ -45,6 +45,7 @@ export const server = Cloudflare.Worker("server", {
     // Empty pricing leaves cost_usd null.
     SCORING_PRICE_INPUT_PER_1M: Config.String("SCORING_PRICE_INPUT_PER_1M").pipe(Config.withDefault("")),
     SCORING_PRICE_OUTPUT_PER_1M: Config.String("SCORING_PRICE_OUTPUT_PER_1M").pipe(Config.withDefault("")),
+    FREE_DAILY_BUDGET_VND: Config.String("FREE_DAILY_BUDGET_VND").pipe(Config.withDefault("33000")),
     CORS_ORIGIN: Config.String("CORS_ORIGIN"),
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,

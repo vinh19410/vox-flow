@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useApp } from "@/features/app-state/types";
+import {
+  invalidateQuotaStatus,
+  parseQuotaErrorCode,
+  type QuotaErrorCode,
+} from "@/features/select/use-quota-status";
 import { useMicLevel } from "@/hooks/use-mic-level";
 import { useRecorder } from "@/hooks/use-recorder";
 import { cancelSpeech, prefetchSpeech, speakText } from "@/lib/speech";
@@ -63,6 +68,7 @@ export interface ExamSessionValue {
   restart: () => void; next: () => void; retryStep: (k: number) => void;
   attemptId?: string | null;
   attemptStatus: "pending" | "ready" | "failed";
+  quotaBlock: QuotaErrorCode | null;
 }
 
 const voiceLang = (id: string) => (id.startsWith("uk") ? "en-GB" : id.startsWith("au") ? "en-AU" : "en-US");
@@ -119,6 +125,7 @@ export function useExamSession(): ExamSessionValue {
   );
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [attemptStatus, setAttemptStatus] = useState<"pending" | "ready" | "failed">("pending");
+  const [quotaBlock, setQuotaBlock] = useState<QuotaErrorCode | null>(null);
   const attemptIdRef = useRef<string | null>(null);
   // Recordings stopped before the attempt id arrived, keyed by question. The
   // entry promise only settles once the device copy has been written, so the
@@ -146,6 +153,8 @@ export function useExamSession(): ExamSessionValue {
     }
   }, [practiceKey]);
   const recorder = useRecorder();
+  const recorderCancelRef = useRef(recorder.cancel);
+  recorderCancelRef.current = recorder.cancel;
   const startParamsRef = useRef({
     examMode: s.practice
       ? s.practice.singleQuestionId
@@ -258,12 +267,23 @@ export function useExamSession(): ExamSessionValue {
               questionKey,
             })
             .then((res) => {
-              if (active) applyAttemptId(res.attemptId);
+              if (active) {
+                applyAttemptId(res.attemptId);
+                invalidateQuotaStatus();
+              }
             });
         }
       })
-      .catch(() => {
-        // Gracefully continue in offline / mock test mode
+      .catch((err) => {
+        if (!active) return;
+        const quotaCode = parseQuotaErrorCode(err);
+        if (quotaCode) {
+          cancelSpeech();
+          recorderCancelRef.current();
+          setQuotaBlock(quotaCode);
+          invalidateQuotaStatus();
+        }
+        // Gracefully continue in offline / mock test mode for non-quota errors
         setAttemptStatus("failed");
       })
       .finally(() => clearTimeout(syncTimer));
@@ -276,8 +296,8 @@ export function useExamSession(): ExamSessionValue {
   const step = steps[idx];
   const { level } = useMicLevel(phase === "recording");
   const maxRec = step?.part === 2 ? 120 : step?.part === 3 ? 60 : 40;
-  // All exam timers pause while the exit or pre-submit modal is open.
-  const paused = exitOpen || review;
+  // All exam timers pause while the exit, pre-submit modal, or quota block is open.
+  const paused = exitOpen || review || Boolean(quotaBlock);
   const practiceTopicId = s.practice?.topicId?.trim();
   const clearLinkedOverride = (questionKey: string) => {
     setLinkedOverrides((prev) => {
@@ -642,7 +662,7 @@ export function useExamSession(): ExamSessionValue {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "BUTTON" || tag === "A" || tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (review || exitOpen) return;
+      if (review || exitOpen || quotaBlock) return;
       if (e.code === "Space") {
         e.preventDefault();
         if (phase === "ready") startRec();
@@ -682,5 +702,6 @@ export function useExamSession(): ExamSessionValue {
     begin, startRec, stopRec, restart, next, retryStep,
     attemptId,
     attemptStatus,
+    quotaBlock,
   };
 }

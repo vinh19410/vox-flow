@@ -1,10 +1,19 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun, user } from "@vox-flow/db/schema";
+import {
+  attempt,
+  attemptAnswer,
+  attemptScore,
+  forecastTopic,
+  quotaReservation,
+  scoreRun,
+  user,
+} from "@vox-flow/db/schema";
 
 import { appRouter } from "../routers/index";
 import { buildLinkedPromptKey } from "../exam/linked-prompt-store";
+import { reserve } from "../quota/quota";
 import { createTestDb, type TestDbContext } from "../test/db";
 import { OpenAIRequestError, type ChatCompletionResult, type ScoringOpenAIClient } from "./openai-client";
 import {
@@ -974,6 +983,99 @@ describe("scoreAttempt", () => {
       expect(score.status).toBe("failed");
       expect(score.lastError).toContain("ANSWER_COUNT_EXCEEDED");
       expect(client.transcribeCalls).toHaveLength(0);
+    });
+  });
+
+  describe("free quota release & late-done reclaim", () => {
+    const fixedNow = new Date("2026-11-10T04:00:00.000Z");
+
+    it("markScoreFailed releases personal points and retains sunkCostVnd when tries > 0", async () => {
+      await seed(ctx.db);
+      await ctx.db
+        .update(attemptScore)
+        .set({ status: "processing", tries: 2, updatedAt: fixedNow })
+        .where(eq(attemptScore.attemptId, ATTEMPT_ID));
+      await reserve(ctx.db, {
+        userId: USER_ID,
+        attemptId: ATTEMPT_ID,
+        target: { kind: "mock", mode: "full" },
+        budgetCapVnd: 33_000,
+        now: fixedNow,
+      });
+
+      await markScoreFailed(ctx.db, ATTEMPT_ID, new Error("delivery exhausted"), fixedNow);
+
+      const [res] = await ctx.db
+        .select()
+        .from(quotaReservation)
+        .where(eq(quotaReservation.attemptId, ATTEMPT_ID));
+      expect(res).toMatchObject({
+        status: "released",
+        points: 3,
+        sunkCostVnd: 2500,
+        refundCount: 1,
+      });
+    });
+
+    it("releases personal points when scoreAttempt hits a terminal 400 failure", async () => {
+      await seed(ctx.db);
+      await reserve(ctx.db, {
+        userId: USER_ID,
+        attemptId: ATTEMPT_ID,
+        target: { kind: "mock", mode: "full" },
+        budgetCapVnd: 33_000,
+        now: fixedNow,
+      });
+      client.chatImpl = async () => {
+        throw new OpenAIRequestError(400, "invalid request");
+      };
+
+      await expect(scoreAttempt({ ...deps, now: () => fixedNow }, ATTEMPT_ID)).resolves.toBe("failed");
+
+      const [res] = await ctx.db
+        .select()
+        .from(quotaReservation)
+        .where(eq(quotaReservation.attemptId, ATTEMPT_ID));
+      expect(res).toMatchObject({
+        status: "released",
+        sunkCostVnd: 2500,
+        refundCount: 1,
+      });
+    });
+
+    it("reclaims a released reservation back to active if a late worker completes done", async () => {
+      await seed(ctx.db);
+      await reserve(ctx.db, {
+        userId: USER_ID,
+        attemptId: ATTEMPT_ID,
+        target: { kind: "mock", mode: "part1" },
+        budgetCapVnd: 33_000,
+        now: fixedNow,
+      });
+      await markScoreFailed(ctx.db, ATTEMPT_ID, new Error("transient sweep"), fixedNow);
+
+      // Re-open score row in failed state with tries left, as when a late worker finishes after timeout mark
+      await ctx.db
+        .update(attemptScore)
+        .set({ tries: 1, status: "failed" })
+        .where(eq(attemptScore.attemptId, ATTEMPT_ID));
+      // Claimable state only accepts queued/processing; simulate an overdue processing worker racing markScoreFailed
+      await ctx.db
+        .update(attemptScore)
+        .set({ status: "processing", tries: 1, updatedAt: new Date(fixedNow.getTime() - SCORING_LEASE_MS - 1000) })
+        .where(eq(attemptScore.attemptId, ATTEMPT_ID));
+
+      await expect(scoreAttempt({ ...deps, now: () => fixedNow }, ATTEMPT_ID)).resolves.toBe("done");
+
+      const [res] = await ctx.db
+        .select()
+        .from(quotaReservation)
+        .where(eq(quotaReservation.attemptId, ATTEMPT_ID));
+      expect(res).toMatchObject({
+        status: "active",
+        refundCount: 0,
+        sunkCostVnd: 0,
+      });
     });
   });
 });

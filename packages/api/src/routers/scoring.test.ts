@@ -2,11 +2,21 @@ import type { R2Bucket } from "@cloudflare/workers-types";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { attempt, attemptAnswer, attemptScore, scoreRun, scoringRetryLog, user } from "@vox-flow/db/schema";
+import {
+  attempt,
+  attemptAnswer,
+  attemptScore,
+  quotaReservation,
+  scoreRun,
+  scoringRetryLog,
+  user,
+} from "@vox-flow/db/schema";
 
 import * as entitlements from "../entitlements";
 
 import { type LinkedPromptBucket, saveLinkedPrompt } from "../exam/linked-prompt-store";
+import { reserve } from "../quota/quota";
+import { vnDay } from "../quota/vn-time";
 import { SCORING_ENQUEUE_DELAY_SECONDS, type ScoringQueue } from "../scoring/queue";
 import { startOfVietnamDayMs } from "../scoring/retry-limits";
 import type { ScoredCriterion, ScoringQueueMessage } from "../scoring/types";
@@ -729,6 +739,117 @@ describe("scoringRouter", () => {
       expect(result?.retakeOfAttemptId).toBe("att-forecast");
       expect(result?.previousOverall).toBe(5.5);
       expect(result?.overall).toBe(6.5);
+    });
+  });
+
+  describe("free quota on retry", () => {
+    it("allows rescue (!existing) retry even when daily free points are exhausted", async () => {
+      const now = new Date("2026-11-10T03:00:00.000Z");
+      await ctx.db.insert(attempt).values({
+        id: "att-used-full",
+        userId: "owner",
+        mode: "full",
+        status: "in_progress",
+      });
+      await reserve(ctx.db, {
+        userId: "owner",
+        attemptId: "att-used-full",
+        target: { kind: "mock", mode: "full" },
+        budgetCapVnd: 33_000,
+        now,
+      });
+
+      const caller = callerFor("owner", true, { now: () => now });
+      const res = await caller.scoring.retry({ attemptId: "att-forecast" });
+      expect(res).toMatchObject({ status: "queued", manualRetries: 0 });
+    });
+
+    it("rejects manual retry with QUOTA_EXCEEDED without writing retry log when refunded points were re-spent", async () => {
+      const now = new Date("2026-11-10T03:00:00.000Z");
+      await ctx.db.insert(attempt).values([
+        { id: "att-failed-full", userId: "owner", mode: "full", status: "submitted" },
+        { id: "att-new-part", userId: "owner", mode: "part1", status: "in_progress" },
+      ]);
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-failed-full",
+        userId: "owner",
+        status: "failed",
+        tries: 3,
+      });
+      await ctx.db.insert(quotaReservation).values({
+        attemptId: "att-failed-full",
+        reservationId: "res-failed-full",
+        userId: "owner",
+        vnDay: vnDay(now.getTime()),
+        points: 3,
+        costVnd: 2500,
+        sunkCostVnd: 2500,
+        refundCount: 1,
+        status: "released",
+        createdAt: now,
+        updatedAt: now,
+      });
+      await reserve(ctx.db, {
+        userId: "owner",
+        attemptId: "att-new-part",
+        target: { kind: "mock", mode: "part1" },
+        budgetCapVnd: 33_000,
+        now,
+      });
+
+      const caller = callerFor("owner", true, { now: () => now });
+      await expect(caller.scoring.retry({ attemptId: "att-failed-full" })).rejects.toMatchObject({
+        code: "TOO_MANY_REQUESTS",
+        message: "QUOTA_EXCEEDED",
+      });
+      expect(await ctx.db.select().from(scoringRetryLog)).toHaveLength(0);
+      expect(queue.sent).toHaveLength(0);
+    });
+
+    it("charges today's quota when manually retrying yesterday's failed attempt", async () => {
+      const yesterday = new Date("2026-11-09T05:00:00.000Z");
+      const today = new Date("2026-11-10T05:00:00.000Z");
+      await ctx.db.insert(attempt).values({
+        id: "att-yday",
+        userId: "owner",
+        mode: "part1",
+        status: "submitted",
+      });
+      await ctx.db.insert(attemptScore).values({
+        attemptId: "att-yday",
+        userId: "owner",
+        status: "failed",
+        tries: 3,
+      });
+      await ctx.db.insert(quotaReservation).values({
+        attemptId: "att-yday",
+        reservationId: "res-yday",
+        userId: "owner",
+        vnDay: vnDay(yesterday.getTime()),
+        points: 1,
+        costVnd: 1000,
+        sunkCostVnd: 1000,
+        refundCount: 1,
+        status: "released",
+        createdAt: yesterday,
+        updatedAt: yesterday,
+      });
+
+      const caller = callerFor("owner", true, { now: () => today });
+      await expect(caller.scoring.retry({ attemptId: "att-yday" })).resolves.toMatchObject({
+        status: "queued",
+        manualRetries: 1,
+      });
+      const [row] = await ctx.db
+        .select()
+        .from(quotaReservation)
+        .where(eq(quotaReservation.attemptId, "att-yday"));
+      expect(row).toMatchObject({
+        status: "active",
+        vnDay: vnDay(today.getTime()),
+        points: 1,
+        refundCount: 0,
+      });
     });
   });
 });

@@ -7,6 +7,7 @@ import { attempt, attemptAnswer, attemptScore, forecastTopic, scoreRun } from "@
 import { isValidAudioKey } from "../audio";
 import { loadLinkedPrompt, type LinkedPromptBucket } from "../exam/linked-prompt-store";
 import { resolveCanonicalQuestionText, type CanonicalQuestionTopic } from "../forecast/questions";
+import { reclaimOnLateDone, release } from "../quota/quota";
 import { aggregateRuns, overallFromCriteria, type CriterionBands } from "./aggregate";
 import { findAnswerLimitViolation } from "./answer-limits";
 import { resolveCanonicalMockQuestionText } from "./mock-exam-bank";
@@ -130,7 +131,7 @@ export async function markScoreFailed(
   error: unknown,
   now: Date = new Date(),
 ): Promise<void> {
-  await db
+  const updated = await db
     .update(attemptScore)
     .set({ status: "failed", lastError: describeScoringError(error), updatedAt: now })
     .where(
@@ -138,7 +139,12 @@ export async function markScoreFailed(
         eq(attemptScore.attemptId, attemptId),
         inArray(attemptScore.status, ["queued", "processing"]),
       ),
-    );
+    )
+    .returning({ attemptId: attemptScore.attemptId, tries: attemptScore.tries });
+
+  if (updated.length > 0) {
+    await release(db, attemptId, { retainBudget: updated[0]!.tries > 0, now });
+  }
 }
 
 /**
@@ -223,6 +229,7 @@ export async function scoreAttempt(
       return "skipped";
     }
     if (terminal) {
+      await release(db, attemptId, { retainBudget: claimed.tries > 0, now: now() });
       console.error(`[scoring] Attempt ${attemptId} failed permanently:`, describeScoringError(error));
       return "failed";
     }
@@ -508,7 +515,7 @@ async function runPipeline(
   const models = [...new Set(runs.map((r) => r.row.model))].join(",");
 
   const finishedAt = now();
-  await db
+  const markedDone = await db
     .update(attemptScore)
     .set({
       status: "done",
@@ -522,7 +529,12 @@ async function runPipeline(
       updatedAt: finishedAt,
     })
     // A finished result wins over a failure recorded meanwhile by another worker.
-    .where(and(eq(attemptScore.attemptId, attemptId), ne(attemptScore.status, "done")));
+    .where(and(eq(attemptScore.attemptId, attemptId), ne(attemptScore.status, "done")))
+    .returning({ attemptId: attemptScore.attemptId });
+
+  if (markedDone.length > 0) {
+    await reclaimOnLateDone(db, attemptId, finishedAt);
+  }
 }
 
 function bandsOf(run: ProcessedRun): CriterionBands {
