@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { attempt, attemptScore, user } from "@vox-flow/db/schema";
+import { attempt, attemptScore, quotaReservation, user } from "@vox-flow/db/schema";
 
+import { reserve } from "../quota/quota";
 import { createTestDb, type TestDbContext } from "../test/db";
 import type { ScoringQueueMessage } from "./types";
 import { requeueStaleScores, STALE_SCORE_AFTER_MS } from "./requeue";
@@ -63,5 +64,28 @@ describe("requeueStaleScores", () => {
     expect(result.requeued).toBe(0);
     const [row] = await ctx.db.select().from(attemptScore).where(eq(attemptScore.attemptId, "stale-queued"));
     expect(row!.updatedAt).toEqual(stale);
+  });
+
+  it("releases free quota points and retains sunkCostVnd when failing an exhausted score", async () => {
+    await reserve(ctx.db, {
+      userId: "u",
+      attemptId: "stale-exhausted",
+      target: { kind: "mock", mode: "part1" },
+      budgetCapVnd: 33_000,
+      now,
+    });
+
+    const result = await requeueStaleScores(ctx.db, { send: async () => {} }, now);
+    expect(result.failed).toBe(1);
+
+    const [res] = await ctx.db
+      .select()
+      .from(quotaReservation)
+      .where(eq(quotaReservation.attemptId, "stale-exhausted"));
+    expect(res).toMatchObject({
+      status: "released",
+      sunkCostVnd: 1000,
+      refundCount: 1,
+    });
   });
 });

@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AttemptJob } from "@/features/app-state/types";
 import { flushAnswerUploads } from "@/features/exam/answer-uploads";
+import {
+  getQuotaErrorMessage,
+  invalidateQuotaStatus,
+  parseQuotaErrorCode,
+  QUOTA_SUBMIT_CAP_MESSAGE,
+} from "@/features/select/use-quota-status";
 import { trpcClient } from "@/utils/trpc";
 
 /** Poll interval for the first minute, when most attempts finish. */
@@ -80,6 +86,8 @@ export const RETRY_LIMIT_MESSAGE = "Bài thi đã hết số lần thử lại c
 
 /** Server retry-quota codes; any other error keeps the generic wording. */
 function retryLimitMessage(err: unknown): string | null {
+  const quotaCode = parseQuotaErrorCode(err);
+  if (quotaCode) return getQuotaErrorMessage(quotaCode, "retry");
   if (!(err instanceof Error)) return null;
   if (err.message === DAILY_RETRY_LIMIT_EXCEEDED) return DAILY_RETRY_LIMIT_MESSAGE;
   if (err.message === RETRY_LIMIT_EXCEEDED) return RETRY_LIMIT_MESSAGE;
@@ -173,11 +181,21 @@ export function useScoringJob(job: AttemptJob | null, handlers: ScoringJobHandle
       if (!mountedRef.current) return;
       try {
         await trpcClient.attempt.submit.mutate({ attemptId });
+        invalidateQuotaStatus();
         if (!mountedRef.current) return;
         markSubmitted(attemptId);
         setView(QUEUED);
       } catch (submitErr) {
         console.warn("Attempt submit failed:", submitErr);
+        const quotaCode = parseQuotaErrorCode(submitErr);
+        if (quotaCode) {
+          invalidateQuotaStatus();
+          if (mountedRef.current) {
+            setActionError(QUOTA_SUBMIT_CAP_MESSAGE);
+            setView({ kind: "submit_error" });
+          }
+          return;
+        }
         // A lost response may hide a successful submit: trust the server state.
         try {
           const st = await trpcClient.scoring.status.query({ attemptId });
@@ -218,11 +236,13 @@ export function useScoringJob(job: AttemptJob | null, handlers: ScoringJobHandle
           return;
         }
         if (st.status === "done") {
+          invalidateQuotaStatus();
           setView({ kind: "done" });
           handlersRef.current.onDone(attemptId);
           return;
         }
         if (st.status === "failed") {
+          invalidateQuotaStatus();
           setView(failedView(st));
           return;
         }
@@ -266,9 +286,13 @@ export function useScoringJob(job: AttemptJob | null, handlers: ScoringJobHandle
     setActionError(null);
     try {
       await trpcClient.scoring.retry.mutate({ attemptId });
+      invalidateQuotaStatus();
       if (mountedRef.current) setView(QUEUED);
     } catch (err) {
       console.warn("Scoring retry failed:", err);
+      if (parseQuotaErrorCode(err)) {
+        invalidateQuotaStatus();
+      }
       if (mountedRef.current) {
         setActionError(retryLimitMessage(err) ?? "Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
       }
@@ -313,11 +337,22 @@ export function useScoringJob(job: AttemptJob | null, handlers: ScoringJobHandle
           }
         }
         if (!mountedRef.current) return;
+        invalidateQuotaStatus();
         markSubmitted(attemptId);
         setView(QUEUED);
       } catch (err) {
         console.warn("Attempt resubmit failed:", err);
-        if (mountedRef.current) setActionError("Vẫn chưa gửi được bài. Kiểm tra kết nối mạng rồi thử lại.");
+        const quotaCode = parseQuotaErrorCode(err);
+        if (quotaCode) {
+          invalidateQuotaStatus();
+        }
+        if (mountedRef.current) {
+          setActionError(
+            quotaCode
+              ? QUOTA_SUBMIT_CAP_MESSAGE
+              : "Vẫn chưa gửi được bài. Kiểm tra kết nối mạng rồi thử lại.",
+          );
+        }
       } finally {
         if (mountedRef.current) setBusy(false);
       }

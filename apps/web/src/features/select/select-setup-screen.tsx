@@ -5,6 +5,7 @@ import { MODES } from "@/features/exam/data";
 import { PageHead } from "@/layouts/page-head";
 
 import { PreExamCard } from "./components/pre-exam-card";
+import { QuotaBanner } from "./components/quota-banner";
 import { VoicePicker } from "./components/voice-picker";
 
 export function SelectSetupScreen() {
@@ -21,6 +22,8 @@ export function SelectSetupScreen() {
       </button>
 
       <PageHead eyebrow="S07 · Thi thử" title={mode.title} sub={mode.sub} />
+
+      <QuotaBanner className="mb-5" />
 
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <VoicePicker />

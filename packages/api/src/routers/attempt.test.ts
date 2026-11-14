@@ -1,8 +1,17 @@
 import type { R2Bucket } from "@cloudflare/workers-types";
 import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attempt, attemptAnswer, attemptScore, consentEvent, forecastTopic, user } from "@vox-flow/db";
+import {
+  attempt,
+  attemptAnswer,
+  attemptScore,
+  consentEvent,
+  forecastTopic,
+  quotaReservation,
+  user,
+} from "@vox-flow/db";
 import { buildLinkedPromptKey, loadLinkedPrompt, saveLinkedPrompt } from "../exam/linked-prompt-store";
+import { UNSUBMITTED_HOLD_TTL_MS } from "../quota/vn-time";
 import { appRouter } from "./index";
 import { createTestDb } from "../test/db";
 
@@ -1645,6 +1654,285 @@ describe("attemptRouter", () => {
             ending: "and explain how you felt about helping this person.",
           },
           retakeOfAttemptId: "att-mock-parent",
+        });
+      } finally {
+        await dispose();
+      }
+    });
+  });
+
+  describe("free quota integration", () => {
+    const makeCaller = (
+      db: Awaited<ReturnType<typeof createTestDb>>["db"],
+      userId: string,
+      opts: {
+        nowMs?: number;
+        budget?: string;
+        entitlement?: "free" | "paid";
+        bucket?: R2Bucket;
+      } = {},
+    ) =>
+      appRouter.createCaller({
+        db,
+        session: {
+          user: {
+            id: userId,
+            email: `${userId}@example.com`,
+            name: userId,
+            emailVerified: true,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          session: {
+            id: `sess-${userId}`,
+            userId,
+            token: `tok-${userId}`,
+            expiresAt: new Date(Date.now() + 3_600_000),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        },
+        env: {
+          LAUNCH_OPEN: "true",
+          ...(opts.budget !== undefined ? { FREE_DAILY_BUDGET_VND: opts.budget } : {}),
+          ...(opts.bucket ? { AUDIO_BUCKET: opts.bucket } : {}),
+        },
+        ...(opts.nowMs !== undefined ? { now: () => new Date(opts.nowMs!) } : {}),
+        ...(opts.entitlement ? { getEntitlement: async () => opts.entitlement! } : {}),
+      });
+
+    it("charges full mock 3 pts, blocks follow-up with QUOTA_EXCEEDED leaving no orphan, and hides VND from quota.status", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const nowMs = new Date("2026-11-10T04:00:00.000Z").getTime();
+        await db.insert(user).values({ id: "u-q1", name: "Q1", email: "u-q1@example.com", emailVerified: true });
+        await db.insert(consentEvent).values({ id: "c-q1", userId: "u-q1", kind: "save", granted: true });
+
+        const caller = makeCaller(db, "u-q1", { nowMs });
+        const full = await caller.attempt.start({ mode: "full" });
+        expect(full.attemptId).toBeTruthy();
+
+        const status = await caller.quota.status();
+        expect(status).toMatchObject({
+          entitlement: "free",
+          dailyLimit: 3,
+          usedPoints: 3,
+          remainingPoints: 0,
+        });
+        expect(JSON.stringify(status).toLowerCase()).not.toMatch(/vnd|costvnd|spent|budget/);
+
+        await expect(caller.attempt.start({ mode: "part1" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "QUOTA_EXCEEDED",
+        });
+
+        const rows = await db.select().from(attempt).where(eq(attempt.userId, "u-q1"));
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.id).toBe(full.attemptId);
+
+        const resRows = await db.select().from(quotaReservation).where(eq(quotaReservation.attemptId, full.attemptId));
+        expect(resRows[0]).toMatchObject({ points: 3, costVnd: 2500, status: "active" });
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("derives whole-topic Forecast cost from server topic.part even if client passes mode='part1'", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const nowMs = new Date("2026-11-10T04:00:00.000Z").getTime();
+        await db.insert(user).values({ id: "u-q2", name: "Q2", email: "u-q2@example.com", emailVerified: true });
+        await db.insert(consentEvent).values({ id: "c-q2", userId: "u-q2", kind: "save", granted: true });
+        await db.insert(forecastTopic).values([
+          PUBLISHED_TOPIC,
+          {
+            id: "p2-place",
+            title: "Describe a quiet place",
+            quarter: "2026-Q4",
+            part: 2,
+            questions: JSON.stringify({ cueCard: ["Describe a quiet place"], part3: ["Why do people like quiet?"] }),
+            status: "published",
+          },
+        ]);
+
+        const caller = makeCaller(db, "u-q2", { nowMs });
+        // Spend 2 points first using Part 1 topic twice (1 pt each)
+        await caller.attempt.start({ mode: "part1", topicId: "p1-tidiness" });
+        await caller.attempt.start({ mode: "part1", topicId: "p1-tidiness" });
+        // Remaining = 1 pt; starting P2 whole topic with forged mode="part1" still requires 2 pts
+        await expect(caller.attempt.start({ mode: "part1", topicId: "p2-place" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "QUOTA_EXCEEDED",
+        });
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("enforces FREE_DAILY_BUDGET_VND with GLOBAL_CAP_REACHED while paid users bypass both caps", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const nowMs = new Date("2026-11-10T04:00:00.000Z").getTime();
+        await db.insert(user).values([
+          { id: "u-free", name: "Free", email: "u-free@example.com", emailVerified: true },
+          { id: "u-paid", name: "Paid", email: "u-paid@example.com", emailVerified: true },
+        ]);
+        await db.insert(consentEvent).values([
+          { id: "c-free", userId: "u-free", kind: "save", granted: true },
+          { id: "c-paid", userId: "u-paid", kind: "save", granted: true },
+        ]);
+
+        const freeCaller = makeCaller(db, "u-free", { nowMs, budget: "2000" });
+        // full costs 2500đ > 2000đ cap -> GLOBAL_CAP_REACHED
+        await expect(freeCaller.attempt.start({ mode: "full" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "GLOBAL_CAP_REACHED",
+        });
+        // part1 costs 1000đ <= 2000đ -> allowed
+        await expect(freeCaller.attempt.start({ mode: "part1" })).resolves.toMatchObject({ mode: "part1" });
+
+        // paid user bypasses both 2000đ cap and 3-pt personal cap
+        const paidCaller = makeCaller(db, "u-paid", { nowMs, budget: "0", entitlement: "paid" });
+        await expect(paidCaller.attempt.start({ mode: "full" })).resolves.toMatchObject({ mode: "full" });
+        const paidStatus = await paidCaller.quota.status();
+        expect(paidStatus.entitlement).toBe("paid");
+        expect(paidStatus.globalCapReached).toBe(false);
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("allows 0-pt first root retake at 0 points remaining and rejects 2nd retake without writing R2", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const nowMs = new Date("2026-11-10T04:00:00.000Z").getTime();
+        const r2Objects = new Map<string, string>();
+        const fakeBucket = {
+          get: async (key: string) => {
+            const val = r2Objects.get(key);
+            return val ? { text: async () => val } : null;
+          },
+          put: async (key: string, value: string) => {
+            r2Objects.set(key, value);
+          },
+        } as unknown as R2Bucket;
+
+        await db.insert(user).values({ id: "u-ret", name: "Retake", email: "u-ret@example.com", emailVerified: true });
+        await db.insert(consentEvent).values({ id: "c-ret", userId: "u-ret", kind: "save", granted: true });
+        await db.insert(forecastTopic).values(PUBLISHED_TOPIC);
+
+        const caller = makeCaller(db, "u-ret", { nowMs, bucket: fakeBucket });
+        // Spend all 3 points on a full exam
+        await caller.attempt.start({ mode: "full" });
+
+        // Seed a scored root forecast attempt + linked prompt
+        await db.insert(attempt).values({
+          id: "att-root-f",
+          userId: "u-ret",
+          mode: "part1",
+          status: "submitted",
+          topicId: PUBLISHED_TOPIC.id,
+          startedAt: new Date(nowMs),
+          submittedAt: new Date(nowMs),
+        });
+        await db.insert(attemptAnswer).values({
+          id: "ans-root-f",
+          attemptId: "att-root-f",
+          questionKey: "p1-tidiness-0-f",
+          questionText: "Follow up question",
+          partNumber: 1,
+          orderIndex: 0,
+          audioKey: "users/u-ret/attempts/att-root-f/p1-tidiness-0-f.1.webm",
+          durationMs: 6000,
+          sizeBytes: 1000,
+          mimeType: "audio/webm",
+        });
+        await db.insert(attemptScore).values({
+          attemptId: "att-root-f",
+          userId: "u-ret",
+          status: "done",
+          overall: 5.5,
+          scoredAt: new Date(nowMs),
+          criteriaJson: JSON.stringify([
+            {
+              key: "LR",
+              band: 5.5,
+              summary: "Cần thêm từ vựng.",
+              evidence: [{ quote: "very tidy", questionKey: "p1-tidiness-0-f", where: "Part 1 · Câu 1", kind: "minus", note: "Lặp từ." }],
+              improve: [],
+            },
+          ]),
+        });
+        await saveLinkedPrompt(fakeBucket, {
+          userId: "u-ret",
+          attemptId: "att-root-f",
+          questionKey: "p1-tidiness-0",
+          prompt: { questionText: "Linked follow-up question?", baseQuestionText: PUBLISHED_TOPIC.title, updatedAt: nowMs },
+        });
+        const putCountBefore = r2Objects.size;
+
+        // 1st retake succeeds for 0 pts even with 0 points left
+        const firstRetake = await caller.attempt.start({ retakeOf: "att-root-f" });
+        expect(firstRetake).toMatchObject({ retakeOfAttemptId: "att-root-f" });
+
+        // 2nd retake of same root requires 1 pt -> rejected with QUOTA_EXCEEDED & writes NO extra R2 prompt
+        await expect(caller.attempt.start({ retakeOf: "att-root-f" })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "QUOTA_EXCEEDED",
+        });
+        expect(r2Objects.size).toBe(putCountBefore);
+      } finally {
+        await dispose();
+      }
+    });
+
+    it("releases stale (>30m) in_progress global hold and re-verifies global budget on submit", async () => {
+      const { db, dispose } = await createTestDb();
+      try {
+        const t0 = new Date("2026-11-10T04:00:00.000Z").getTime();
+        const t35 = t0 + UNSUBMITTED_HOLD_TTL_MS + 5 * 60_000;
+        await db.insert(user).values([
+          { id: "u-a", name: "User A", email: "u-a@example.com", emailVerified: true },
+          { id: "u-b", name: "User B", email: "u-b@example.com", emailVerified: true },
+        ]);
+        await db.insert(consentEvent).values([
+          { id: "c-a", userId: "u-a", kind: "save", granted: true },
+          { id: "c-b", userId: "u-b", kind: "save", granted: true },
+        ]);
+
+        const callerA0 = makeCaller(db, "u-a", { nowMs: t0, budget: "1500" });
+        const startedA = await callerA0.attempt.start({ mode: "part1" });
+        await db.insert(attemptAnswer).values({
+          id: "ans-a1",
+          attemptId: startedA.attemptId,
+          questionKey: "p1-1",
+          questionText: "Q1",
+          partNumber: 1,
+          orderIndex: 0,
+          audioKey: `users/u-a/attempts/${startedA.attemptId}/p1-1.1.webm`,
+          durationMs: 7000,
+          sizeBytes: 1200,
+          mimeType: "audio/webm",
+        });
+
+        // After 35 minutes, User A's in_progress hold expired so User B can take the 1500đ budget
+        const callerB35 = makeCaller(db, "u-b", { nowMs: t35, budget: "1500" });
+        await expect(callerB35.attempt.start({ mode: "part1" })).resolves.toMatchObject({ mode: "part1" });
+
+        // User A's submit now fails with GLOBAL_CAP_REACHED without losing in_progress state
+        const callerA35 = makeCaller(db, "u-a", { nowMs: t35, budget: "1500" });
+        await expect(callerA35.attempt.submit({ attemptId: startedA.attemptId })).rejects.toMatchObject({
+          code: "TOO_MANY_REQUESTS",
+          message: "GLOBAL_CAP_REACHED",
+        });
+        const [stillDraft] = await db.select().from(attempt).where(eq(attempt.id, startedA.attemptId));
+        expect(stillDraft?.status).toBe("in_progress");
+
+        // Once daily budget allows (e.g. cap increased), User A can submit the preserved attempt
+        const callerAOpen = makeCaller(db, "u-a", { nowMs: t35, budget: "5000" });
+        await expect(callerAOpen.attempt.submit({ attemptId: startedA.attemptId })).resolves.toMatchObject({
+          success: true,
+          status: "submitted",
         });
       } finally {
         await dispose();

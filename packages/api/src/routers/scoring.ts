@@ -3,11 +3,28 @@ import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { Database } from "@vox-flow/db";
-import { attempt, attemptAnswer, attemptScore, scoreRun, scoringRetryLog } from "@vox-flow/db/schema";
+import {
+  attempt,
+  attemptAnswer,
+  attemptScore,
+  forecastTopic,
+  quotaReservation,
+  scoreRun,
+  scoringRetryLog,
+} from "@vox-flow/db/schema";
 
-import { canViewDetail } from "../entitlements";
+import { canViewDetail, getEntitlement } from "../entitlements";
 import { loadLinkedPrompt } from "../exam/linked-prompt-store";
 import { protectedProcedure, router } from "../index";
+import {
+  buildReserveOnRetryStatement,
+  costVndFor,
+  diagnoseRetryQuotaFailure,
+  parseFreeDailyBudgetVnd,
+  pointsFor,
+  type MockQuotaMode,
+  type QuotaChargeTarget,
+} from "../quota/quota";
 import { confidenceRange, snapToHalfBand, weakestQuestionKey } from "../scoring/aggregate";
 import { cleanQuote, isVerbatimQuote } from "../scoring/prompt";
 import { startOfVietnamDayMs } from "../scoring/retry-limits";
@@ -58,6 +75,32 @@ async function countDailyRetries(db: Database, userId: string, nowMs: number) {
   return row?.count ?? 0;
 }
 
+async function deriveRetryTarget(
+  db: Database,
+  owned: typeof attempt.$inferSelect,
+): Promise<QuotaChargeTarget> {
+  if (owned.retakeOfAttemptId) {
+    return { kind: "retake", isFirstRootRetake: false };
+  }
+  if (owned.topicId && !owned.questionKey) {
+    const [topic] = await db
+      .select({ part: forecastTopic.part })
+      .from(forecastTopic)
+      .where(eq(forecastTopic.id, owned.topicId))
+      .limit(1);
+    const topicPart = topic?.part ?? (owned.mode === "part1" ? 1 : 2);
+    return { kind: "forecast_topic", topicPart };
+  }
+  if (owned.topicId && owned.questionKey) {
+    return { kind: "forecast_question" };
+  }
+  const mode: MockQuotaMode =
+    owned.mode === "full" || owned.mode === "part2" || owned.mode === "part3"
+      ? owned.mode
+      : "part1";
+  return { kind: "mock", mode };
+}
+
 // Per-run raw scores/errors stay server-only; only aggregate confidence range is exposed per D-04.
 export const scoringRouter = router({
   status: protectedProcedure
@@ -89,6 +132,9 @@ export const scoringRouter = router({
 
       // Both branches are conditional writes, so concurrent retries enqueue once.
       let changed: Array<{ attemptId: string; manualRetries?: number }>;
+      let entitlement: "free" | "paid" = "paid";
+      let effectivePoints = 0;
+
       if (!existing) {
         // Rescue path: a submitted attempt (mock or forecast) whose score row
         // was never created (e.g. submit's enqueue step failed, or the attempt
@@ -116,37 +162,98 @@ export const scoringRouter = router({
         const startOfDayUtc = startOfVietnamDayMs(nowMs);
         const retryLogId = crypto.randomUUID();
 
-        const batchResult = await ctx.db.batch([
-          ctx.db.insert(scoringRetryLog).select(sql`
-            SELECT ${retryLogId}, ${ctx.session.user.id}, ${input.attemptId}, ${nowMs}
-            WHERE (SELECT COUNT(*) FROM scoring_retry_log
-                   WHERE user_id = ${ctx.session.user.id}
-                     AND created_at >= ${startOfDayUtc}) < 3
-              AND EXISTS (SELECT 1 FROM attempt_score
-                          WHERE attempt_id = ${input.attemptId}
-                            AND status = 'failed'
-                            AND manual_retries < 1)
-          `),
-          ctx.db
-            .update(attemptScore)
-            .set({
-              manualRetries: sql`${attemptScore.manualRetries} + 1`,
-              status: "queued",
-              tries: 0,
-              lastError: null,
-              updatedAt: new Date(nowMs),
-            })
-            .where(
-              and(
-                eq(attemptScore.attemptId, input.attemptId),
-                eq(attemptScore.status, "failed"),
-                lt(attemptScore.manualRetries, 1),
-                sql`EXISTS (SELECT 1 FROM scoring_retry_log WHERE id = ${retryLogId})`,
-              ),
-            )
-            .returning({ attemptId: attemptScore.attemptId, manualRetries: attemptScore.manualRetries }),
-        ]);
-        changed = batchResult[1] ?? [];
+        entitlement = await (ctx.getEntitlement ?? getEntitlement)(ctx.db, ctx.session.user.id);
+        if (entitlement === "free") {
+          const derivedTarget = await deriveRetryTarget(ctx.db, owned);
+          const [existingReservation] = await ctx.db
+            .select({ points: quotaReservation.points })
+            .from(quotaReservation)
+            .where(eq(quotaReservation.attemptId, input.attemptId))
+            .limit(1);
+
+          effectivePoints = existingReservation ? existingReservation.points : pointsFor(derivedTarget);
+          const targetCostVnd = costVndFor(derivedTarget);
+          const budgetCapVnd = parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND);
+          const reservationId = crypto.randomUUID();
+
+          const batchResult = await ctx.db.batch([
+            buildReserveOnRetryStatement(ctx.db, {
+              userId: ctx.session.user.id,
+              attemptId: input.attemptId,
+              reservationId,
+              points: effectivePoints,
+              costVnd: targetCostVnd,
+              budgetCapVnd,
+              nowMs,
+              retryStartOfDayMs: startOfDayUtc,
+              retakeOfAttemptId: owned.retakeOfAttemptId,
+            }),
+            ctx.db.insert(scoringRetryLog).select(sql`
+              SELECT ${retryLogId}, ${ctx.session.user.id}, ${input.attemptId}, ${nowMs}
+              WHERE (SELECT COUNT(*) FROM scoring_retry_log
+                     WHERE user_id = ${ctx.session.user.id}
+                       AND created_at >= ${startOfDayUtc}) < 3
+                AND EXISTS (SELECT 1 FROM attempt_score
+                            WHERE attempt_id = ${input.attemptId}
+                              AND status = 'failed'
+                              AND manual_retries < 1)
+                AND EXISTS (SELECT 1 FROM quota_reservation
+                            WHERE attempt_id = ${input.attemptId}
+                              AND reservation_id = ${reservationId})
+            `),
+            ctx.db
+              .update(attemptScore)
+              .set({
+                manualRetries: sql`${attemptScore.manualRetries} + 1`,
+                status: "queued",
+                tries: 0,
+                lastError: null,
+                updatedAt: new Date(nowMs),
+              })
+              .where(
+                and(
+                  eq(attemptScore.attemptId, input.attemptId),
+                  eq(attemptScore.status, "failed"),
+                  lt(attemptScore.manualRetries, 1),
+                  sql`EXISTS (SELECT 1 FROM scoring_retry_log WHERE id = ${retryLogId})`,
+                ),
+              )
+              .returning({ attemptId: attemptScore.attemptId, manualRetries: attemptScore.manualRetries }),
+          ]);
+          changed = batchResult[2] ?? [];
+        } else {
+          const batchResult = await ctx.db.batch([
+            ctx.db.insert(scoringRetryLog).select(sql`
+              SELECT ${retryLogId}, ${ctx.session.user.id}, ${input.attemptId}, ${nowMs}
+              WHERE (SELECT COUNT(*) FROM scoring_retry_log
+                     WHERE user_id = ${ctx.session.user.id}
+                       AND created_at >= ${startOfDayUtc}) < 3
+                AND EXISTS (SELECT 1 FROM attempt_score
+                            WHERE attempt_id = ${input.attemptId}
+                              AND status = 'failed'
+                              AND manual_retries < 1)
+            `),
+            ctx.db
+              .update(attemptScore)
+              .set({
+                manualRetries: sql`${attemptScore.manualRetries} + 1`,
+                status: "queued",
+                tries: 0,
+                lastError: null,
+                updatedAt: new Date(nowMs),
+              })
+              .where(
+                and(
+                  eq(attemptScore.attemptId, input.attemptId),
+                  eq(attemptScore.status, "failed"),
+                  lt(attemptScore.manualRetries, 1),
+                  sql`EXISTS (SELECT 1 FROM scoring_retry_log WHERE id = ${retryLogId})`,
+                ),
+              )
+              .returning({ attemptId: attemptScore.attemptId, manualRetries: attemptScore.manualRetries }),
+          ]);
+          changed = batchResult[1] ?? [];
+        }
       }
 
       if (changed.length === 0) {
@@ -161,6 +268,18 @@ export const scoringRouter = router({
           throw new TRPCError({
             code: "TOO_MANY_REQUESTS",
             message: "DAILY_RETRY_LIMIT_EXCEEDED",
+          });
+        }
+        if (score?.status === "failed" && entitlement === "free") {
+          const quotaReason = await diagnoseRetryQuotaFailure(ctx.db, {
+            userId: ctx.session.user.id,
+            attemptId: input.attemptId,
+            points: effectivePoints,
+            nowMs: now.getTime(),
+          });
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: quotaReason,
           });
         }
         throw new TRPCError({

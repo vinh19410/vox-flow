@@ -9,6 +9,17 @@ import { PageHead } from "@/layouts/page-head";
 import { FEATURES } from "@/lib/feature-flags";
 import { modeLabel } from "@/features/exam/data";
 import { resolveAttemptView } from "@/features/history/data";
+import {
+  DAILY_RETRY_LIMIT_EXCEEDED,
+  DAILY_RETRY_LIMIT_MESSAGE,
+  RETRY_LIMIT_EXCEEDED,
+  RETRY_LIMIT_MESSAGE,
+} from "@/features/scoring/use-scoring-job";
+import {
+  getQuotaErrorMessage,
+  invalidateQuotaStatus,
+  parseQuotaErrorCode,
+} from "@/features/select/use-quota-status";
 import { cx } from "@/lib/cx";
 import { trpcClient } from "@/utils/trpc";
 
@@ -104,10 +115,21 @@ export function ResultsScreen({
     setRetryError(null);
     try {
       await trpcClient.scoring.retry.mutate({ attemptId });
+      invalidateQuotaStatus();
       openScoring();
     } catch (err) {
       console.warn("Scoring retry failed:", err);
-      setRetryError("Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
+      const quotaCode = parseQuotaErrorCode(err);
+      if (quotaCode) {
+        invalidateQuotaStatus();
+        setRetryError(getQuotaErrorMessage(quotaCode, "retry"));
+      } else if (err instanceof Error && err.message === DAILY_RETRY_LIMIT_EXCEEDED) {
+        setRetryError(DAILY_RETRY_LIMIT_MESSAGE);
+      } else if (err instanceof Error && err.message === RETRY_LIMIT_EXCEEDED) {
+        setRetryError(RETRY_LIMIT_MESSAGE);
+      } else {
+        setRetryError("Chưa gửi được yêu cầu chấm lại. Vui lòng thử lại sau ít phút.");
+      }
     } finally {
       setRetrying(false);
     }
@@ -188,7 +210,7 @@ export function ResultsScreen({
               size="lg"
               icon={TriangleAlert}
               title="Chấm điểm chưa thành công"
-              description="Bài thi của bạn vẫn được lưu đầy đủ, bạn có thể chấm lại ngay."
+              description="Bài thi của bạn vẫn được lưu đầy đủ (điểm miễn phí trong ngày sẽ tự động hoàn lại nếu còn hạn mức), bạn có thể chấm lại ngay."
               action={{ label: retrying ? "Đang gửi yêu cầu…" : "Chấm lại", onClick: () => void retryScoring(), disabled: retrying }}
               secondaryAction={{ label: "Về trang chủ", onClick: () => go("dashboard"), variant: "outline" }}
             />
@@ -311,6 +333,7 @@ export function ResultsScreen({
     setRetakeError(null);
     try {
       const res = await trpcClient.attempt.start.mutate({ retakeOf: scored.attemptId });
+      invalidateQuotaStatus();
       if (!("questionText" in res) || !res.questionKey || !res.part || !res.questionText) {
         throw new Error("Retake payload missing question");
       }
@@ -335,8 +358,14 @@ export function ResultsScreen({
         },
       });
       go("exam");
-    } catch {
-      setRetakeError("Không thể bắt đầu lượt luyện lại lúc này. Vui lòng thử lại.");
+    } catch (err) {
+      const quotaCode = parseQuotaErrorCode(err);
+      if (quotaCode) {
+        invalidateQuotaStatus();
+        setRetakeError(getQuotaErrorMessage(quotaCode, "retake"));
+      } else {
+        setRetakeError("Không thể bắt đầu lượt luyện lại lúc này. Vui lòng thử lại.");
+      }
     } finally {
       setRetaking(false);
     }
@@ -533,6 +562,9 @@ export function ResultsScreen({
         <div className="min-w-48 flex-1">
           <div className="font-bold">Luyện lại câu yếu nhất</div>
           <div className="text-sm text-ink-2">Thực hành nói lại câu yếu nhất để so sánh band trước và sau.</div>
+          <div className="mt-1 text-xs text-subtle">
+            Miễn phí 0 điểm cho lần luyện lại đầu tiên của bài · từ lần thứ 2 tính 1 điểm
+          </div>
           {retakeError && (
             <div role="alert" className="mt-2 text-xs font-medium text-bad">
               {retakeError}

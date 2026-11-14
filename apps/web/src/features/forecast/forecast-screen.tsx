@@ -5,6 +5,8 @@ import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
 import { EmptyState } from "@/components/ds/empty-state";
 import { useApp } from "@/features/app-state/types";
+import { QuotaBanner } from "@/features/select/components/quota-banner";
+import { canStartForecast, useQuotaStatus } from "@/features/select/use-quota-status";
 import { mapApiTopicToForecastTopic } from "./builders";
 import { CoverageBanner } from "./components/coverage-banner";
 import { ForecastToolbar } from "./components/forecast-toolbar";
@@ -31,6 +33,8 @@ export function ForecastScreen() {
     error,
     refetch,
   } = useQuery(trpc.forecast.listPublished.queryOptions({ quarter: QUARTER.id }));
+  // Đặt sau listPublished để các test mockReturnValueOnce(useQuery) cho forecast không bị tiêu thụ nhầm.
+  const quota = useQuotaStatus();
 
   const topics = useMemo(
     () => (apiTopics ?? []).map(mapApiTopicToForecastTopic),
@@ -131,6 +135,8 @@ export function ForecastScreen() {
     if (pick) setOpen(pick);
   };
 
+  const suggestionCheck = suggestion ? canStartForecast(quota, suggestion.kind) : null;
+
   return (
     <>
       <PageHead
@@ -144,6 +150,8 @@ export function ForecastScreen() {
         }
       />
 
+      <QuotaBanner className="mb-5" />
+
       {/* Coverage + suggestion */}
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <CoverageBanner topics={topics} practiced={s.practiced} examDate={s.examDate} />
@@ -156,8 +164,15 @@ export function ForecastScreen() {
           </Card>
         ) : suggestion ? (
           <Card className="flex flex-col p-7">
-            <div className="flex items-center gap-2 text-xs font-semibold text-brand">
-              <Sparkles size={14} /> Gợi ý luyện tiếp
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-brand">
+                <Sparkles size={14} /> Gợi ý luyện tiếp
+              </div>
+              <span className="rounded-full bg-paper-2 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-ink">
+                {quota.isLoaded && quota.status?.entitlement === "paid"
+                  ? "Không giới hạn"
+                  : `${suggestionCheck?.cost ?? 1} điểm`}
+              </span>
             </div>
             <div className="mt-3 text-xl font-bold">{suggestion.title}</div>
             <div className="mt-1 text-sm text-ink-2">
@@ -166,7 +181,12 @@ export function ForecastScreen() {
             <div className="mt-4 flex items-center gap-2 text-[13px] text-subtle">
               <Users size={14} /> {suggestion.reports} thí sinh báo gặp · bạn chưa luyện
             </div>
-            <Button variant="accent" className="mt-auto w-full" onClick={() => start(suggestion)}>
+            <Button
+              variant="accent"
+              className="mt-auto w-full"
+              disabled={Boolean(quota.isLoaded && suggestionCheck && !suggestionCheck.allowed)}
+              onClick={() => start(suggestion)}
+            >
               <Mic size={16} /> Luyện ngay
             </Button>
           </Card>
@@ -232,6 +252,7 @@ export function ForecastScreen() {
               topic={t}
               band={s.practiced[t.id]}
               saved={s.saved.includes(t.id)}
+              isPaid={Boolean(quota.isLoaded && quota.status?.entitlement === "paid")}
               onOpen={() => setOpen(t)}
               onToggleSave={() => toggleSave(t.id)}
             />

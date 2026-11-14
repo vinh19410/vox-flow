@@ -408,4 +408,58 @@ describe("ResultsScreen with real scoring data", () => {
     expect(comparison.textContent).toContain("Band mới 6.5");
     expect(comparison.textContent).toContain("+1.0");
   });
+
+  it("shows auto-refund note on failed result and maps quota errors on Chấm lại", async () => {
+    statusSpy.mockResolvedValue(status("failed"));
+    getResultSpy.mockResolvedValue(null);
+    retrySpy.mockRejectedValueOnce(
+      Object.assign(new Error("QUOTA_EXCEEDED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+
+    renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    const failedBox = await screen.findByTestId("results-failed");
+    expect(failedBox.textContent).toContain("điểm miễn phí trong ngày sẽ tự động hoàn lại");
+
+    fireEvent.click(screen.getByText("Chấm lại"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Bạn không đủ điểm miễn phí hôm nay để chấm lại bài này");
+
+    retrySpy.mockRejectedValueOnce(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    fireEvent.click(screen.getByText("Chấm lại"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Hạn mức miễn phí toàn hệ thống hôm nay đã tạm đầy nên chưa thể chấm lại",
+      ),
+    );
+  });
+
+  it("shows 0-point first retake hint and surfaces quota error when Luyện ngay is rejected", async () => {
+    statusSpy.mockResolvedValue(status("done"));
+    getResultSpy.mockResolvedValue(RESULT);
+    attemptStartSpy.mockRejectedValueOnce(
+      Object.assign(new Error("QUOTA_EXCEEDED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+
+    const h = renderWithApp(<ResultsScreen attemptId={ATTEMPT} />);
+    await screen.findByText("Bạn đạt band 6.5");
+    expect(screen.getByText(/Miễn phí 0 điểm cho lần luyện lại đầu tiên của bài/)).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("retake-weakest-btn"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Bạn đã dùng hết 3/3 điểm miễn phí hôm nay");
+    expect(h.go).not.toHaveBeenCalledWith("exam");
+
+    attemptStartSpy.mockRejectedValueOnce(
+      Object.assign(new Error("GLOBAL_CAP_REACHED"), { data: { code: "TOO_MANY_REQUESTS" } }),
+    );
+    fireEvent.click(screen.getByTestId("retake-weakest-btn"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Hạn mức miễn phí toàn hệ thống hôm nay đã tạm đầy",
+      ),
+    );
+    expect(h.go).not.toHaveBeenCalledWith("exam");
+  });
 });

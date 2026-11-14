@@ -3,6 +3,7 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type { Database } from "@vox-flow/db";
 import { attemptScore } from "@vox-flow/db/schema";
 
+import { release } from "../quota/quota";
 import { enqueueScoring, type ScoringQueue } from "./queue";
 import { MAX_SCORING_TRIES, SCORING_LEASE_MS } from "./score-attempt";
 
@@ -43,10 +44,14 @@ export async function requeueStaleScores(
   for (const row of stale) {
     const thisRow = and(eq(attemptScore.attemptId, row.attemptId), isStale);
     if (row.tries >= MAX_SCORING_TRIES) {
-      await db
+      const markedFailed = await db
         .update(attemptScore)
         .set({ status: "failed", lastError: "Scoring timed out", updatedAt: now })
-        .where(thisRow);
+        .where(thisRow)
+        .returning({ attemptId: attemptScore.attemptId });
+      if (markedFailed.length > 0) {
+        await release(db, row.attemptId, { retainBudget: row.tries > 0, now });
+      }
       result.failed += 1;
       continue;
     }

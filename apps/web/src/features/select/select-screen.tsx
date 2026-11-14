@@ -2,6 +2,7 @@ import { PageHead } from "@/layouts/page-head";
 
 import { ModeGrid } from "./components/mode-grid";
 import { PreExamCard } from "./components/pre-exam-card";
+import { QuotaBanner } from "./components/quota-banner";
 import { VoicePicker } from "./components/voice-picker";
 import { useSelectMobileViewport } from "./use-select-mobile-viewport";
 
@@ -15,6 +16,8 @@ export function SelectScreen() {
         title="Chọn bài thi"
         sub="Câu hỏi lấy từ ngân hàng đề quý này. Giám khảo sẽ hỏi nối tiếp dựa trên câu trả lời của bạn."
       />
+
+      <QuotaBanner className="mb-5" />
 
       <ModeGrid />
 

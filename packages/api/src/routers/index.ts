@@ -6,6 +6,7 @@ import { forecastRouter } from "./forecast";
 import { forecastAdminRouter } from "./forecast-admin";
 import { privacyRouter } from "./privacy";
 import { profileRouter } from "./profile";
+import { quotaRouter } from "./quota";
 import { scoringRouter } from "./scoring";
 
 export const appRouter = router({
@@ -21,6 +22,7 @@ export const appRouter = router({
   attempt: attemptRouter,
   privacy: privacyRouter,
   profile: profileRouter,
+  quota: quotaRouter,
   dispute: disputeRouter,
   disputeAdmin: disputeAdminRouter,
   forecast: forecastRouter,

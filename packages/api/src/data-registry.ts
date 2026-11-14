@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, or } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
 import {
@@ -8,6 +8,7 @@ import {
   attemptScore,
   consentEvent,
   forecastReport,
+  quotaReservation,
   scoreDispute,
   scoreRun,
   scoringRetryLog,
@@ -15,6 +16,8 @@ import {
   user,
   userProfile,
 } from "@vox-flow/db/schema";
+
+import { vnDay } from "./quota/vn-time";
 
 export type EraseContext = {
   db: Database;
@@ -158,6 +161,62 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
           ctx.db.select({ id: attempt.id }).from(attempt).where(eq(attempt.userId, userId)),
         ),
       );
+    },
+  },
+  // Đặt trước `attempt` để subquery kiểm tra `attempt.status` chạy trước khi xoá attempt.
+  quota_reservation: {
+    tableName: "quota_reservation",
+    export: async (db, userId) => {
+      return db
+        .select({
+          attemptId: quotaReservation.attemptId,
+          vnDay: quotaReservation.vnDay,
+          points: quotaReservation.points,
+          status: quotaReservation.status,
+          createdAt: quotaReservation.createdAt,
+        })
+        .from(quotaReservation)
+        .where(eq(quotaReservation.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      const nowMs = Date.now();
+      const today = vnDay(nowMs);
+
+      // Xoá các dòng ngày cũ, hoặc các hold chưa phát sinh AI (`sunkCostVnd = 0`) gắn với
+      // `attempt` sắp bị xoá (`abandoned` / `in_progress`) hoặc đã `released`, tránh
+      // bỏ sót hold `in_progress < 30p` kẹt vĩnh viễn tới hết ngày sau khi `attempt` biến mất.
+      await ctx.db.delete(quotaReservation).where(
+        and(
+          eq(quotaReservation.userId, userId),
+          or(
+            ne(quotaReservation.vnDay, today),
+            and(
+              eq(quotaReservation.sunkCostVnd, 0),
+              or(
+                eq(quotaReservation.status, "released"),
+                inArray(
+                  quotaReservation.attemptId,
+                  ctx.db
+                    .select({ id: attempt.id })
+                    .from(attempt)
+                    .where(
+                      and(
+                        eq(attempt.userId, userId),
+                        inArray(attempt.status, ["abandoned", "in_progress"]),
+                      ),
+                    ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Ẩn danh các dòng trong ngày để giữ chính xác kế toán trần hệ thống sau khi xoá tài khoản.
+      await ctx.db
+        .update(quotaReservation)
+        .set({ userId: null, retakeOfAttemptId: null })
+        .where(eq(quotaReservation.userId, userId));
     },
   },
   attempt: {

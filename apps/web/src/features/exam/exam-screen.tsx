@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { TriangleAlert } from "lucide-react";
 
+import { Button } from "@/components/ds/button";
 import { useApp } from "@/features/app-state/types";
 import { isAlreadySubmittedError, isBadRequestError } from "@/features/scoring/use-scoring-job";
+import {
+  getQuotaErrorMessage,
+  invalidateQuotaStatus,
+  parseQuotaErrorCode,
+  QUOTA_SUBMIT_CAP_MESSAGE,
+} from "@/features/select/use-quota-status";
 import { trpcClient } from "@/utils/trpc";
 import { flushAnswerUploads } from "./answer-uploads";
 import { isShortAnswer } from "./data";
@@ -63,9 +70,19 @@ export function ExamScreen() {
     setStorageWarning(false);
     try {
       await trpcClient.attempt.submit.mutate({ attemptId });
+      invalidateQuotaStatus();
     } catch (err) {
       console.warn("Attempt submit failed:", err);
       if (exitedRef.current) return;
+      const quotaCode = parseQuotaErrorCode(err);
+      if (quotaCode) {
+        invalidateQuotaStatus();
+        goPhase("idle");
+        if (reviewOpenRef.current) {
+          setSubmitError(QUOTA_SUBMIT_CAP_MESSAGE);
+        }
+        return;
+      }
       if (!isAlreadySubmittedError(err)) {
         goPhase("idle");
         // The modal may have been closed mid-submit: the plan's discard
@@ -182,6 +199,55 @@ export function ExamScreen() {
     set({ practice: null });
     go(target);
   };
+
+  if (session.quotaBlock) {
+    return (
+      <div className="flex min-h-screen flex-col bg-ink text-paper">
+        <ExamHeader
+          parts={session.parts}
+          activePart={step.part}
+          partT={session.partT}
+          muted={session.muted}
+          onToggleMuted={session.toggleMuted}
+          onExit={exitExam}
+        />
+        <main className="mx-auto flex w-full max-w-xl flex-1 items-center justify-center px-5 py-12">
+          <div
+            data-testid="exam-quota-blocked"
+            role="alert"
+            className="w-full rounded-3xl border border-white/15 bg-white/5 p-8 text-center"
+          >
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-warn/20 text-amber-300">
+              <TriangleAlert size={24} />
+            </div>
+            <h1 className="mt-4 text-2xl font-bold tracking-tight">
+              {session.quotaBlock === "GLOBAL_CAP_REACHED"
+                ? "Hệ thống tạm hết suất miễn phí hôm nay"
+                : "Bạn đã dùng hết điểm miễn phí hôm nay"}
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-white/75">
+              {getQuotaErrorMessage(session.quotaBlock, "start")}
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <Button
+                variant="accent"
+                onClick={() => {
+                  exitedRef.current = true;
+                  set({ practice: null });
+                  go("billing");
+                }}
+              >
+                Xem gói trả phí
+              </Button>
+              <Button variant="outline" onClick={exitExam}>
+                Quay lại
+              </Button>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-ink text-paper">
