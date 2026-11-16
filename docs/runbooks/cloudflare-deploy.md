@@ -23,6 +23,17 @@ Theo định nghĩa trong `apps/server/.env.schema` và `packages/infra/alchemy.
 - **`BETTER_AUTH_URL`**: Tự động được gán từ `Cloudflare.Worker.URL` trong runtime của Worker.
 - **`GOOGLE_CLIENT_ID`**: Client ID của ứng dụng Google OAuth 2.0 tạo trên Google Cloud Console (loại Web Application).
 - **`GOOGLE_CLIENT_SECRET`**: Client Secret tương ứng của ứng dụng Google OAuth 2.0.
+- **`SEPAY_WEBHOOK_API_KEY`** (bắt buộc, không có mặc định): API key xác thực webhook SePay, xem `docs/runbooks/sepay-setup.md`.
+- **`OPENAI_API_KEY`**: Key OpenAI cho chấm điểm và chép lời. Để trống thì không chấm được.
+- **`ELEVENLABS_API_KEY`**, **`ELEVENLABS_MODEL_ID`**, **`ELEVENLABS_VOICE_UK_F`**, **`ELEVENLABS_VOICE_US_M`**, **`ELEVENLABS_VOICE_AU_F`**: Giọng đọc câu hỏi (TTS).
+- **`SCORING_MODEL`** (mặc định `gpt-6-luna`) và **`SCORING_RUNS`** (mặc định `3`, từ 1 đến 7): Model và số lần chấm lấy trung vị.
+- **`SCORING_PRICE_INPUT_PER_1M`**, **`SCORING_PRICE_OUTPUT_PER_1M`**: Đơn giá **USD trên 1 triệu token** của `SCORING_MODEL`, chỉ ghi số (ví dụ `0.10`). Thiếu một trong hai thì `cost_usd` là `null`; giá không hợp lệ làm việc chấm điểm báo lỗi. `cost_usd` chỉ gồm token GPT, chưa gồm phí Whisper và ElevenLabs.
+- **`FREE_DAILY_BUDGET_VND`** (mặc định `33000`): Trần chi phí miễn phí toàn hệ thống mỗi ngày, tính theo đơn giá ước tính trong `packages/api/src/quota/quota.ts`, không đọc `cost_usd`.
+- **`LAUNCH_OPEN`** (mặc định `false`) và **`LAUNCH_ALLOWED_EMAILS`**: Mở cho mọi người, hoặc chỉ cho danh sách email.
+- **`ADMIN_EMAILS`**: Email có quyền vào màn quản trị.
+- **`SCORE_DISPUTE_ENABLED`** (mặc định `false`): Bật báo lỗi chấm.
+
+> Trên CI, các giá trị này nằm trong GitHub Secrets (key, mật khẩu) hoặc GitHub Variables (cấu hình công khai), và **phải được khai báo trong `env` của bước deploy** trong `.github/workflows/deploy-beta.yml`. Chỉ tạo variable mà không thêm vào workflow thì Alchemy không nhận được.
 
 ### 1.3. Cấu hình Google Cloud Console OAuth Client
 Trên Google Cloud Console (APIs & Services > Credentials > OAuth 2.0 Client IDs):
