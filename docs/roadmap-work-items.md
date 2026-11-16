@@ -1,7 +1,7 @@
 ---
 type: roadmap-work-items
 status: draft
-updated: 2026-11-14
+updated: 2026-11-16
 links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.md, docs/roadmap-chamro.md]
 ---
 
@@ -16,11 +16,11 @@ links: [docs/_product/roadmap.md, docs/_product/prd.md, docs/product-decisions.m
 | 01 | Clone UI prototype vào `apps/web` | Nền | ✅ | [#1](https://github.com/vinh19410/vox-flow/issues/1) (đã đóng) | – | PR #2 đã merge vào `dev` (`ee91229`). Vẫn còn dữ liệu giả ở bản prototype gốc (đã thay dần ở các issue sau). |
 | 02 | Chốt 12 điểm lệch, cập nhật PRD, thay roadmap cũ | Nền | ✅ | [#6](https://github.com/vinh19410/vox-flow/issues/6) (đã đóng) | – | PR #32 đã merge vào `dev` (`a09b69a`). Đã chốt 12 quyết định tại `docs/product-decisions.md`, dựng lại PRD và roadmap chính thức tại `docs/_product/`. Mở khóa việc viết SRS. |
 | 03 | Thử chấm 30 bài mẫu, chọn dịch vụ giọng nói + AI (OQ-5) | Nền | ✅ | [#7](https://github.com/vinh19410/vox-flow/issues/7) (đã đóng) | – | Đóng ngày 2026-11-13 theo quyết định PO: chốt pipeline hiện tại (`whisper-1` + 3 lượt `gpt-6-luna` trung vị, `#90`/`#130`) làm chính, gỡ cổng chặn 30 bài mẫu ngoài; chuyển sang tự eval & hiệu chuẩn dần trên dữ liệu dự án tại [#154](https://github.com/vinh19410/vox-flow/issues/154) (`docs/decisions/scoring-self-eval.md`). |
-| 04 | Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6) | Nền | ⏸️ | [#8](https://github.com/vinh19410/vox-flow/issues/8) | Buổi tư vấn | Hồ sơ câu hỏi sẵn sàng tại `docs/legal/oq-6-tu-van-luat-su.md`. Đang chờ buổi tư vấn luật sư để thực hiện Phase 2. Không chặn việc xây sản phẩm, chỉ chặn mở cho học viên thật. |
+| 04 | Tư vấn luật sư về chuyển audio ra nước ngoài (OQ-6) | Nền | ✅ | [#8](https://github.com/vinh19410/vox-flow/issues/8) | – | Ngày 2026-11-16 PO quyết định không tư vấn luật sư; thay bằng điều khoản chuyển dữ liệu ra nước ngoài, độ tuổi và quyền của học viên trên trang `/terms` (`apps/web/src/routes/_proto/terms.tsx`). Không còn chặn #12 và #21. Hồ sơ câu hỏi cũ giữ tại `docs/legal/oq-6-tu-van-luat-su.md` để tham khảo. |
 | 05 | Kiểm chứng mức sẵn lòng trả | Nền | ⏸️ | [#9](https://github.com/vinh19410/vox-flow/issues/9) | PO chốt ngưỡng & phỏng vấn học viên thật | Hồ sơ kiểm chứng sẵn sàng tại `docs/research/wtp-validation.md`. Đang chờ PO chốt ngưỡng (Gate A) và phỏng vấn học viên thật để thực hiện Phase 2. |
 | 06 | Dựng môi trường backend Cloudflare | Nền | 🟢 | [#10](https://github.com/vinh19410/vox-flow/issues/10) | – | Thêm ngoài roadmap. Báo cáo so giao diện ghi backend chưa chạy được vì thiếu thông tin xác thực Cloudflare. |
 | 07 | Đăng nhập Google | Nền | 🔒 | [#11](https://github.com/vinh19410/vox-flow/issues/11) | 06 | Thêm ngoài danh sách tính năng (roadmap chỉ coi là phụ thuộc ngoài). Code đã có Google OAuth bên cạnh email + mật khẩu (D-03); chờ 06 để gắn thông tin xác thực Cloudflare thật. |
-| 08 | Thiết lập SePay | Nền | 🟢 | [#12](https://github.com/vinh19410/vox-flow/issues/12) | 04 (mềm) | Nên chờ luật sư trả lời có cần đăng ký hộ kinh doanh trước khi thu tiền không. |
+| 08 | Thiết lập SePay | Nền | 🟢 | [#12](https://github.com/vinh19410/vox-flow/issues/12) | – | Không còn chờ luật sư (04 đã đóng theo quyết định PO); PO tự chọn tài khoản nhận tiền cá nhân hay hộ kinh doanh. |
 | 09 | Landing (`landing-page`) | Now | ✅ | [#13](https://github.com/vinh19410/vox-flow/issues/13) (đã đóng) | – | PR #38 đã merge vào `dev` (`8e51ff6`). Đã sửa lời hứa hạn mức 3 điểm/ngày và kiểm tra luồng vào auth. |
 | 10 | Tài khoản & mục tiêu (`onboarding`) | Now | ✅ | [#14](https://github.com/vinh19410/vox-flow/issues/14) (đã đóng) | 02, 07 (mềm), 09 (mềm) | PR #52 đã merge vào `dev` (`5c56897`). Đã hoàn thành schema D1 `user_profile`, router `profile` và giao diện onboarding. |
 | 11 | Quyền riêng tư (`privacy-controls`) | Now | ✅ | [#15](https://github.com/vinh19410/vox-flow/issues/15) (đã đóng) | – | PR #39 đã merge vào `dev` (`167f3fd`). Đã hoàn thành bảng `consent_event`, router `privacy` (`getConsent`, `setConsent`, `exportData`), kiểm tra `requireConsent`, danh sách `DATA_REGISTRY` và nối giao diện `ConsentRows`, `PrivacyScreen` theo D-10. Luồng xóa tự động 24h đang hold theo OQ-6 Câu 7. |

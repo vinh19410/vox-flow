@@ -51,6 +51,9 @@ export function TermsRoute() {
           <p className="text-sm leading-relaxed text-ink-2">
             Bạn chịu trách nhiệm bảo mật thông tin đăng nhập và mọi hoạt động diễn ra dưới tài khoản của mình. Bạn cam kết cung cấp thông tin chính xác và không chia sẻ tài khoản cho người khác để trục lợi hạn mức thi thử.
           </p>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Bạn cần đủ 16 tuổi trở lên để tự đăng ký và sử dụng Vox Flow. Nếu bạn chưa đủ 16 tuổi, cha mẹ hoặc người giám hộ hợp pháp phải đọc, đồng ý với các điều khoản này (bao gồm việc chuyển dữ liệu ra nước ngoài tại Mục 4) và chịu trách nhiệm về việc sử dụng của bạn.
+          </p>
         </section>
 
         <section className="space-y-3">
@@ -61,10 +64,49 @@ export function TermsRoute() {
           <p className="text-sm leading-relaxed text-ink-2">
             Dữ liệu âm thanh của bạn được truyền tải qua kết nối bảo mật (HTTPS) và chỉ được xử lý cho mục đích cung cấp tính năng chấm thi, đánh giá phát âm và hỗ trợ phúc khảo (dispute) khi bạn yêu cầu.
           </p>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Giọng nói và lời nói của bạn có thể chứa thông tin cá nhân, ví dụ khi bạn tự giới thiệu họ tên, quê quán, trường học hoặc nơi làm việc trong Part 1. Bạn có thể tránh nêu thông tin định danh thật khi trả lời; việc này không ảnh hưởng đến điểm số.
+          </p>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Vox Flow không dùng bài làm của bạn để huấn luyện mô hình AI. Nếu sau này chúng tôi muốn dùng bài làm để hiệu chuẩn độ chính xác chấm điểm, chúng tôi sẽ hỏi ý kiến bạn riêng và chỉ dùng khi bạn đồng ý.
+          </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-bold">4. Quy định sử dụng hợp lý</h2>
+          <h2 className="text-xl font-bold">4. Chuyển dữ liệu ra nước ngoài</h2>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Để chấm bài, Vox Flow sử dụng các nhà cung cấp dịch vụ có máy chủ đặt ngoài Việt Nam. Khi bạn làm bài và gửi chấm, dữ liệu của bạn được chuyển ra nước ngoài như sau:
+          </p>
+          <ul className="list-inside list-disc space-y-1.5 text-sm text-ink-2">
+            <li>
+              <strong>OpenAI (Hoa Kỳ):</strong> nhận tệp ghi âm câu trả lời để chuyển thành văn bản, và nhận bản văn bản đó cùng câu hỏi để chấm điểm theo tiêu chí IELTS.
+            </li>
+            <li>
+              <strong>Cloudflare:</strong> vận hành máy chủ ứng dụng, cơ sở dữ liệu và kho lưu trữ tệp ghi âm. Trung tâm dữ liệu có thể đặt ngoài Việt Nam.
+            </li>
+            <li>
+              <strong>ElevenLabs:</strong> chỉ nhận nội dung câu hỏi để tạo giọng đọc của giám khảo; không nhận giọng nói hay câu trả lời của bạn.
+            </li>
+          </ul>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Các nhà cung cấp trên chỉ xử lý dữ liệu để thực hiện đúng việc được nêu, không phải để Vox Flow bán hoặc chia sẻ dữ liệu của bạn cho mục đích quảng cáo. Bằng việc đăng ký và sử dụng tính năng ghi âm và chấm điểm, bạn đồng ý cho Vox Flow chuyển dữ liệu ra nước ngoài theo mục này. Nếu không đồng ý, bạn không nên sử dụng tính năng ghi âm và chấm điểm.
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-xl font-bold">5. Quyền của bạn đối với dữ liệu</h2>
+          <ul className="list-inside list-disc space-y-1.5 text-sm text-ink-2">
+            <li>Yêu cầu nhận bản sao dữ liệu cá nhân mà Vox Flow đang lưu về bạn.</li>
+            <li>Rút lại sự đồng ý cho việc chuyển dữ liệu ra nước ngoài bằng cách ngừng sử dụng tính năng ghi âm và chấm điểm, kèm yêu cầu xóa dữ liệu đã có.</li>
+            <li>Yêu cầu xóa tài khoản, tệp ghi âm và kết quả chấm điểm.</li>
+          </ul>
+          <p className="text-sm leading-relaxed text-ink-2">
+            Để thực hiện các quyền trên, vui lòng liên hệ đội ngũ Vox Flow. Chúng tôi xử lý yêu cầu và phản hồi trong thời hạn pháp luật quy định.
+          </p>
+        </section>
+
+        <section className="space-y-3">
+          <h2 className="text-xl font-bold">6. Quy định sử dụng hợp lý</h2>
           <p className="text-sm leading-relaxed text-ink-2">
             Người dùng cam kết không sử dụng hệ thống vào các mục đích:
           </p>
@@ -76,14 +118,14 @@ export function TermsRoute() {
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-bold">5. Quyền sở hữu trí tuệ</h2>
+          <h2 className="text-xl font-bold">7. Quyền sở hữu trí tuệ</h2>
           <p className="text-sm leading-relaxed text-ink-2">
             Toàn bộ giao diện, thuật toán chấm điểm, hệ thống câu hỏi, đề forecast và tài liệu hướng dẫn trên Vox Flow thuộc quyền sở hữu của Vox Flow. Người dùng giữ quyền sở hữu đối với nội dung phát ngôn cá nhân của mình trong các bài thi thử.
           </p>
         </section>
 
         <section className="space-y-3">
-          <h2 className="text-xl font-bold">6. Thay đổi điều khoản</h2>
+          <h2 className="text-xl font-bold">8. Thay đổi điều khoản</h2>
           <p className="text-sm leading-relaxed text-ink-2">
             Chúng tôi có thể cập nhật Điều khoản dịch vụ này theo thời gian để phản ánh các cải tiến sản phẩm hoặc quy định pháp luật mới. Những thay đổi quan trọng sẽ được thông báo rõ ràng trên ứng dụng.
           </p>
