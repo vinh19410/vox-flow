@@ -1,11 +1,15 @@
 import { LogOut } from "lucide-react";
 
 import { useApp } from "@/features/app-state/types";
+import { useBillingStatus } from "@/features/billing/use-billing-status";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { authClient } from "@/lib/auth-client";
 
 export function UserCard() {
   const { s, go } = useApp();
+  const billing = useBillingStatus();
+  const activeSub = billing.status?.subscription ?? null;
+  const planName = billing.isLoaded ? activeSub?.planName : s.plan?.name;
   const signOut = useSignOut();
   const { data: session } = authClient.useSession();
   // Session user wins over app state; fallback to email prefix or "Học viên"
@@ -35,7 +39,7 @@ export function UserCard() {
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold hover:text-brand">{displayName}</div>
             <div className="truncate text-xs text-subtle">
-              {s.plan ? `Gói ${s.plan.name}` : "Miễn phí"}
+              {planName ? `Gói ${planName}` : "Miễn phí"}
             </div>
           </div>
         </button>

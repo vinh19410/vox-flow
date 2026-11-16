@@ -17,6 +17,8 @@ import {
   upsertAnswerRecording,
 } from "@vox-flow/api";
 import { appRouter } from "@vox-flow/api/routers/index";
+import { handleSepayWebhook } from "@vox-flow/api/billing/sepay-webhook";
+import type { ApiEnv } from "@vox-flow/api/context";
 import { loadLinkedPrompt } from "@vox-flow/api/exam/linked-prompt-store";
 import {
   getValidQuestionKeysForTopic,
@@ -410,6 +412,15 @@ app.get("/api/attempts/:attemptId/answers/:answerId/audio", async (c) => {
 
 app.get("/", (c) => {
   return c.text("OK");
+});
+
+app.post("/webhooks/sepay", async (c) => {
+  const result = await handleSepayWebhook({
+    request: c.req.raw,
+    db: getDb(),
+    env: (typeof ENV === "object" && ENV !== null ? ENV : {}) as ApiEnv,
+  });
+  return c.json(result.body, result.status);
 });
 
 const TTS_PARAM_RE = /^[a-zA-Z0-9_-]{1,128}$/;

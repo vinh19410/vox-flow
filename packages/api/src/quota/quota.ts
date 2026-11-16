@@ -1,8 +1,9 @@
-import { and, eq, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, gte, ne, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "@vox-flow/db";
-import { quotaReservation, user } from "@vox-flow/db/schema";
+import { quotaReservation, subscription, user } from "@vox-flow/db/schema";
 
+import { resolveBillingPlans } from "../billing/plans";
 import { getEntitlement, type Entitlement } from "../entitlements";
 import { nextVietnamMidnightMs, UNSUBMITTED_HOLD_TTL_MS, vnDay } from "./vn-time";
 
@@ -78,7 +79,7 @@ export function usedPointsSubquery(userId: string, day: string): SQL<number> {
   return sql<number>`(
     SELECT COALESCE(SUM(points), 0)
     FROM quota_reservation
-    WHERE user_id = ${userId} AND vn_day = ${day} AND status = 'active'
+    WHERE user_id = ${userId} AND vn_day = ${day} AND status = 'active' AND source = 'free'
   )`;
 }
 
@@ -93,6 +94,7 @@ function usedPointsExcludingSubquery(
     WHERE user_id = ${userId}
       AND vn_day = ${day}
       AND status = 'active'
+      AND source = 'free'
       AND attempt_id <> ${excludeAttemptId}
   )`;
 }
@@ -117,7 +119,7 @@ export function spentVndSubquery(day: string, staleCutoffMs: number): SQL<number
       END
     ), 0)
     FROM quota_reservation
-    WHERE vn_day = ${day}
+    WHERE vn_day = ${day} AND source = 'free'
   )`;
 }
 
@@ -143,7 +145,7 @@ function spentVndExcludingActiveHoldSubquery(
       END
     ), 0)
     FROM quota_reservation
-    WHERE vn_day = ${day}
+    WHERE vn_day = ${day} AND source = 'free'
   )`;
 }
 
@@ -159,8 +161,175 @@ export type ReserveParams = {
 };
 
 export type ReserveResult =
-  | { ok: true; bypassed: boolean; points: number; costVnd: number; reservationId: string }
+  | {
+      ok: true;
+      bypassed: boolean;
+      source: "free" | "subscription";
+      points: number;
+      costVnd: number;
+      reservationId: string;
+    }
   | { ok: false; reason: typeof QUOTA_EXCEEDED | typeof GLOBAL_CAP_REACHED | "FIRST_RETAKE_TAKEN" };
+
+/**
+ * Atomically deducts `points` from an active `subscription` and inserts a
+ * `quota_reservation` with `source = 'subscription'` and `costVnd = 0`
+ * (paid usage never consumes `FREE_DAILY_BUDGET_VND`).
+ */
+export function buildSubscriptionReserveStatements(
+  db: Database,
+  params: {
+    userId: string;
+    attemptId: string;
+    reservationId: string;
+    target: QuotaChargeTarget;
+    nowMs: number;
+    retakeOfAttemptId?: string | null;
+  },
+) {
+  const { points } = priceFor(params.target);
+  const day = vnDay(params.nowMs);
+  const retakeId = params.retakeOfAttemptId ?? null;
+  const isUniqueFirstRetake =
+    params.target.kind === "retake" && params.target.isFirstRootRetake && Boolean(retakeId);
+
+  const debitConditions: SQL[] = [
+    eq(subscription.userId, params.userId),
+    gt(subscription.expiresAt, new Date(params.nowMs)),
+    gte(subscription.pointsRemaining, points),
+  ];
+
+  if (isUniqueFirstRetake && retakeId) {
+    debitConditions.push(
+      sql`NOT EXISTS (
+        SELECT 1 FROM quota_reservation qr
+        WHERE qr.retake_of_attempt_id = ${retakeId} AND qr.status = 'active'
+      )`,
+    );
+  }
+
+  const debitSub = db
+    .update(subscription)
+    .set({
+      pointsRemaining: sql`${subscription.pointsRemaining} - ${points}`,
+      lastReservationId: params.reservationId,
+      updatedAt: new Date(params.nowMs),
+    })
+    .where(and(...debitConditions))
+    .returning({ pointsRemaining: subscription.pointsRemaining });
+
+  const insertRes = db
+    .insert(quotaReservation)
+    .select((qb) =>
+      qb
+        .select({
+          attemptId: sql<string>`${params.attemptId}`.as("attempt_id"),
+          reservationId: sql<string>`${params.reservationId}`.as("reservation_id"),
+          userId: sql<string>`${params.userId}`.as("user_id"),
+          vnDay: sql<string>`${day}`.as("vn_day"),
+          points: sql<number>`${points}`.as("points"),
+          costVnd: sql<number>`0`.as("cost_vnd"),
+          sunkCostVnd: sql<number>`0`.as("sunk_cost_vnd"),
+          refundCount: sql<number>`0`.as("refund_count"),
+          retakeOfAttemptId: sql<string | null>`${retakeId}`.as("retake_of_attempt_id"),
+          source: sql<"subscription">`'subscription'`.as("source"),
+          lastRefundToken: sql<string | null>`NULL`.as("last_refund_token"),
+          status: sql<"active">`'active'`.as("status"),
+          createdAt: sql<Date>`${params.nowMs}`.as("created_at"),
+          updatedAt: sql<Date>`${params.nowMs}`.as("updated_at"),
+        })
+        .from(subscription)
+        .where(
+          and(
+            eq(subscription.userId, params.userId),
+            eq(subscription.lastReservationId, params.reservationId),
+          ),
+        ),
+    )
+    .returning({ attemptId: quotaReservation.attemptId });
+
+  return [debitSub, insertRes] as const;
+}
+
+export function buildSubscriptionReserveOnRetryStatements(
+  db: Database,
+  params: {
+    userId: string;
+    attemptId: string;
+    reservationId: string;
+    points: number;
+    nowMs: number;
+    retryStartOfDayMs: number;
+    retakeOfAttemptId?: string | null;
+  },
+) {
+  const day = vnDay(params.nowMs);
+  const retakeId = params.retakeOfAttemptId ?? null;
+
+  const debitSub = db
+    .update(subscription)
+    .set({
+      pointsRemaining: sql`${subscription.pointsRemaining} - ${params.points}`,
+      lastReservationId: params.reservationId,
+      updatedAt: new Date(params.nowMs),
+    })
+    .where(
+      and(
+        eq(subscription.userId, params.userId),
+        gt(subscription.expiresAt, new Date(params.nowMs)),
+        gte(subscription.pointsRemaining, params.points),
+        sql`(SELECT COUNT(*) FROM scoring_retry_log WHERE user_id = ${params.userId} AND created_at >= ${params.retryStartOfDayMs}) < 3`,
+        sql`EXISTS (SELECT 1 FROM attempt_score WHERE attempt_id = ${params.attemptId} AND status = 'failed' AND manual_retries < 1)`,
+      ),
+    )
+    .returning({ pointsRemaining: subscription.pointsRemaining });
+
+  const upsertRes = db
+    .insert(quotaReservation)
+    .select((qb) =>
+      qb
+        .select({
+          attemptId: sql<string>`${params.attemptId}`.as("attempt_id"),
+          reservationId: sql<string>`${params.reservationId}`.as("reservation_id"),
+          userId: sql<string>`${params.userId}`.as("user_id"),
+          vnDay: sql<string>`${day}`.as("vn_day"),
+          points: sql<number>`${params.points}`.as("points"),
+          costVnd: sql<number>`0`.as("cost_vnd"),
+          sunkCostVnd: sql<number>`0`.as("sunk_cost_vnd"),
+          refundCount: sql<number>`0`.as("refund_count"),
+          retakeOfAttemptId: sql<string | null>`${retakeId}`.as("retake_of_attempt_id"),
+          source: sql<"subscription">`'subscription'`.as("source"),
+          lastRefundToken: sql<string | null>`NULL`.as("last_refund_token"),
+          status: sql<"active">`'active'`.as("status"),
+          createdAt: sql<Date>`${params.nowMs}`.as("created_at"),
+          updatedAt: sql<Date>`${params.nowMs}`.as("updated_at"),
+        })
+        .from(subscription)
+        .where(
+          and(
+            eq(subscription.userId, params.userId),
+            eq(subscription.lastReservationId, params.reservationId),
+          ),
+        ),
+    )
+    .onConflictDoUpdate({
+      target: quotaReservation.attemptId,
+      set: {
+        reservationId: params.reservationId,
+        vnDay: day,
+        points: params.points,
+        costVnd: 0,
+        source: "subscription",
+        sunkCostVnd: sql`CASE WHEN ${quotaReservation.vnDay} = ${day} THEN ${quotaReservation.sunkCostVnd} ELSE 0 END`,
+        refundCount: sql`CASE WHEN ${quotaReservation.vnDay} = ${day} THEN ${quotaReservation.refundCount} ELSE 0 END`,
+        status: "active",
+        createdAt: new Date(params.nowMs),
+        updatedAt: new Date(params.nowMs),
+      },
+    });
+
+  return [debitSub, upsertRes] as const;
+}
 
 /**
  * Builds the atomic conditional INSERT statement for `quota_reservation`.
@@ -216,6 +385,8 @@ export function buildReserveStatement(
           sunkCostVnd: sql<number>`0`.as("sunk_cost_vnd"),
           refundCount: sql<number>`0`.as("refund_count"),
           retakeOfAttemptId: sql<string | null>`${retakeId}`.as("retake_of_attempt_id"),
+          source: sql<"free">`'free'`.as("source"),
+          lastRefundToken: sql<string | null>`NULL`.as("last_refund_token"),
           status: sql<"active">`'active'`.as("status"),
           createdAt: sql<Date>`${params.nowMs}`.as("created_at"),
           updatedAt: sql<Date>`${params.nowMs}`.as("updated_at"),
@@ -256,19 +427,20 @@ export async function diagnoseReserveFailure(
     .where(eq(user.id, params.userId))
     .limit(1);
 
-  if (!usage || usage.usedPoints + points > DAILY_FREE_POINTS) {
-    return QUOTA_EXCEEDED;
-  }
-  if (usage.spentVnd + costVnd > params.budgetCapVnd) {
-    return GLOBAL_CAP_REACHED;
-  }
   if (
+    usage &&
     params.target.kind === "retake" &&
     params.target.isFirstRootRetake &&
     params.retakeOfAttemptId &&
     Number(usage.firstRetakeTaken) > 0
   ) {
     return "FIRST_RETAKE_TAKEN";
+  }
+  if (!usage || usage.usedPoints + points > DAILY_FREE_POINTS) {
+    return QUOTA_EXCEEDED;
+  }
+  if (usage.spentVnd + costVnd > params.budgetCapVnd) {
+    return GLOBAL_CAP_REACHED;
   }
   return GLOBAL_CAP_REACHED;
 }
@@ -305,6 +477,8 @@ export function buildReserveOnRetryStatement(
           sunkCostVnd: sql<number>`0`.as("sunk_cost_vnd"),
           refundCount: sql<number>`0`.as("refund_count"),
           retakeOfAttemptId: sql<string | null>`${retakeId}`.as("retake_of_attempt_id"),
+          source: sql<"free">`'free'`.as("source"),
+          lastRefundToken: sql<string | null>`NULL`.as("last_refund_token"),
           status: sql<"active">`'active'`.as("status"),
           createdAt: sql<Date>`${params.nowMs}`.as("created_at"),
           updatedAt: sql<Date>`${params.nowMs}`.as("updated_at"),
@@ -327,6 +501,7 @@ export function buildReserveOnRetryStatement(
         vnDay: day,
         points: params.points,
         costVnd: params.costVnd,
+        source: "free",
         sunkCostVnd: sql`CASE WHEN ${quotaReservation.vnDay} = ${day} THEN ${quotaReservation.sunkCostVnd} ELSE 0 END`,
         refundCount: sql`CASE WHEN ${quotaReservation.vnDay} = ${day} THEN ${quotaReservation.refundCount} ELSE 0 END`,
         status: "active",
@@ -361,14 +536,30 @@ export async function diagnoseRetryQuotaFailure(
 }
 
 export async function reserve(db: Database, params: ReserveParams): Promise<ReserveResult> {
-  const resolver = params.resolveEntitlement ?? getEntitlement;
-  if ((await resolver(db, params.userId)) === "paid") {
-    return { ok: true, bypassed: true, points: 0, costVnd: 0, reservationId: "" };
-  }
-
   const nowMs = (params.now ?? new Date()).getTime();
   const reservationId = params.reservationId ?? crypto.randomUUID();
   const { points, costVnd } = priceFor(params.target);
+
+  const [debitSub, insertSubRes] = buildSubscriptionReserveStatements(db, {
+    userId: params.userId,
+    attemptId: params.attemptId,
+    reservationId,
+    target: params.target,
+    nowMs,
+    retakeOfAttemptId: params.retakeOfAttemptId,
+  });
+
+  const [debited, subInserted] = await db.batch([debitSub, insertSubRes]);
+  if ((debited?.length ?? 0) > 0 && (subInserted?.length ?? 0) > 0) {
+    return {
+      ok: true,
+      bypassed: false,
+      source: "subscription",
+      points,
+      costVnd: 0,
+      reservationId,
+    };
+  }
 
   const inserted = await buildReserveStatement(db, {
     userId: params.userId,
@@ -381,7 +572,7 @@ export async function reserve(db: Database, params: ReserveParams): Promise<Rese
   });
 
   if (inserted.length > 0) {
-    return { ok: true, bypassed: false, points, costVnd, reservationId };
+    return { ok: true, bypassed: false, source: "free", points, costVnd, reservationId };
   }
 
   const reason = await diagnoseReserveFailure(db, {
@@ -411,7 +602,7 @@ export async function refreshHoldOnSubmit(
     .where(and(eq(quotaReservation.attemptId, attemptId), eq(quotaReservation.status, "active")))
     .limit(1);
 
-  if (!row) {
+  if (!row || row.source === "subscription") {
     return { ok: true };
   }
 
@@ -478,6 +669,7 @@ export async function release(
 ): Promise<void> {
   const retain = opts.retainBudget ? 1 : 0;
   const nowMs = (opts.now ?? new Date()).getTime();
+  const refundToken = crypto.randomUUID();
   const canRefundExpr = sql`(
     quota_reservation.points > 0
     AND quota_reservation.user_id IS NOT NULL
@@ -489,7 +681,7 @@ export async function release(
     ) < ${MAX_DAILY_REFUNDS}
   )`;
 
-  await db
+  const updateReservationStmt = db
     .update(quotaReservation)
     .set({
       status: sql`CASE WHEN ${canRefundExpr} THEN 'released' ELSE 'active' END`,
@@ -498,6 +690,7 @@ export async function release(
       // If user hit refund cap or reservation is 0 points, zero out active cost_vnd
       // after moving spent AI cost into sunk_cost_vnd so release stays idempotent.
       costVnd: sql`CASE WHEN ${canRefundExpr} THEN cost_vnd ELSE 0 END`,
+      lastRefundToken: sql`CASE WHEN ${canRefundExpr} THEN ${refundToken} ELSE last_refund_token END`,
       updatedAt: new Date(nowMs),
     })
     .where(
@@ -510,6 +703,36 @@ export async function release(
         )`,
       ),
     );
+
+  const refundSubscriptionStmt = db
+    .update(subscription)
+    .set({
+      pointsRemaining: sql`${subscription.pointsRemaining} + COALESCE((
+        SELECT qr.points FROM quota_reservation qr
+        WHERE qr.attempt_id = ${attemptId}
+          AND qr.source = 'subscription'
+          AND qr.status = 'released'
+          AND qr.last_refund_token = ${refundToken}
+          AND qr.user_id = ${subscription.userId}
+      ), 0)`,
+      lastRefundToken: refundToken,
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        sql`${subscription.userId} = (
+          SELECT qr.user_id FROM quota_reservation qr
+          WHERE qr.attempt_id = ${attemptId}
+            AND qr.source = 'subscription'
+            AND qr.status = 'released'
+            AND qr.last_refund_token = ${refundToken}
+          LIMIT 1
+        )`,
+        sql`COALESCE(${subscription.lastRefundToken}, '') <> ${refundToken}`,
+      ),
+    );
+
+  await db.batch([updateReservationStmt, refundSubscriptionStmt]);
 }
 
 /**
@@ -521,19 +744,63 @@ export async function reclaimOnLateDone(
   attemptId: string,
   now: Date = new Date(),
 ): Promise<void> {
-  await db
+  const nowMs = now.getTime();
+  const reclaimToken = crypto.randomUUID();
+
+  const reclaimReservationStmt = db
     .update(quotaReservation)
     .set({
       status: "active",
       sunkCostVnd: sql`MAX(0, sunk_cost_vnd - cost_vnd)`,
       refundCount: sql`MAX(0, refund_count - 1)`,
+      lastRefundToken: reclaimToken,
       updatedAt: now,
     })
     .where(and(eq(quotaReservation.attemptId, attemptId), ne(quotaReservation.status, "active")));
+
+  const reclaimSubscriptionStmt = db
+    .update(subscription)
+    .set({
+      pointsRemaining: sql`MAX(0, ${subscription.pointsRemaining} - COALESCE((
+        SELECT qr.points FROM quota_reservation qr
+        WHERE qr.attempt_id = ${attemptId}
+          AND qr.source = 'subscription'
+          AND qr.status = 'active'
+          AND qr.last_refund_token = ${reclaimToken}
+          AND qr.user_id = ${subscription.userId}
+      ), 0))`,
+      lastRefundToken: reclaimToken,
+      updatedAt: new Date(nowMs),
+    })
+    .where(
+      and(
+        sql`${subscription.userId} = (
+          SELECT qr.user_id FROM quota_reservation qr
+          WHERE qr.attempt_id = ${attemptId}
+            AND qr.source = 'subscription'
+            AND qr.status = 'active'
+            AND qr.last_refund_token = ${reclaimToken}
+          LIMIT 1
+        )`,
+        sql`COALESCE(${subscription.lastRefundToken}, '') <> ${reclaimToken}`,
+      ),
+    );
+
+  await db.batch([reclaimReservationStmt, reclaimSubscriptionStmt]);
 }
+
+export type QuotaSubscriptionInfo = {
+  planId: "week" | "month" | "exam";
+  planName: string;
+  pointsRemaining: number;
+  planPointsTotal: number;
+  expiresAtMs: number;
+};
 
 export type QuotaStatus = {
   entitlement: Entitlement;
+  subscription: QuotaSubscriptionInfo | null;
+  usingFreeFallback: boolean;
   dailyLimit: number;
   usedPoints: number;
   remainingPoints: number;
@@ -571,36 +838,25 @@ const COSTS_RESPONSE = {
 export async function getQuotaStatus(
   db: Database,
   userId: string,
-  env: { FREE_DAILY_BUDGET_VND?: unknown } | undefined,
+  env: Record<string, unknown> | undefined,
   opts: {
     now?: Date;
     resolveEntitlement?: (db: Database, userId: string) => Promise<Entitlement>;
   } = {},
 ): Promise<QuotaStatus> {
-  const nowMs = (opts.now ?? new Date()).getTime();
+  const now = opts.now ?? new Date();
+  const nowMs = now.getTime();
   const resetAtMs = nextVietnamMidnightMs(nowMs);
-  const resolver = opts.resolveEntitlement ?? getEntitlement;
-  const entitlement = await resolver(db, userId);
+  const plans = resolveBillingPlans(env);
 
-  if (entitlement === "paid") {
-    return {
-      entitlement,
-      dailyLimit: DAILY_FREE_POINTS,
-      usedPoints: 0,
-      remainingPoints: DAILY_FREE_POINTS,
-      globalCapReached: false,
-      globalRemainingCanAfford: {
-        full: true,
-        part: true,
-        forecastP1: true,
-        forecastP23: true,
-        singleQuestion: true,
-        retake: true,
-      },
-      resetAtMs,
-      costs: { ...COSTS_RESPONSE },
-    };
-  }
+  const [sub] = await db
+    .select()
+    .from(subscription)
+    .where(and(eq(subscription.userId, userId), gt(subscription.expiresAt, now)))
+    .limit(1);
+
+  const resolver = opts.resolveEntitlement ?? getEntitlement;
+  const entitlement: Entitlement = sub ? "paid" : await resolver(db, userId);
 
   const day = vnDay(nowMs);
   const staleCutoffMs = nowMs - UNSUBMITTED_HOLD_TTL_MS;
@@ -620,8 +876,20 @@ export async function getQuotaStatus(
   const remainingBudgetVnd = budgetCapVnd - (row?.spentVnd ?? 0);
   const canAfford = (costVnd: number) => remainingBudgetVnd >= costVnd;
 
+  const subInfo: QuotaSubscriptionInfo | null = sub
+    ? {
+        planId: sub.planId,
+        planName: plans[sub.planId].name,
+        pointsRemaining: sub.pointsRemaining,
+        planPointsTotal: sub.planPointsTotal,
+        expiresAtMs: sub.expiresAt.getTime(),
+      }
+    : null;
+
   return {
     entitlement,
+    subscription: subInfo,
+    usingFreeFallback: Boolean(subInfo && subInfo.pointsRemaining <= 0),
     dailyLimit: DAILY_FREE_POINTS,
     usedPoints,
     remainingPoints,

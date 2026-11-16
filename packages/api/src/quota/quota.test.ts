@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { attempt, attemptScore, quotaReservation, user } from "@vox-flow/db/schema";
+import { attempt, attemptScore, quotaReservation, subscription, user } from "@vox-flow/db/schema";
 
 import { createTestDb, type TestDbContext } from "../test/db";
 import {
@@ -184,42 +184,157 @@ describe("quota domain logic", () => {
       expect(u3Status.globalCapReached).toBe(true);
     });
 
-    it("bypasses both personal and global limits for paid users, while keeping per-attempt pack buyers on free limits", async () => {
+    it("deducts subscription points P atomically without global cap, prevents concurrent P overrun, and falls back to 3 free points when P is exhausted", async () => {
       const now = new Date(Date.UTC(2026, 10, 14, 6, 0, 0));
-      const paidEntitlement = async () => "paid" as const;
-      const perAttemptBuyerEntitlement = async () => "free" as const;
+      await ctx.db.insert(subscription).values({
+        userId: "u1",
+        planId: "week",
+        pointsRemaining: 9,
+        planPointsTotal: 48,
+        expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+      });
 
-      for (let i = 0; i < 4; i += 1) {
-        const res = await reserve(ctx.db, {
-          userId: "u1",
-          attemptId: `paid-att-${i}`,
-          target: { kind: "mock", mode: "full" },
-          budgetCapVnd: 0,
-          now,
-          resolveEntitlement: paidEntitlement,
-        });
-        expect(res).toMatchObject({ ok: true, bypassed: true, points: 0, costVnd: 0 });
+      // 5 concurrent full attempts (3 pts each) when pointsRemaining = 9 and free budgetCapVnd = 0:
+      // only 3 succeed from subscription (9 pts), 2 fall back to free and hit GLOBAL_CAP_REACHED.
+      const concurrent = await Promise.all(
+        [0, 1, 2, 3, 4].map((i) =>
+          reserve(ctx.db, {
+            userId: "u1",
+            attemptId: `sub-conc-${i}`,
+            target: { kind: "mock", mode: "full" },
+            budgetCapVnd: 0,
+            now,
+          }),
+        ),
+      );
+      const subOk = concurrent.filter((r) => r.ok);
+      expect(subOk).toHaveLength(3);
+      for (const r of subOk) {
+        expect(r).toMatchObject({ ok: true, bypassed: false, source: "subscription", points: 3, costVnd: 0 });
       }
+      expect(concurrent.filter((r) => !r.ok && r.reason === GLOBAL_CAP_REACHED)).toHaveLength(2);
 
-      const paidStatus = await getQuotaStatus(
+      const [subAfter] = await ctx.db
+        .select()
+        .from(subscription)
+        .where(eq(subscription.userId, "u1"));
+      expect(subAfter?.pointsRemaining).toBe(0);
+
+      // With pointsRemaining = 0, getQuotaStatus shows usingFreeFallback and full 3 daily free points intact!
+      const fallbackStatus = await getQuotaStatus(
         ctx.db,
         "u1",
-        { FREE_DAILY_BUDGET_VND: "0" },
-        { now, resolveEntitlement: paidEntitlement },
+        { FREE_DAILY_BUDGET_VND: "33000" },
+        { now },
       );
-      expect(paidStatus.entitlement).toBe("paid");
-      expect(paidStatus.globalCapReached).toBe(false);
-      expect(paidStatus.remainingPoints).toBe(3);
+      expect(fallbackStatus.entitlement).toBe("paid");
+      expect(fallbackStatus.usingFreeFallback).toBe(true);
+      expect(fallbackStatus.remainingPoints).toBe(3);
+      expect(fallbackStatus.subscription).toMatchObject({
+        planId: "week",
+        pointsRemaining: 0,
+        planPointsTotal: 48,
+      });
 
-      const freeRes = await reserve(ctx.db, {
-        userId: "u2",
-        attemptId: "pack-buyer-att",
-        target: { kind: "mock", mode: "part1" },
+      // Fallback to free tier works for 3 daily free points once global budget permits
+      const freeFallbackRes = await reserve(ctx.db, {
+        userId: "u1",
+        attemptId: "sub-fallback-free",
+        target: { kind: "mock", mode: "full" },
+        budgetCapVnd: 33_000,
+        now,
+      });
+      expect(freeFallbackRes).toMatchObject({ ok: true, bypassed: false, source: "free", points: 3, costVnd: 2500 });
+
+      // Release & reclaim on subscription reservations restore and clamp pointsRemaining atomically
+      const attToRelease = subOk[0]!.ok ? "sub-conc-" + concurrent.indexOf(subOk[0]!) : "";
+      await Promise.all([
+        release(ctx.db, attToRelease, { now }),
+        release(ctx.db, attToRelease, { now }),
+      ]);
+      const [subAfterRelease] = await ctx.db
+        .select()
+        .from(subscription)
+        .where(eq(subscription.userId, "u1"));
+      expect(subAfterRelease?.pointsRemaining).toBe(3);
+
+      // Spend those 3 refunded points, then late-done reclaim clamps at 0 (never negative)
+      await reserve(ctx.db, {
+        userId: "u1",
+        attemptId: "sub-respend",
+        target: { kind: "mock", mode: "full" },
         budgetCapVnd: 0,
         now,
-        resolveEntitlement: perAttemptBuyerEntitlement,
       });
-      expect(freeRes).toEqual({ ok: false, reason: GLOBAL_CAP_REACHED });
+      await reclaimOnLateDone(ctx.db, attToRelease, now);
+      const [subAfterReclaim] = await ctx.db
+        .select()
+        .from(subscription)
+        .where(eq(subscription.userId, "u1"));
+      expect(subAfterReclaim?.pointsRemaining).toBe(0);
+
+      // refreshHoldOnSubmit skips subscription rows even if subscription expired, but enforces free rows
+      await ctx.db
+        .update(subscription)
+        .set({ expiresAt: new Date(now.getTime() - 1000) })
+        .where(eq(subscription.userId, "u1"));
+      const expiredSubSubmit = await refreshHoldOnSubmit(
+        ctx.db,
+        "sub-respend",
+        0,
+        new Date(now.getTime() + UNSUBMITTED_HOLD_TTL_MS + 60_000),
+      );
+      expect(expiredSubSubmit).toEqual({ ok: true });
+
+      const freeStaleSubmit = await refreshHoldOnSubmit(
+        ctx.db,
+        "sub-fallback-free",
+        0,
+        new Date(now.getTime() + UNSUBMITTED_HOLD_TTL_MS + 60_000),
+      );
+      expect(freeStaleSubmit).toEqual({ ok: false, reason: GLOBAL_CAP_REACHED });
+    });
+
+    it("diagnoses FIRST_RETAKE_TAKEN before GLOBAL_CAP_REACHED so paid users can take 2nd+ retakes when global cap is full", async () => {
+      const now = new Date(Date.UTC(2026, 10, 14, 6, 0, 0));
+      await ctx.db.insert(subscription).values({
+        userId: "u1",
+        planId: "week",
+        pointsRemaining: 10,
+        planPointsTotal: 48,
+        expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+      });
+
+      const r1 = await reserve(ctx.db, {
+        userId: "u1",
+        attemptId: "sub-retake-1",
+        target: { kind: "retake", isFirstRootRetake: true },
+        retakeOfAttemptId: "root-sub-1",
+        budgetCapVnd: 0,
+        now,
+      });
+      expect(r1).toMatchObject({ ok: true, source: "subscription", points: 0 });
+
+      // Second probe of isFirstRootRetake must report FIRST_RETAKE_TAKEN (not GLOBAL_CAP_REACHED)
+      const dupProbe = await reserve(ctx.db, {
+        userId: "u1",
+        attemptId: "sub-retake-2",
+        target: { kind: "retake", isFirstRootRetake: true },
+        retakeOfAttemptId: "root-sub-1",
+        budgetCapVnd: 0,
+        now,
+      });
+      expect(dupProbe).toEqual({ ok: false, reason: "FIRST_RETAKE_TAKEN" });
+
+      // Extra retake charges 1 subscription point even when budgetCapVnd = 0
+      const extra = await reserve(ctx.db, {
+        userId: "u1",
+        attemptId: "sub-retake-2",
+        target: { kind: "retake", isFirstRootRetake: false },
+        budgetCapVnd: 0,
+        now,
+      });
+      expect(extra).toMatchObject({ ok: true, source: "subscription", points: 1 });
     });
 
     it("supports 0-point first root retake even at 0 personal points, while enforcing budget & rejecting duplicate 0-pt retakes", async () => {

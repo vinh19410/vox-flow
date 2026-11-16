@@ -26,10 +26,27 @@ function errorReason(err: unknown): ScoredResultError {
   return "network";
 }
 
+const invalidationListeners = new Set<() => void>();
+
+/** Triggers mounted `useScoredResult` hooks to re-fetch after payment or detail unlock. */
+export function invalidateScoredResults(): void {
+  for (const listener of invalidationListeners) {
+    listener();
+  }
+}
+
 /** Loads the scoring status and (when done) the scored result of a server attempt. */
 export function useScoredResult(attemptId: string, enabled: boolean): ScoredResultState & { reload: () => void } {
   const [value, setValue] = useState<ScoredResultState>(() => (enabled ? { state: "loading" } : { state: "idle" }));
   const [nonce, setNonce] = useState(0);
+
+  useEffect(() => {
+    const listener = () => setNonce((n) => n + 1);
+    invalidationListeners.add(listener);
+    return () => {
+      invalidationListeners.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) {

@@ -17,6 +17,9 @@ export function ModeGrid() {
   const fullAllowed = canStartMode(quota, "full").allowed;
   const p1Allowed = canStartMode(quota, "p1").allowed;
 
+  const subPoints = quota.status?.subscription?.pointsRemaining ?? 0;
+  const usingFreeFallback = !quota.status?.subscription || subPoints <= 0;
+
   useEffect(() => {
     if (!quota.isLoaded) {
       autoFallbackDoneRef.current = false;
@@ -24,12 +27,10 @@ export function ModeGrid() {
     }
     if (autoFallbackDoneRef.current) return;
     autoFallbackDoneRef.current = true;
-    if (quota.status?.entitlement === "free" && s.mode === "full" && !fullAllowed && p1Allowed) {
+    if (usingFreeFallback && s.mode === "full" && !fullAllowed && p1Allowed) {
       set({ mode: "p1" });
     }
-  }, [quota.isLoaded, quota.status?.entitlement, s.mode, fullAllowed, p1Allowed, set]);
-
-  const isPaid = quota.isLoaded && quota.status?.entitlement === "paid";
+  }, [quota.isLoaded, usingFreeFallback, s.mode, fullAllowed, p1Allowed, set]);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -69,7 +70,7 @@ export function ModeGrid() {
                   on ? "bg-white/15 text-paper" : "bg-paper-2 text-ink",
                 )}
               >
-                {isPaid ? "Không giới hạn" : `${check.cost} điểm`}
+                {`${check.cost} điểm`}
               </span>
               {blocked && (
                 <span className={cx("text-[11px] font-medium", on ? "text-amber-300" : "text-bad")}>

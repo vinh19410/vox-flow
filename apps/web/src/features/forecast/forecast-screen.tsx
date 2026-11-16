@@ -169,9 +169,7 @@ export function ForecastScreen() {
                 <Sparkles size={14} /> Gợi ý luyện tiếp
               </div>
               <span className="rounded-full bg-paper-2 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-ink">
-                {quota.isLoaded && quota.status?.entitlement === "paid"
-                  ? "Không giới hạn"
-                  : `${suggestionCheck?.cost ?? 1} điểm`}
+                {`${suggestionCheck?.cost ?? 1} điểm`}
               </span>
             </div>
             <div className="mt-3 text-xl font-bold">{suggestion.title}</div>
@@ -252,7 +250,6 @@ export function ForecastScreen() {
               topic={t}
               band={s.practiced[t.id]}
               saved={s.saved.includes(t.id)}
-              isPaid={Boolean(quota.isLoaded && quota.status?.entitlement === "paid")}
               onOpen={() => setOpen(t)}
               onToggleSave={() => toggleSave(t.id)}
             />

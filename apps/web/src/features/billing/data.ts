@@ -1,8 +1,9 @@
 export interface Plan {
-  id: string;
+  id: "pack" | "week" | "exam" | "month";
   name: string;
   price: number;
   unit: string;
+  points: number;
   perks: string[];
   best?: boolean;
 }
@@ -13,21 +14,24 @@ export const PLANS: Plan[] = [
     name: "Theo lượt",
     price: 49000,
     unit: "3 lượt chi tiết",
-    perks: ["Chi tiết 4 tiêu chí + bằng chứng", "Không hết hạn", "Phù hợp thử nghiệm"],
+    points: 0,
+    perks: ["Mở chi tiết 4 tiêu chí + bằng chứng cho 3 bài", "Không hết hạn", "Dùng theo mức 3 điểm miễn phí/ngày"],
   },
   {
     id: "week",
     name: "7 ngày",
     price: 99000,
     unit: "/ tuần",
-    perks: ["Không giới hạn lượt chi tiết", "Xem lại từng câu, đánh dấu lỗi", "Báo lỗi chấm ưu tiên"],
+    points: 48,
+    perks: ["48 điểm thi trong 7 ngày (không trần ngày)", "Mở chi tiết 4 tiêu chí trong thời hạn gói", "Báo lỗi chấm ưu tiên"],
   },
   {
     id: "exam",
     name: "Đến ngày thi",
     price: 349000,
     unit: "trọn gói",
-    perks: ["Mọi quyền lợi gói tuần", "Dùng đến hết ngày thi", "Hết hạn tự dừng, không tự gia hạn"],
+    points: 180,
+    perks: ["180 điểm thi đến hết ngày thi (tối đa 60 ngày)", "Mở chi tiết 4 tiêu chí trong thời hạn gói", "Hết hạn tự dừng, không tự gia hạn"],
     best: true,
   },
   {
@@ -35,6 +39,7 @@ export const PLANS: Plan[] = [
     name: "30 ngày",
     price: 249000,
     unit: "/ tháng",
-    perks: ["Không giới hạn lượt chi tiết", "Xem lại từng câu, đánh dấu lỗi", "Hủy bất cứ lúc nào"],
+    points: 120,
+    perks: ["120 điểm thi trong 30 ngày (không trần ngày)", "Mở chi tiết 4 tiêu chí trong thời hạn gói", "Cộng dồn điểm & ngày khi mua thêm"],
   },
 ];

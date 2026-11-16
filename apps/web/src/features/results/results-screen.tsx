@@ -533,7 +533,7 @@ export function ResultsScreen({
             <div className="relative">
               {!pro ? (
                 scored ? (
-                  <SoftPaywall inline />
+                  <SoftPaywall inline attemptId={scored.attemptId} />
                 ) : (
                   <>
                     <div className="pointer-events-none max-h-[420px] overflow-hidden select-none [mask-image:linear-gradient(to_bottom,black_30%,transparent)]">
@@ -550,7 +550,7 @@ export function ResultsScreen({
         ) : (
           <div className="space-y-4">
             <ReviewList pro={pro} items={reviewItems} playback={!scored} />
-            {!pro && <SoftPaywall inline />}
+            {!pro && <SoftPaywall inline attemptId={scored?.attemptId} />}
           </div>
         )}
       </div>

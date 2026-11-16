@@ -9,6 +9,7 @@ import {
   quotaReservation,
   scoreRun,
   scoringRetryLog,
+  subscription,
   user,
 } from "@vox-flow/db/schema";
 
@@ -849,6 +850,77 @@ describe("scoringRouter", () => {
         vnDay: vnDay(today.getTime()),
         points: 1,
         refundCount: 0,
+      });
+    });
+
+    it("deducts subscription points on retry when released, and enforces free quota when subscription pointsRemaining === 0", async () => {
+      const today = new Date("2026-11-11T04:00:00.000Z");
+      const todayStr = vnDay(today.getTime());
+      await ctx.db.insert(subscription).values({
+        userId: "owner",
+        planId: "week",
+        pointsRemaining: 3,
+        planPointsTotal: 48,
+        expiresAt: new Date(today.getTime() + 7 * 86_400_000),
+      });
+      await ctx.db.insert(attempt).values([
+        { id: "att-sub-fail", userId: "owner", mode: "full", status: "submitted" },
+        { id: "att-free-spend", userId: "owner", mode: "full", status: "submitted" },
+        { id: "att-free-fail", userId: "owner", mode: "part1", status: "submitted" },
+      ]);
+      await ctx.db.insert(attemptScore).values([
+        { attemptId: "att-sub-fail", userId: "owner", status: "failed", tries: 1, lastError: "err" },
+        { attemptId: "att-free-fail", userId: "owner", status: "failed", tries: 1, lastError: "err" },
+      ]);
+      await ctx.db.insert(quotaReservation).values([
+        {
+          attemptId: "att-sub-fail",
+          reservationId: "res-sub-fail",
+          userId: "owner",
+          vnDay: todayStr,
+          points: 3,
+          costVnd: 0,
+          source: "subscription",
+          status: "released",
+        },
+        {
+          attemptId: "att-free-spend",
+          reservationId: "res-free-spend",
+          userId: "owner",
+          vnDay: todayStr,
+          points: 3,
+          costVnd: 2500,
+          source: "free",
+          status: "active",
+        },
+        {
+          attemptId: "att-free-fail",
+          reservationId: "res-free-fail",
+          userId: "owner",
+          vnDay: todayStr,
+          points: 1,
+          costVnd: 1000,
+          source: "free",
+          status: "released",
+        },
+      ]);
+
+      const caller = callerFor("owner", true, { now: () => today });
+      // Retrying att-sub-fail deducts remaining 3 subscription points -> 0
+      await expect(caller.scoring.retry({ attemptId: "att-sub-fail" })).resolves.toMatchObject({
+        status: "queued",
+        manualRetries: 1,
+      });
+      const [subAfter] = await ctx.db
+        .select()
+        .from(subscription)
+        .where(eq(subscription.userId, "owner"));
+      expect(subAfter?.pointsRemaining).toBe(0);
+
+      // Now pointsRemaining === 0 AND daily free points (3/3) are exhausted -> retry must NOT bypass!
+      await expect(caller.scoring.retry({ attemptId: "att-free-fail" })).rejects.toMatchObject({
+        code: "TOO_MANY_REQUESTS",
+        message: "QUOTA_EXCEEDED",
       });
     });
   });

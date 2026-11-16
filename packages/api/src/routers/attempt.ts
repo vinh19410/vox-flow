@@ -3,10 +3,10 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { attempt, attemptAnswer, attemptScore, type Database, forecastTopic, quotaReservation } from "@vox-flow/db";
 import type { Context } from "../context";
-import { getEntitlement } from "../entitlements";
 import { protectedProcedure, router } from "../index";
 import {
   buildReserveStatement,
+  buildSubscriptionReserveStatements,
   diagnoseReserveFailure,
   parseFreeDailyBudgetVnd,
   refreshHoldOnSubmit,
@@ -101,10 +101,6 @@ function insertAttemptWhereReserved(
     .returning({ id: attempt.id });
 }
 
-async function resolveUserEntitlement(ctx: QuotaEnabledContext) {
-  return (ctx.getEntitlement ?? getEntitlement)(ctx.db, ctx.session.user.id);
-}
-
 async function tryReserveAndInsertAttempt(
   ctx: QuotaEnabledContext,
   values: StartAttemptValues,
@@ -114,17 +110,40 @@ async function tryReserveAndInsertAttempt(
   const nowMs = values.startedAt.getTime();
   const budgetCapVnd = parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND);
   const reservationId = crypto.randomUUID();
+
+  const [debitSub, insertSubRes] = buildSubscriptionReserveStatements(ctx.db, {
+    userId: ctx.session.user.id,
+    attemptId: values.id,
+    reservationId,
+    target,
+    nowMs,
+    retakeOfAttemptId: reservationRetakeId,
+  });
+  const [debited, subReserved, subAttemptInserted] = await ctx.db.batch([
+    debitSub,
+    insertSubRes,
+    insertAttemptWhereReserved(ctx.db, values, reservationId),
+  ]);
+  if (
+    (debited?.length ?? 0) > 0 &&
+    (subReserved?.length ?? 0) > 0 &&
+    (subAttemptInserted?.length ?? 0) > 0
+  ) {
+    return { ok: true as const };
+  }
+
+  const freeReservationId = crypto.randomUUID();
   const [reserved, inserted] = await ctx.db.batch([
     buildReserveStatement(ctx.db, {
       userId: ctx.session.user.id,
       attemptId: values.id,
-      reservationId,
+      reservationId: freeReservationId,
       target,
       budgetCapVnd,
       nowMs,
       retakeOfAttemptId: reservationRetakeId,
     }),
-    insertAttemptWhereReserved(ctx.db, values, reservationId),
+    insertAttemptWhereReserved(ctx.db, values, freeReservationId),
   ]);
   if ((reserved?.length ?? 0) > 0 && (inserted?.length ?? 0) > 0) {
     return { ok: true as const };
@@ -145,10 +164,6 @@ async function insertAttemptWithQuota(
   target: QuotaChargeTarget,
   retakeSource?: { id: string; retakeOfAttemptId: string | null },
 ) {
-  if ((await resolveUserEntitlement(ctx)) === "paid") {
-    await ctx.db.insert(attempt).values({ ...values, status: "in_progress" });
-    return;
-  }
 
   if (retakeSource) {
     if (retakeSource.retakeOfAttemptId === null) {
@@ -999,16 +1014,14 @@ export const attemptRouter = router({
       }
 
       const submittedAt = ctx.now?.() ?? new Date();
-      if ((await resolveUserEntitlement(ctx)) === "free") {
-        const hold = await refreshHoldOnSubmit(
-          ctx.db,
-          input.attemptId,
-          parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND),
-          submittedAt,
-        );
-        if (!hold.ok) {
-          throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: hold.reason });
-        }
+      const hold = await refreshHoldOnSubmit(
+        ctx.db,
+        input.attemptId,
+        parseFreeDailyBudgetVnd(ctx.env?.FREE_DAILY_BUDGET_VND),
+        submittedAt,
+      );
+      if (!hold.ok) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: hold.reason });
       }
 
       const markSubmitted = ctx.db

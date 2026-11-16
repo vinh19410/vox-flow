@@ -6,12 +6,17 @@ import {
   attemptAnswer,
   attemptScore,
   consentEvent,
+  detailCredit,
+  detailUnlock,
   forecastReport,
   forecastTopic,
+  paymentEvent,
+  paymentOrder,
   quotaReservation,
   scoreDispute,
   scoreRun,
   session,
+  subscription,
   user,
 } from "@vox-flow/db/schema";
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
@@ -297,6 +302,70 @@ describe("Data registry for personal data discovery and erasure", () => {
       },
     ]);
 
+    // Seed billing records
+    await testCtx.db.insert(paymentOrder).values([
+      {
+        id: "ord_reg_1",
+        userId: user1Id,
+        planId: "week",
+        amountVnd: 99_000,
+        transferCode: "VFREG0000001",
+        status: "paid",
+        sepayId: 9001,
+        expiresAt: new Date(Date.now() + 900_000),
+        paidAt: new Date(),
+      },
+      {
+        id: "ord_reg_2",
+        userId: user2Id,
+        planId: "pack",
+        amountVnd: 49_000,
+        transferCode: "VFREG0000002",
+        status: "paid",
+        sepayId: 9002,
+        expiresAt: new Date(Date.now() + 900_000),
+        paidAt: new Date(),
+      },
+    ]);
+    await testCtx.db.insert(paymentEvent).values({
+      id: "pe_reg_1",
+      sepayId: 9001,
+      transferType: "in",
+      gateway: "Vietcombank",
+      accountNumber: "1017588888",
+      transferAmount: 99_000,
+      extractedCode: "VFREG0000001",
+      referenceCode: "FT9001",
+      transactionDate: "2026-11-16 14:00:00",
+      orderId: "ord_reg_1",
+      matchStatus: "matched",
+    });
+    await testCtx.db.insert(subscription).values([
+      {
+        userId: user1Id,
+        planId: "week",
+        pointsRemaining: 45,
+        planPointsTotal: 48,
+        expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        lastOrderId: "ord_reg_1",
+      },
+      {
+        userId: user2Id,
+        planId: "month",
+        pointsRemaining: 120,
+        planPointsTotal: 120,
+        expiresAt: new Date(Date.now() + 30 * 86_400_000),
+      },
+    ]);
+    await testCtx.db.insert(detailCredit).values([
+      { userId: user1Id, remaining: 2 },
+      { userId: user2Id, remaining: 3 },
+    ]);
+    await testCtx.db.insert(detailUnlock).values([
+      { id: "du_reg_1", userId: user1Id, attemptId: "att_reg_1" },
+      { id: "du_reg_2", userId: user2Id, attemptId: "att_reg_2" },
+    ]);
+
     // Test export
     const exportUser1 = await exportUserData(testCtx.db, user1Id);
     expect(exportUser1.userId).toBe(user1Id);
@@ -310,6 +379,10 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(exportUser1.data.attempt_score).toHaveLength(1);
     expect(exportUser1.data.score_run).toHaveLength(0);
     expect(exportUser1.data.quota_reservation).toHaveLength(2);
+    expect(exportUser1.data.payment_order).toHaveLength(1);
+    expect(exportUser1.data.subscription).toHaveLength(1);
+    expect(exportUser1.data.detail_credit).toHaveLength(1);
+    expect(exportUser1.data.detail_unlock).toHaveLength(1);
 
     // Test erase with mock audioBucket
     const deletedAudioKeys: string[] = [];
@@ -349,6 +422,18 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser1.data.attempt_score).toHaveLength(0);
     expect(afterEraseUser1.data.score_run).toHaveLength(0);
     expect(afterEraseUser1.data.quota_reservation).toHaveLength(0);
+    expect(afterEraseUser1.data.payment_order).toHaveLength(0);
+    expect(afterEraseUser1.data.subscription).toHaveLength(0);
+    expect(afterEraseUser1.data.detail_credit).toHaveLength(0);
+    expect(afterEraseUser1.data.detail_unlock).toHaveLength(0);
+
+    // payment_event survives for reconciliation with orderId set to NULL
+    const [survivingEvent] = await testCtx.db
+      .select()
+      .from(paymentEvent)
+      .where(eq(paymentEvent.id, "pe_reg_1"));
+    expect(survivingEvent).toBeDefined();
+    expect(survivingEvent?.orderId).toBeNull();
 
     // Today's reservation survives with userId anonymized so daily budget cannot reset via delete-account.
     const [todayRes] = await testCtx.db
@@ -378,6 +463,10 @@ describe("Data registry for personal data discovery and erasure", () => {
     expect(afterEraseUser2.data.attempt_score).toHaveLength(1);
     expect(afterEraseUser2.data.score_run).toHaveLength(0);
     expect(afterEraseUser2.data.quota_reservation).toHaveLength(1);
+    expect(afterEraseUser2.data.payment_order).toHaveLength(1);
+    expect(afterEraseUser2.data.subscription).toHaveLength(1);
+    expect(afterEraseUser2.data.detail_credit).toHaveLength(1);
+    expect(afterEraseUser2.data.detail_unlock).toHaveLength(1);
 
     // Erase vẫn xóa vật lý (behavior-lock; bằng chứng handler nằm ở assertion
     // params.length — cascade FK làm đếm row sau erase trở nên vacuous, #92)

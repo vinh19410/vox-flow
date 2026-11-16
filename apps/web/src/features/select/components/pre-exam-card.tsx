@@ -10,7 +10,12 @@ export function PreExamCard() {
   const { s, set, go, setPendingSubmission } = useApp();
   const quota = useQuotaStatus();
   const check = canStartMode(quota, s.mode);
-  const isFreeLoaded = quota.isLoaded && quota.status?.entitlement === "free";
+  const usesPackagePoints = Boolean(
+    quota.isLoaded &&
+      quota.status?.subscription &&
+      quota.status.subscription.pointsRemaining >= check.cost,
+  );
+  const showQuotaCost = quota.isLoaded;
 
   const blockedMessage = !check.allowed && check.reason
     ? check.reason === "QUOTA_EXCEEDED" && (quota.status?.remainingPoints ?? 0) > 0
@@ -38,9 +43,10 @@ export function PreExamCard() {
         </li>
       </ul>
 
-      {isFreeLoaded && (
+      {showQuotaCost && (
         <div className="mt-4 text-xs text-subtle">
-          Chi phí lượt thi này: <span className="font-mono font-semibold text-ink">{check.cost} điểm</span> · Đặt lại lúc 00:00 (giờ Việt Nam)
+          Chi phí lượt thi này: <span className="font-mono font-semibold text-ink">{check.cost} điểm</span>
+          {usesPackagePoints ? " · Trừ vào điểm gói" : " · Đặt lại lúc 00:00 (giờ Việt Nam)"}
         </div>
       )}
 

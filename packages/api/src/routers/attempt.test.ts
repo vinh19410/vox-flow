@@ -8,6 +8,7 @@ import {
   consentEvent,
   forecastTopic,
   quotaReservation,
+  subscription,
   user,
 } from "@vox-flow/db";
 import { buildLinkedPromptKey, loadLinkedPrompt, saveLinkedPrompt } from "../exam/linked-prompt-store";
@@ -1769,7 +1770,7 @@ describe("attemptRouter", () => {
       }
     });
 
-    it("enforces FREE_DAILY_BUDGET_VND with GLOBAL_CAP_REACHED while paid users bypass both caps", async () => {
+    it("enforces FREE_DAILY_BUDGET_VND with GLOBAL_CAP_REACHED while subscription users deduct from plan points P without hitting global cap", async () => {
       const { db, dispose } = await createTestDb();
       try {
         const nowMs = new Date("2026-11-10T04:00:00.000Z").getTime();
@@ -1781,6 +1782,13 @@ describe("attemptRouter", () => {
           { id: "c-free", userId: "u-free", kind: "save", granted: true },
           { id: "c-paid", userId: "u-paid", kind: "save", granted: true },
         ]);
+        await db.insert(subscription).values({
+          userId: "u-paid",
+          planId: "week",
+          pointsRemaining: 48,
+          planPointsTotal: 48,
+          expiresAt: new Date(nowMs + 7 * 86_400_000),
+        });
 
         const freeCaller = makeCaller(db, "u-free", { nowMs, budget: "2000" });
         // full costs 2500đ > 2000đ cap -> GLOBAL_CAP_REACHED
@@ -1791,12 +1799,17 @@ describe("attemptRouter", () => {
         // part1 costs 1000đ <= 2000đ -> allowed
         await expect(freeCaller.attempt.start({ mode: "part1" })).resolves.toMatchObject({ mode: "part1" });
 
-        // paid user bypasses both 2000đ cap and 3-pt personal cap
-        const paidCaller = makeCaller(db, "u-paid", { nowMs, budget: "0", entitlement: "paid" });
+        // paid subscription user bypasses global cap 0đ and deducts 3 points from plan P (48 -> 45)
+        const paidCaller = makeCaller(db, "u-paid", { nowMs, budget: "0" });
         await expect(paidCaller.attempt.start({ mode: "full" })).resolves.toMatchObject({ mode: "full" });
         const paidStatus = await paidCaller.quota.status();
         expect(paidStatus.entitlement).toBe("paid");
-        expect(paidStatus.globalCapReached).toBe(false);
+        expect(paidStatus.subscription).toMatchObject({
+          planId: "week",
+          pointsRemaining: 45,
+          planPointsTotal: 48,
+        });
+        expect(paidStatus.usingFreeFallback).toBe(false);
       } finally {
         await dispose();
       }

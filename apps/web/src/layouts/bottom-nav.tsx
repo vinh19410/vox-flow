@@ -11,6 +11,7 @@ import {
 } from "@vox-flow/ui/components/dropdown-menu";
 
 import { useApp } from "@/features/app-state/types";
+import { useBillingStatus } from "@/features/billing/use-billing-status";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { authClient } from "@/lib/auth-client";
 import { Logo } from "@/components/ds/logo";
@@ -18,6 +19,9 @@ import { Logo } from "@/components/ds/logo";
 import { NAV_ITEMS, resolveActiveNav } from "./nav-items";
 export function BottomNav() {
   const { s, go } = useApp();
+  const billing = useBillingStatus();
+  const activeSub = billing.status?.subscription ?? null;
+  const planName = billing.isLoaded ? activeSub?.planName : s.plan?.name;
   const signOut = useSignOut();
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const active = resolveActiveNav(pathname);
@@ -55,7 +59,7 @@ export function BottomNav() {
                 <div className="truncate text-sm font-semibold text-ink">{displayName}</div>
                 {email && <div className="truncate text-xs text-subtle">{email}</div>}
                 <div className="mt-0.5 inline-block text-[11px] font-medium text-brand">
-                  {s.plan ? `Gói ${s.plan.name}` : "Gói Miễn phí"}
+                  {planName ? `Gói ${planName}` : "Gói Miễn phí"}
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="my-1" />

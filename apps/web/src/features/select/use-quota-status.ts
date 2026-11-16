@@ -138,10 +138,13 @@ export function useQuotaStatus(): QuotaState {
 
 export function canStartMode(quota: QuotaState, mode: Mode): QuotaCheckResult {
   const cost = modePointCost(mode);
-  if (!quota.isLoaded || !quota.status || quota.status.entitlement === "paid") {
+  if (!quota.isLoaded || !quota.status) {
     return { allowed: true, cost, reason: null };
   }
   const { status } = quota;
+  if (status.subscription && status.subscription.pointsRemaining >= cost) {
+    return { allowed: true, cost, reason: null };
+  }
   if (status.remainingPoints < cost) {
     return { allowed: false, cost, reason: QUOTA_EXCEEDED };
   }
@@ -160,10 +163,13 @@ export function canStartForecast(
   singleQuestion = false,
 ): QuotaCheckResult {
   const cost = forecastPointCost(kind, singleQuestion);
-  if (!quota.isLoaded || !quota.status || quota.status.entitlement === "paid") {
+  if (!quota.isLoaded || !quota.status) {
     return { allowed: true, cost, reason: null };
   }
   const { status } = quota;
+  if (status.subscription && status.subscription.pointsRemaining >= cost) {
+    return { allowed: true, cost, reason: null };
+  }
   if (status.remainingPoints < cost) {
     return { allowed: false, cost, reason: QUOTA_EXCEEDED };
   }
