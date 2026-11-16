@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { z } from "zod";
 
@@ -485,10 +485,16 @@ export const adminBillingRouter = router({
       const actionId = crypto.randomUUID();
       const actionExists = sql`EXISTS (SELECT 1 FROM payment_action WHERE id = ${actionId})`;
       const batchStatements: BatchItem<"sqlite">[] = [];
+      let snapshotOrder: { id: string; status: string } | null = null;
 
       // Manual offline refund only (never triggers bank transfer).
-      // Skip order/entitlement mutation for already_paid duplicate transfers
-      // so the legitimate original paid order remains intact.
+      // Only an event that actually activated the order ("activated" or "resolved")
+      // may revoke entitlements or flip a "paid" order to "refunded".
+      // Pending discrepancies (e.g. underpaid, overpaid, already_paid) leave an
+      // already-paid order and its entitlements intact.
+      const eventActivatedOrder =
+        event.resolutionStatus === "activated" || event.resolutionStatus === "resolved";
+
       if (event.orderId && event.classification !== "already_paid") {
         const [order] = await ctx.db
           .select()
@@ -497,7 +503,9 @@ export const adminBillingRouter = router({
           .limit(1);
 
         if (order) {
-          if (order.status === "paid") {
+          snapshotOrder = { id: order.id, status: order.status };
+
+          if (order.status === "paid" && eventActivatedOrder) {
             const plan = plans[order.planId];
             if (order.planId === "pack") {
               batchStatements.push(
@@ -529,7 +537,12 @@ export const adminBillingRouter = router({
             }
           }
 
-          if (order.status !== "refunded") {
+          const shouldMarkOrderRefunded =
+            order.status === "pending" ||
+            order.status === "expired" ||
+            (order.status === "paid" && eventActivatedOrder);
+
+          if (shouldMarkOrderRefunded) {
             batchStatements.push(
               ctx.db
                 .update(paymentOrder)
@@ -537,13 +550,27 @@ export const adminBillingRouter = router({
                 .where(
                   and(
                     eq(paymentOrder.id, order.id),
-                    ne(paymentOrder.status, "refunded"),
+                    eq(paymentOrder.status, order.status),
                     actionExists,
                   ),
                 ),
             );
           }
         }
+      }
+
+      const eventSnapshotConditions = [
+        eq(paymentEvent.id, event.id),
+        eq(paymentEvent.resolutionStatus, event.resolutionStatus),
+        ne(paymentEvent.classification, "outbound"),
+        event.orderId === null
+          ? isNull(paymentEvent.orderId)
+          : eq(paymentEvent.orderId, event.orderId),
+      ];
+      if (snapshotOrder) {
+        eventSnapshotConditions.push(
+          sql`EXISTS (SELECT 1 FROM payment_order WHERE id = ${snapshotOrder.id} AND status = ${snapshotOrder.status})`,
+        );
       }
 
       const actionInsertStmt = ctx.db
@@ -560,17 +587,7 @@ export const adminBillingRouter = router({
               createdAt: sql<Date>`${nowMs}`.as("created_at"),
             })
             .from(paymentEvent)
-            .where(
-              and(
-                eq(paymentEvent.id, event.id),
-                inArray(paymentEvent.resolutionStatus, [
-                  "pending_review",
-                  "activated",
-                  "resolved",
-                ]),
-                ne(paymentEvent.classification, "outbound"),
-              ),
-            ),
+            .where(and(...eventSnapshotConditions)),
         )
         .returning({ id: paymentAction.id });
 
@@ -580,11 +597,7 @@ export const adminBillingRouter = router({
         .where(
           and(
             eq(paymentEvent.id, event.id),
-            inArray(paymentEvent.resolutionStatus, [
-              "pending_review",
-              "activated",
-              "resolved",
-            ]),
+            eq(paymentEvent.resolutionStatus, event.resolutionStatus),
             actionExists,
           ),
         );

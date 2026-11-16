@@ -567,7 +567,8 @@ export function PaymentsScreen({
 
             const canMarkRefunded =
               item.resolutionStatus === "pending_review" ||
-              item.resolutionStatus === "activated";
+              item.resolutionStatus === "activated" ||
+              item.resolutionStatus === "resolved";
 
             const cardHighlight = item.isOverdue
               ? "border-l-4 border-l-bad"

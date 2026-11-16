@@ -1366,6 +1366,162 @@ describe("admin-billing router", () => {
         .where(eq(paymentAction.eventId, "ev_race_pack_refund"));
       expect(actions).toHaveLength(1);
     });
+
+    it("does NOT revoke legitimate paid order when refunding an underpaid pending_review event on the same order", async () => {
+      const caller = makeCaller(ctx.db, adminUser, defaultEnv, () => now);
+      const orderId = "ord_underpaid_then_paid";
+      const futureExpiry = new Date(now.getTime() + 7 * 24 * 3600_000);
+
+      await ctx.db.insert(paymentOrder).values({
+        id: orderId,
+        userId: studentUser2.id,
+        planId: "week",
+        amountVnd: 99_000,
+        transferCode: "VFRETRY99K",
+        status: "paid",
+        sepayId: 3009,
+        paidAt: now,
+        expiresAt: new Date(now.getTime() + 600_000),
+        createdAt: now,
+      });
+
+      await ctx.db
+        .insert(subscription)
+        .values({
+          userId: studentUser2.id,
+          planId: "week",
+          pointsRemaining: 48,
+          planPointsTotal: 48,
+          expiresAt: futureExpiry,
+          lastOrderId: orderId,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: subscription.userId,
+          set: {
+            planId: "week",
+            pointsRemaining: 48,
+            planPointsTotal: 48,
+            expiresAt: futureExpiry,
+            lastOrderId: orderId,
+            updatedAt: now,
+          },
+        });
+
+      await ctx.db.insert(paymentEvent).values({
+        id: "ev_underpaid_same_ord",
+        sepayId: 3010,
+        transferType: "in",
+        gateway: "VCB",
+        accountNumber: "1017588888",
+        transferAmount: 50_000,
+        extractedCode: "VFRETRY99K",
+        referenceCode: "REF3010",
+        transactionDate: "2026-11-16 16:12:00",
+        orderId,
+        matchStatus: "amount_mismatch",
+        classification: "underpaid",
+        resolutionStatus: "pending_review",
+        source: "webhook",
+        createdAt: now,
+      });
+
+      await caller.adminBilling.markRefunded({
+        eventId: "ev_underpaid_same_ord",
+        note: "Hoàn tiền 50.000đ chuyển thiếu (đơn đã thanh toán đủ bằng giao dịch khác)",
+      });
+
+      const [ord] = await ctx.db
+        .select()
+        .from(paymentOrder)
+        .where(eq(paymentOrder.id, orderId))
+        .limit(1);
+      expect(ord?.status).toBe("paid");
+
+      const [sub] = await ctx.db
+        .select()
+        .from(subscription)
+        .where(eq(subscription.userId, studentUser2.id))
+        .limit(1);
+      expect(sub?.pointsRemaining).toBe(48);
+    });
+
+    it("handles concurrent activate and markRefunded atomically without unrevoked entitlement", async () => {
+      const caller = makeCaller(ctx.db, adminUser, defaultEnv, () => now);
+      const orderId = "ord_race_act_ref";
+      const eventId = "ev_race_act_ref";
+
+      await ctx.db
+        .insert(detailCredit)
+        .values({ userId: studentUser2.id, remaining: 0, lastOrderId: null })
+        .onConflictDoUpdate({
+          target: detailCredit.userId,
+          set: { remaining: 0, lastOrderId: null },
+        });
+
+      await ctx.db.insert(paymentOrder).values({
+        id: orderId,
+        userId: studentUser2.id,
+        planId: "pack",
+        amountVnd: 49_000,
+        transferCode: "VFRACEAR1",
+        status: "pending",
+        expiresAt: new Date(now.getTime() + 600_000),
+        createdAt: now,
+      });
+
+      await ctx.db.insert(paymentEvent).values({
+        id: eventId,
+        sepayId: 3011,
+        transferType: "in",
+        gateway: "VCB",
+        accountNumber: "1017588888",
+        transferAmount: 55_000,
+        extractedCode: "VFRACEAR1",
+        referenceCode: "REF3011",
+        transactionDate: "2026-11-16 16:15:00",
+        orderId,
+        matchStatus: "amount_mismatch",
+        classification: "overpaid",
+        resolutionStatus: "pending_review",
+        source: "webhook",
+        createdAt: now,
+      });
+
+      const results = await Promise.allSettled([
+        caller.adminBilling.activate({ eventId, note: "Kích hoạt race" }),
+        caller.adminBilling.markRefunded({ eventId, note: "Hoàn tiền race" }),
+      ]);
+
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+
+      const [ev] = await ctx.db
+        .select()
+        .from(paymentEvent)
+        .where(eq(paymentEvent.id, eventId))
+        .limit(1);
+      const [ord] = await ctx.db
+        .select()
+        .from(paymentOrder)
+        .where(eq(paymentOrder.id, orderId))
+        .limit(1);
+      const [credit] = await ctx.db
+        .select()
+        .from(detailCredit)
+        .where(eq(detailCredit.userId, studentUser2.id))
+        .limit(1);
+
+      if (ev?.resolutionStatus === "activated") {
+        expect(ord?.status).toBe("paid");
+        expect(credit?.remaining).toBe(3);
+      } else {
+        expect(ev?.resolutionStatus).toBe("refunded");
+        expect(ord?.status).toBe("refunded");
+        expect(credit?.remaining).toBe(0);
+      }
+    });
   });
 
   describe("triggerSweep procedure", () => {

@@ -732,14 +732,20 @@ export async function sweepTransactions(
 
     const pagination = parsed.data.meta?.pagination ?? parsed.data.pagination;
     const lastPage = pagination?.last_page;
-    if (
+    const reachedEnd =
       transactions.length === 0 ||
       (lastPage != null
         ? page >= lastPage
         : pagination?.has_more === false ||
-          (pagination?.has_more !== true && transactions.length < SWEEP_PER_PAGE))
-    ) {
+          (pagination?.has_more !== true && transactions.length < SWEEP_PER_PAGE));
+
+    if (reachedEnd) {
       break;
+    }
+    if (page === SWEEP_MAX_PAGES) {
+      console.warn(
+        `[reconcile] sweepTransactions reached SWEEP_MAX_PAGES (${SWEEP_MAX_PAGES}); more transactions may exist`,
+      );
     }
   }
 
