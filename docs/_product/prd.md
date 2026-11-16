@@ -137,10 +137,11 @@ Bao gồm 21 tính năng từ Feature Map và 6 khoảng trống nghiệp vụ (
 
 ### 4.6. Gói dịch vụ, Thanh toán & Biên nhận [Feature map F-18..F-20, GAP-02] [D-11]
 - **F-18 Bốn gói dịch vụ:** [Feature map S22]
-  1. *Gói theo lượt:* 49.000đ — 3 lượt mở chi tiết bài thi, không giới hạn thời gian sử dụng.
-  2. *Gói tuần:* 99.000đ — 7 ngày mở chi tiết không giới hạn.
-  3. *Gói tháng:* 249.000đ — 30 ngày mở chi tiết không giới hạn.
-  4. *Gói đến ngày thi:* 349.000đ — Sử dụng đến ngày thi đã đăng ký (tối đa 60 ngày), tự động kết thúc không tự gia hạn.
+  1. *Gói theo lượt:* 49.000đ — 3 lượt mở chi tiết bài thi, không hết hạn; không thêm lượt thi và vẫn áp dụng mức miễn phí 3 điểm/ngày kèm trần hệ thống.
+  2. *Gói tuần:* 99.000đ — **48 điểm thi** trong 7 ngày (cấu hình được, không trần ngày, không tính vào trần hệ thống miễn phí) và mở chi tiết mọi bài thi trong thời hạn gói.
+  3. *Gói tháng:* 249.000đ — **120 điểm thi** trong 30 ngày (cấu hình được, không trần ngày, không tính vào trần hệ thống miễn phí) và mở chi tiết mọi bài thi trong thời hạn gói.
+  4. *Gói đến ngày thi:* 349.000đ — **180 điểm thi** sử dụng đến hết ngày thi đã đăng ký (tối đa 60 ngày, cấu hình được), tự động kết thúc không tự gia hạn; mở chi tiết mọi bài thi trong thời hạn gói.
+  - *Quy tắc cộng dồn và hết điểm:* Mua thêm gói thời gian khi đang còn hạn sẽ cộng dồn điểm còn lại và nối đuôi ngày hết hạn (riêng gói đến ngày thi không cắt ngắn gói dài hơn đang có và tối đa 60 ngày). Khi hết điểm gói `P` hoặc hết hạn, học viên quay về mức miễn phí 3 điểm/ngày (vẫn mở được chi tiết các bài nếu gói chưa hết hạn).
 - **F-19 Thanh toán mã QR:** [Feature map S23] [GAP-02]
   - Tích hợp cổng chuyển khoản ngân hàng SePay quét mã VietQR tự động kích hoạt tài khoản ngay khi nhận được tiền.
 - **F-20 Quản lý gói & Biên nhận thanh toán:** [Feature map S24] [D-11]

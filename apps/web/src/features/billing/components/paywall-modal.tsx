@@ -21,7 +21,7 @@ export function PaywallModal({ open, onClose }: PaywallModalProps) {
   useEffect(() => {
     if (open) setPlan(null);
   }, [open]);
-  if (s.plan && !plan) return null;
+
   return (
     <Modal open={open} onClose={onClose} width="max-w-2xl">
       {plan ? (
@@ -46,7 +46,9 @@ export function PaywallModal({ open, onClose }: PaywallModalProps) {
           <div className="mt-7">
             <PlanGrid onPick={setPlan} compact />
           </div>
-          <p className="mt-5 text-center text-xs text-subtle">Band tổng vẫn miễn phí cho mọi lượt, kể cả khi bạn không nâng cấp.</p>
+          <p className="mt-5 text-center text-xs text-subtle">
+            Band tổng luôn hiển thị miễn phí cho mọi bài thi hoàn thành trong hạn mức ngày.
+          </p>
         </div>
       )}
     </Modal>

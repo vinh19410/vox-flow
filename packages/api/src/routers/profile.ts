@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { userProfile } from "@vox-flow/db/schema";
 import { protectedProcedure, router } from "../index";
+import { vnDay } from "../quota/vn-time";
 
 export const VALID_BANDS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0] as const;
 
@@ -27,12 +28,8 @@ export const upsertProfileSchema = z.object({
         const isoDate = dateObj.toISOString().slice(0, 10);
         if (isoDate !== d) return false;
 
-        const now = new Date();
-        const y = now.getUTCFullYear();
-        const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-        const day = String(now.getUTCDate()).padStart(2, "0");
-        const todayUtc = `${y}-${m}-${day}`;
-        return d >= todayUtc;
+        const todayVn = vnDay(Date.now());
+        return d >= todayVn;
       },
       { message: "Exam date must be a valid calendar date and cannot be in the past" },
     ),

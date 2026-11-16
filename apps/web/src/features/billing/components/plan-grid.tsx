@@ -7,6 +7,7 @@ import { daysUntil, vnd } from "@/lib/format";
 
 import { PLANS } from "../data";
 import type { Plan } from "../data";
+import { formatExamDateVn } from "../plan-utils";
 
 export interface PlanGridProps {
   onPick: (p: Plan) => void;
@@ -35,7 +36,7 @@ export function PlanGrid({ onPick, compact }: PlanGridProps) {
           <div className="text-sm font-semibold">{p.name}</div>
           {p.id === "exam" && (
             <div className="mt-0.5 text-xs text-white/50">
-              {days !== null ? `${days} ngày, đến ${new Date(s.examDate!).toLocaleDateString("vi-VN")}` : "Tối đa 60 ngày"}
+              {days !== null ? `${Math.min(days, 60)} ngày, đến ${formatExamDateVn(s.examDate!)}` : "Tối đa 60 ngày"}
             </div>
           )}
           <div className="tnum mt-3 text-2xl font-bold">

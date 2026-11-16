@@ -13,6 +13,8 @@ vi.mock("@/lib/feature-flags", () => ({
 // chain deterministically instead of relying on a real fetch rejection.
 const attemptGetActiveSpy = vi.fn().mockResolvedValue(null);
 const attemptStartSpy = vi.fn().mockRejectedValue(new Error("unavailable"));
+const billingCreateOrderSpy = vi.fn();
+const billingGetOrderSpy = vi.fn();
 
 vi.mock("@/utils/trpc", async (importOriginal) => {
   const actual = await importOriginal<typeof TrpcModule>();
@@ -24,6 +26,11 @@ vi.mock("@/utils/trpc", async (importOriginal) => {
         getActive: { query: (...args: unknown[]) => attemptGetActiveSpy(...args) },
         start: { mutate: (...args: unknown[]) => attemptStartSpy(...args) },
         submit: { mutate: vi.fn() },
+      },
+      billing: {
+        ...actual.trpcClient.billing,
+        createOrder: { mutate: (...args: unknown[]) => billingCreateOrderSpy(...args) },
+        getOrder: { query: (...args: unknown[]) => billingGetOrderSpy(...args) },
       },
     },
   };
@@ -405,32 +412,104 @@ describe("ResultsScreen", () => {
 describe("Billing & PaywallModal", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    billingCreateOrderSpy.mockReset();
+    billingGetOrderSpy.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("activates a plan from the billing screen checkout (waiting → received → active)", () => {
+  it("creates a VietQR order from BillingScreen, polls getOrder, and activates on paid without fake buttons", async () => {
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    billingCreateOrderSpy.mockResolvedValue({
+      orderId: "ord-1",
+      planId: "week",
+      planName: "7 ngày",
+      amountVnd: 99_000,
+      transferCode: "VF1234567890",
+      transferContent: "VF1234567890",
+      bankCode: "VCB",
+      accountNumber: "1017588888",
+      qrUrl: "https://vietqr.app/img?acc=1017588888&bank=VCB&amount=99000&des=VF1234567890",
+      expiresAt,
+      status: "pending",
+    });
+    billingGetOrderSpy.mockResolvedValue({
+      orderId: "ord-1",
+      planId: "week",
+      planName: "7 ngày",
+      amountVnd: 99_000,
+      transferCode: "VF1234567890",
+      transferContent: "VF1234567890",
+      bankCode: "VCB",
+      accountNumber: "1017588888",
+      qrUrl: "https://vietqr.app/img?acc=1017588888&bank=VCB&amount=99000&des=VF1234567890",
+      expiresAt,
+      status: "paid",
+      sepayId: 9091,
+      paidAt: Date.now(),
+      createdAt: Date.now(),
+    });
+
     const h = renderWithApp(<BillingScreen />);
+    expect(screen.queryByText(/không giới hạn/i)).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /7 ngày/ }));
     expect(screen.getByText("Quét mã để thanh toán")).toBeTruthy();
-    expect(screen.getByText("Đang chờ thanh toán · hết hạn sau 10:00")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Đã chuyển khoản"));
-    expect(screen.getByText("Đã nhận tiền, đang kích hoạt…")).toBeTruthy();
-
-    act(() => {
-      vi.advanceTimersByTime(1300);
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(billingCreateOrderSpy).toHaveBeenCalledWith({ planId: "week" });
+    expect(screen.getByText("VF1234567890")).toBeTruthy();
+    expect(screen.queryByText("Đã chuyển khoản")).toBeNull();
+    expect(screen.getByAltText("Mã VietQR thanh toán gói 7 ngày")).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
+      await Promise.resolve();
+    });
+
     expect(screen.getByRole("heading", { name: "Đã kích hoạt gói 7 ngày" })).toBeTruthy();
-    expect(h.state().plan?.name).toBe("7 ngày");
     expect(h.toast).toHaveBeenCalledWith("Đã kích hoạt gói 7 ngày");
 
     fireEvent.click(screen.getByText("Xem chi tiết 4 tiêu chí"));
     expect(screen.queryByText("Quét mã để thanh toán")).toBeNull();
   });
 
-  it("activates a plan through the paywall modal opened from results", () => {
+  it("activates a plan through the paywall modal opened from results", async () => {
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    billingCreateOrderSpy.mockResolvedValue({
+      orderId: "ord-2",
+      planId: "pack",
+      planName: "Theo lượt",
+      amountVnd: 49_000,
+      transferCode: "VFPACK998877",
+      transferContent: "VFPACK998877",
+      bankCode: "VCB",
+      accountNumber: "1017588888",
+      qrUrl: "https://vietqr.app/img?acc=1017588888&bank=VCB&amount=49000&des=VFPACK998877",
+      expiresAt,
+      status: "pending",
+    });
+    billingGetOrderSpy.mockResolvedValue({
+      orderId: "ord-2",
+      planId: "pack",
+      planName: "Theo lượt",
+      amountVnd: 49_000,
+      transferCode: "VFPACK998877",
+      transferContent: "VFPACK998877",
+      bankCode: "VCB",
+      accountNumber: "1017588888",
+      qrUrl: "https://vietqr.app/img?acc=1017588888&bank=VCB&amount=49000&des=VFPACK998877",
+      expiresAt,
+      status: "paid",
+      sepayId: 9092,
+      paidAt: Date.now(),
+      createdAt: Date.now(),
+    });
+
     const h = renderWithApp(<ResultsScreen attemptId="latest" resultData={MOCK_RESULT_DATA} />);
     fireEvent.click(screen.getByText("Mở khóa từ 49.000đ"));
     expect(h.openPaywall).toHaveBeenCalledTimes(1);
@@ -444,12 +523,14 @@ describe("Billing & PaywallModal", () => {
       </paywall.Provider>,
     );
     fireEvent.click(screen.getByRole("button", { name: /Theo lượt/ }));
-    fireEvent.click(screen.getByText("Đã chuyển khoản"));
-    act(() => {
-      vi.advanceTimersByTime(1300);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
+      await Promise.resolve();
     });
     expect(screen.getByRole("heading", { name: "Đã kích hoạt gói Theo lượt" })).toBeTruthy();
-    expect(paywall.state().plan?.name).toBe("Theo lượt");
     fireEvent.click(screen.getByText("Xem chi tiết 4 tiêu chí"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });

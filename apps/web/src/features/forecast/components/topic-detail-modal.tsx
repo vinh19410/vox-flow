@@ -35,7 +35,6 @@ export function TopicDetailModal({
   const quota = useQuotaStatus();
   const topicCheck = open ? canStartForecast(quota, open.kind, false) : null;
   const singleCheck = open ? canStartForecast(quota, open.kind, true) : null;
-  const isPaid = quota.isLoaded && quota.status?.entitlement === "paid";
 
   const topicBlockedMessage =
     open && topicCheck && quota.isLoaded && !topicCheck.allowed && topicCheck.reason
@@ -51,7 +50,7 @@ export function TopicDetailModal({
           <div className="flex flex-wrap gap-1.5">
             <Badge tone="dark">{open.kind === "p1" ? "Part 1" : "Part 2 & 3"}</Badge>
             <Badge>{open.category}</Badge>
-            <Badge>{isPaid ? "Không giới hạn" : `${forecastPointCost(open.kind)} điểm`}</Badge>
+            <Badge>{`${forecastPointCost(open.kind)} điểm`}</Badge>
             {open.tag === "hot" && (
               <Badge tone="accent">
                 <Flame size={11} /> Hay gặp
@@ -100,9 +99,7 @@ export function TopicDetailModal({
                     </div>
                     {onStartQuestion && (
                       <div className="flex shrink-0 items-center justify-end gap-2 sm:self-center">
-                        {!isPaid && (
-                          <span className="font-mono text-[11px] text-subtle">1 điểm</span>
-                        )}
+                        <span className="font-mono text-[11px] text-subtle">1 điểm</span>
                         <Button
                           size="sm"
                           variant={qHistory ? "outline" : "soft"}

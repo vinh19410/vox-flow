@@ -18,6 +18,8 @@ import { Badge } from "@/components/ds/badge";
 import { Button } from "@/components/ds/button";
 import { Card } from "@/components/ds/card";
 import { useApp } from "@/features/app-state/types";
+import { formatExpiryFull } from "@/features/billing/plan-utils";
+import { useBillingStatus } from "@/features/billing/use-billing-status";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { PageHead } from "@/layouts/page-head";
 import { authClient } from "@/lib/auth-client";
@@ -30,6 +32,9 @@ const VALID_BANDS = [5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0] as const;
 
 export function ProfileScreen() {
   const { s, set, go, toast } = useApp();
+  const billing = useBillingStatus();
+  const activeSub = billing.status?.subscription ?? null;
+  const detailCredits = billing.status?.detailCredits ?? 0;
   const signOut = useSignOut();
   const { data: session } = authClient.useSession();
 
@@ -131,9 +136,10 @@ export function ProfileScreen() {
     const dateToSend = examDate.trim() ? examDate.trim() : null;
 
     if (dateToSend) {
-      const now = new Date();
-      const todayUtc = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
-      if (dateToSend < todayUtc) {
+      const todayVn = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(
+        new Date(),
+      );
+      if (dateToSend < todayVn) {
         setGoalError("Ngày thi dự kiến không thể ở trong quá khứ.");
         return;
       }
@@ -384,10 +390,10 @@ export function ProfileScreen() {
                 </div>
                 <div className="mt-0.5 flex items-center gap-2">
                   <h3 className="truncate text-xl font-bold">
-                    {s.plan ? s.plan.name : "Gói Miễn phí"}
+                    {activeSub ? `Gói ${activeSub.planName}` : "Gói Miễn phí"}
                   </h3>
-                  <Badge tone={s.plan ? "good" : "neutral"} className="shrink-0">
-                    {s.plan ? "Đang hoạt động" : "Cơ bản"}
+                  <Badge tone={activeSub ? "good" : "neutral"} className="shrink-0">
+                    {activeSub ? "Đang hoạt động" : "Cơ bản"}
                   </Badge>
                 </div>
               </div>
@@ -396,11 +402,13 @@ export function ProfileScreen() {
             <div className="mt-5 rounded-2xl border border-line bg-paper/50 p-4">
               <div className="text-xs text-subtle">Quyền lợi tài khoản:</div>
               <p className="mt-1 text-sm font-medium text-ink">
-                {s.plan
-                  ? `Mở chi tiết 4 tiêu chí không giới hạn đến ngày ${s.plan.until}.`
-                  : "Mở band tổng và xem chi tiết bằng chứng của 1 câu yếu nhất."}
+                {activeSub
+                  ? `Còn ${activeSub.pointsRemaining}/${activeSub.planPointsTotal} điểm · hết hạn ${formatExpiryFull(activeSub.expiresAt)}. Mở chi tiết 4 tiêu chí trong thời hạn gói.`
+                  : detailCredits > 0
+                    ? `Còn ${detailCredits} lượt mở chi tiết bài thi và mức 3 điểm miễn phí/ngày.`
+                    : "Mở band tổng và xem chi tiết bằng chứng của 1 câu yếu nhất."}
               </p>
-              {!s.plan && (
+              {!activeSub && (
                 <div className="mt-3 flex items-center gap-1.5 text-xs text-brand">
                   <Flame size={14} />
                   <span>Nâng cấp để xem trọn vẹn điểm mạnh/yếu 4 tiêu chí.</span>

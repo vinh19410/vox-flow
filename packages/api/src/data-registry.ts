@@ -7,12 +7,16 @@ import {
   attemptAnswer,
   attemptScore,
   consentEvent,
+  detailCredit,
+  detailUnlock,
   forecastReport,
+  paymentOrder,
   quotaReservation,
   scoreDispute,
   scoreRun,
   scoringRetryLog,
   session,
+  subscription,
   user,
   userProfile,
 } from "@vox-flow/db/schema";
@@ -163,6 +167,77 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
       );
     },
   },
+  // Đặt `detail_unlock` trước `attempt` (cascade FK) và các bảng billing trước `user`.
+  detail_unlock: {
+    tableName: "detail_unlock",
+    export: async (db, userId) => {
+      return db
+        .select({
+          id: detailUnlock.id,
+          attemptId: detailUnlock.attemptId,
+          createdAt: detailUnlock.createdAt,
+        })
+        .from(detailUnlock)
+        .where(eq(detailUnlock.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(detailUnlock).where(eq(detailUnlock.userId, userId));
+    },
+  },
+  detail_credit: {
+    tableName: "detail_credit",
+    export: async (db, userId) => {
+      return db
+        .select({
+          remaining: detailCredit.remaining,
+          updatedAt: detailCredit.updatedAt,
+        })
+        .from(detailCredit)
+        .where(eq(detailCredit.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(detailCredit).where(eq(detailCredit.userId, userId));
+    },
+  },
+  subscription: {
+    tableName: "subscription",
+    export: async (db, userId) => {
+      return db
+        .select({
+          planId: subscription.planId,
+          pointsRemaining: subscription.pointsRemaining,
+          planPointsTotal: subscription.planPointsTotal,
+          expiresAt: subscription.expiresAt,
+          createdAt: subscription.createdAt,
+          updatedAt: subscription.updatedAt,
+        })
+        .from(subscription)
+        .where(eq(subscription.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(subscription).where(eq(subscription.userId, userId));
+    },
+  },
+  payment_order: {
+    tableName: "payment_order",
+    export: async (db, userId) => {
+      return db
+        .select({
+          id: paymentOrder.id,
+          planId: paymentOrder.planId,
+          amountVnd: paymentOrder.amountVnd,
+          transferCode: paymentOrder.transferCode,
+          status: paymentOrder.status,
+          paidAt: paymentOrder.paidAt,
+          createdAt: paymentOrder.createdAt,
+        })
+        .from(paymentOrder)
+        .where(eq(paymentOrder.userId, userId));
+    },
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(paymentOrder).where(eq(paymentOrder.userId, userId));
+    },
+  },
   // Đặt trước `attempt` để subquery kiểm tra `attempt.status` chạy trước khi xoá attempt.
   quota_reservation: {
     tableName: "quota_reservation",
@@ -310,6 +385,8 @@ export const NON_PERSONAL_TABLES: Record<string, string> = {
     "Bảng forecast_topic chứa đề thi IELTS forecast theo quý do quản trị viên biên soạn và duyệt, không chứa dữ liệu định danh người dùng",
   forecast_source:
     "Bảng forecast_source chứa thông tin nguồn gốc của đề thi (tự soạn, học viên hoặc web) phục vụ kiểm duyệt nội dung",
+  payment_event:
+    "Bảng payment_event lưu nhật ký giao dịch webhook SePay không chứa dữ liệu định danh cá nhân (không lưu content/description/accumulated) phục vụ chống trùng và đối soát thanh toán (#20)",
 };
 
 export async function exportUserData(db: Database, userId: string) {

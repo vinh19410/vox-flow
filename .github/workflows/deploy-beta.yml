@@ -81,6 +81,15 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           CORS_ORIGIN: https://vox.vinhtran.io.vn
           SEPAY_WEBHOOK_API_KEY: ${{ secrets.SEPAY_WEBHOOK_API_KEY }}
+          SEPAY_BANK_ACCOUNT: ${{ secrets.SEPAY_BANK_ACCOUNT || '' }}
+          SEPAY_SUB_ACCOUNT: ${{ secrets.SEPAY_SUB_ACCOUNT || '' }}
+          SEPAY_BANK_CODE: ${{ vars.SEPAY_BANK_CODE || '' }}
+          BILLING_ENABLED: ${{ vars.BILLING_ENABLED || 'false' }}
+          BILLING_ALLOWED_EMAILS: ${{ vars.BILLING_ALLOWED_EMAILS || '' }}
+          BILLING_POINTS_WEEK: ${{ vars.BILLING_POINTS_WEEK || '' }}
+          BILLING_POINTS_MONTH: ${{ vars.BILLING_POINTS_MONTH || '' }}
+          BILLING_POINTS_EXAM: ${{ vars.BILLING_POINTS_EXAM || '' }}
+          VITE_FEATURE_BILLING: ${{ vars.VITE_FEATURE_BILLING || 'false' }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

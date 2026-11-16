@@ -1,5 +1,6 @@
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { attemptRouter } from "./attempt";
+import { billingRouter } from "./billing";
 import { disputeRouter } from "./dispute";
 import { disputeAdminRouter } from "./dispute-admin";
 import { forecastRouter } from "./forecast";
@@ -20,6 +21,7 @@ export const appRouter = router({
     };
   }),
   attempt: attemptRouter,
+  billing: billingRouter,
   privacy: privacyRouter,
   profile: profileRouter,
   quota: quotaRouter,

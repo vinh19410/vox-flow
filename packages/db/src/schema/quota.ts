@@ -25,6 +25,8 @@ export const quotaReservation = sqliteTable(
     sunkCostVnd: integer("sunk_cost_vnd").default(0).notNull(),
     refundCount: integer("refund_count").default(0).notNull(),
     retakeOfAttemptId: text("retake_of_attempt_id"),
+    source: text("source", { enum: ["free", "subscription"] }).default("free").notNull(),
+    lastRefundToken: text("last_refund_token"),
     status: text("status", { enum: ["active", "released"] }).default("active").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)

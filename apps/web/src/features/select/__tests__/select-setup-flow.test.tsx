@@ -232,6 +232,8 @@ function makeQuotaStatus(overrides: Partial<QuotaStatus> = {}): QuotaStatus {
   const globalCapReached = overrides.globalCapReached ?? false;
   return {
     entitlement: "free",
+    subscription: null,
+    usingFreeFallback: false,
     dailyLimit: 3,
     usedPoints: 3 - remainingPoints,
     remainingPoints,
@@ -364,16 +366,51 @@ describe("Select & Forecast quota transparency and gating", () => {
     expect(h.go).toHaveBeenCalledWith("billing");
   });
 
-  it("renders unlimited badge and keeps all modes unlocked for paid learners", () => {
+  it("renders package points X/P banner and allows start when subscription has enough points, then falls back to free when points are exhausted", () => {
     mockMatchMedia(false);
-    renderWithQuota(
+    const { unmount } = renderWithQuota(
       <SelectScreen />,
-      makeQuotaStatus({ entitlement: "paid", remainingPoints: 0, globalCapReached: true }),
+      makeQuotaStatus({
+        entitlement: "paid",
+        subscription: {
+          planId: "week",
+          planName: "7 ngày",
+          pointsRemaining: 45,
+          planPointsTotal: 48,
+          expiresAtMs: Date.UTC(2026, 10, 21, 10, 0, 0),
+        },
+        usingFreeFallback: false,
+        remainingPoints: 0,
+        globalCapReached: true,
+      }),
     );
 
-    expect(screen.getByTestId("quota-banner").textContent).toContain("Gói trả phí · Luyện không giới hạn");
-    expect(screen.getAllByText("Không giới hạn")).toHaveLength(4);
+    expect(screen.getByTestId("quota-banner").textContent).toContain("Gói 7 ngày · Còn 45/48 điểm · hết hạn");
+    expect(screen.queryByText("Không giới hạn")).toBeNull();
+    expect(screen.getAllByText("3 điểm").length).toBeGreaterThanOrEqual(1);
     const startBtn = screen.getByRole("button", { name: /Đồng ý ghi âm & bắt đầu/ }) as HTMLButtonElement;
     expect(startBtn.disabled).toBe(false);
+    unmount();
+
+    // When subscription points are 0, falls back to free daily points & global cap
+    renderWithQuota(
+      <SelectScreen />,
+      makeQuotaStatus({
+        entitlement: "paid",
+        subscription: {
+          planId: "week",
+          planName: "7 ngày",
+          pointsRemaining: 0,
+          planPointsTotal: 48,
+          expiresAtMs: Date.UTC(2026, 10, 21, 10, 0, 0),
+        },
+        usingFreeFallback: true,
+        remainingPoints: 2,
+        globalCapReached: false,
+      }),
+    );
+    expect(screen.getByTestId("quota-banner").textContent).toContain(
+      "Đã dùng hết điểm gói, đang dùng mức miễn phí (2/3 điểm hôm nay)",
+    );
   });
 });

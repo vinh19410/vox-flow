@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { attempt, attemptAnswer, eq, user } from "@vox-flow/db";
+import { attempt, attemptAnswer, eq, paymentOrder, subscription, user } from "@vox-flow/db";
 import { isValidAudioKey } from "@vox-flow/api";
 import { createTestDb, type TestDbContext } from "../../../packages/api/src/test/db";
 
@@ -44,6 +44,8 @@ vi.mock("./env.server", () => ({
   ENV: {
     CORS_ORIGIN: "*",
     AUDIO_BUCKET: hoisted.bucket,
+    SEPAY_WEBHOOK_API_KEY: "int-test-sepay-key",
+    SEPAY_BANK_ACCOUNT: "1017588888",
   },
 }));
 
@@ -166,5 +168,52 @@ describe("POST audio route on real D1 (composite)", () => {
     expect(hoisted.objects.size).toBe(objectsBefore);
     const row = await answerRow("p1-4");
     expect(row).toBeUndefined();
+  });
+
+  it("POST /webhooks/sepay rejects invalid API key with 401 and activates pending order on valid webhook", async () => {
+    await testCtx.db.insert(paymentOrder).values({
+      id: "ord_int_1",
+      userId,
+      planId: "week",
+      amountVnd: 99_000,
+      transferCode: "VFINT0000001",
+      status: "pending",
+      expiresAt: new Date(Date.now() + 900_000),
+    });
+
+    const payload = {
+      id: 88001,
+      gateway: "Vietcombank",
+      transactionDate: "2026-11-16 14:30:00",
+      accountNumber: "1017588888",
+      subAccount: "",
+      code: "VFINT0000001",
+      content: "VFINT0000001",
+      transferType: "in",
+      transferAmount: 99_000,
+      referenceCode: "FT88001",
+    };
+
+    const badRes = await app.request("/webhooks/sepay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Apikey wrong" },
+      body: JSON.stringify(payload),
+    });
+    expect(badRes.status).toBe(401);
+
+    const okRes = await app.request("/webhooks/sepay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Apikey int-test-sepay-key" },
+      body: JSON.stringify(payload),
+    });
+    expect(okRes.status).toBe(200);
+    expect(await okRes.json()).toEqual({ success: true });
+
+    const [sub] = await testCtx.db
+      .select()
+      .from(subscription)
+      .where(eq(subscription.userId, userId));
+    expect(sub?.planId).toBe("week");
+    expect(sub?.pointsRemaining).toBe(48);
   });
 });

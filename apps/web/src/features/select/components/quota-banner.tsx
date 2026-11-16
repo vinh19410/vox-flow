@@ -2,6 +2,7 @@ import { AlertCircle, Clock, Crown, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ds/button";
 import { useApp } from "@/features/app-state/types";
+import { formatExpiryShort } from "@/features/billing/plan-utils";
 import { cx } from "@/lib/cx";
 
 import { GLOBAL_CAP_NEUTRAL_MESSAGE, useQuotaStatus } from "../use-quota-status";
@@ -19,8 +20,10 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
   }
 
   const { status } = quota;
+  const sub = status.subscription;
+  const isExhaustedSub = Boolean(sub && sub.pointsRemaining <= 0);
 
-  if (status.entitlement === "paid") {
+  if (sub && sub.pointsRemaining > 0) {
     return (
       <div
         data-testid="quota-banner"
@@ -31,9 +34,15 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
       >
         <div className="flex items-center gap-2 font-semibold">
           <Crown size={16} />
-          <span>Gói trả phí · Luyện không giới hạn</span>
+          <span>
+            Gói {sub.planName} · Còn {sub.pointsRemaining}/{sub.planPointsTotal} điểm · hết hạn {formatExpiryShort(sub.expiresAtMs)}
+          </span>
         </div>
-        <span className="text-xs text-good/90">Không áp dụng giới hạn điểm ngày &amp; trần hệ thống</span>
+        <span className="text-xs text-good/90">
+          {sub.pointsRemaining < 3 && status.globalCapReached
+            ? "Các bài vượt số điểm gói sẽ dùng mức miễn phí (tạm chờ trần hệ thống)"
+            : "Không áp dụng trần ngày hay trần hệ thống"}
+        </span>
       </div>
     );
   }
@@ -51,14 +60,18 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
         <div className="flex items-start gap-2.5">
           <AlertCircle size={17} className="mt-0.5 shrink-0 text-warn" />
           <div>
-            <div className="font-semibold">{GLOBAL_CAP_NEUTRAL_MESSAGE}</div>
+            <div className="font-semibold">
+              {isExhaustedSub
+                ? `Đã dùng hết điểm gói, đang dùng mức miễn phí · ${GLOBAL_CAP_NEUTRAL_MESSAGE}`
+                : GLOBAL_CAP_NEUTRAL_MESSAGE}
+            </div>
             <div className="mt-0.5 text-xs text-ink-2">
               Hạn mức cá nhân của bạn: Còn {status.remainingPoints}/{status.dailyLimit} điểm hôm nay · Đặt lại lúc 00:00 (giờ Việt Nam)
             </div>
           </div>
         </div>
         <Button size="sm" variant="accent" onClick={() => go("billing")}>
-          Xem gói trả phí
+          {isExhaustedSub ? "Mua thêm gói" : "Xem gói trả phí"}
         </Button>
       </div>
     );
@@ -78,7 +91,9 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
           <Clock size={17} className="mt-0.5 shrink-0 text-bad" />
           <div>
             <div className="font-semibold">
-              Còn 0/{status.dailyLimit} điểm hôm nay · Đặt lại lúc 00:00 (giờ Việt Nam)
+              {isExhaustedSub
+                ? `Đã dùng hết điểm gói, đang dùng mức miễn phí · Còn 0/${status.dailyLimit} điểm hôm nay`
+                : `Còn 0/${status.dailyLimit} điểm hôm nay · Đặt lại lúc 00:00 (giờ Việt Nam)`}
             </div>
             <div className="mt-0.5 text-xs text-ink-2">
               Lần luyện lại câu yếu đầu tiên của mỗi bài vẫn miễn phí (0 điểm).
@@ -86,7 +101,7 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
           </div>
         </div>
         <Button size="sm" variant="accent" onClick={() => go("billing")}>
-          Xem gói trả phí
+          {isExhaustedSub ? "Mua thêm gói" : "Xem gói trả phí"}
         </Button>
       </div>
     );
@@ -106,7 +121,9 @@ export function QuotaBanner({ className }: QuotaBannerProps) {
         </span>
         <div>
           <span className="font-semibold text-ink">
-            Còn {status.remainingPoints}/{status.dailyLimit} điểm hôm nay
+            {isExhaustedSub
+              ? `Đã dùng hết điểm gói, đang dùng mức miễn phí (${status.remainingPoints}/${status.dailyLimit} điểm hôm nay)`
+              : `Còn ${status.remainingPoints}/${status.dailyLimit} điểm hôm nay`}
           </span>
           {status.remainingPoints < 3 && (
             <span className="ml-2 text-xs text-ink-2">· Đủ cho Part lẻ hoặc Forecast</span>
