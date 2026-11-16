@@ -5,6 +5,7 @@ const getSessionSpy = vi.fn();
 const profileGetSpy = vi.fn();
 const disputeCheckAdminSpy = vi.fn();
 const forecastCheckAdminSpy = vi.fn();
+const billingCheckAdminSpy = vi.fn();
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -29,6 +30,11 @@ vi.mock("@/utils/trpc", () => ({
         query: () => forecastCheckAdminSpy(),
       },
     },
+    adminBilling: {
+      checkAdmin: {
+        query: () => billingCheckAdminSpy(),
+      },
+    },
   },
 }));
 
@@ -39,6 +45,7 @@ import { Route as ScoringRoute } from "@/routes/_proto/scoring";
 import { Route as AuthRoute } from "@/routes/_proto/auth";
 import { Route as AdminDisputesRoute } from "@/routes/admin/disputes";
 import { Route as AdminForecastRoute } from "@/routes/admin/forecast";
+import { Route as AdminPaymentsRoute } from "@/routes/admin/payments";
 
 describe("Protected proto routes beforeLoad", () => {
   beforeEach(() => {
@@ -286,6 +293,11 @@ describe("Admin routes beforeLoad", () => {
       name: "/admin/forecast",
       route: AdminForecastRoute,
       checkAdminSpy: forecastCheckAdminSpy,
+    },
+    {
+      name: "/admin/payments",
+      route: AdminPaymentsRoute,
+      checkAdminSpy: billingCheckAdminSpy,
     },
   ];
 
