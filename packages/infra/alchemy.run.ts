@@ -50,6 +50,7 @@ export const server = Cloudflare.Worker("server", {
     BETTER_AUTH_SECRET: Config.Redacted("BETTER_AUTH_SECRET"),
     BETTER_AUTH_URL: Cloudflare.Worker.URL,
     SEPAY_WEBHOOK_API_KEY: Config.Redacted("SEPAY_WEBHOOK_API_KEY"),
+    SEPAY_API_TOKEN: Config.Redacted("SEPAY_API_TOKEN").pipe(Config.withDefault("")),
     SEPAY_BANK_ACCOUNT: Config.Redacted("SEPAY_BANK_ACCOUNT").pipe(Config.withDefault("")),
     SEPAY_SUB_ACCOUNT: Config.Redacted("SEPAY_SUB_ACCOUNT").pipe(Config.withDefault("")),
     SEPAY_BANK_CODE: Config.String("SEPAY_BANK_CODE").pipe(Config.withDefault("")),

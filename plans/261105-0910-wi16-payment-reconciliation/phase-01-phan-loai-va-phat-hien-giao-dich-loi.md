@@ -14,13 +14,15 @@ Giao dịch không khớp được ghi nhận và không bị lỡ.
 
 ## Files to Create / Modify
 - Create: `packages/api/src/billing/reconcile.ts`
+- Create: `packages/api/src/billing/reconcile.test.ts`
 - Modify: `packages/api/src/billing/sepay-webhook.ts`
-- Modify: `apps/server/src/index.ts`
+- Modify: `packages/api/src/billing/sepay-webhook.test.ts`
 - Modify: `packages/infra/alchemy.run.ts`
+- Modify: `packages/api/src/context.ts`
+- Modify: `.github/workflows/deploy-beta.yml`
 - Modify: `packages/db/src/schema/billing.ts`
 - Modify: `packages/api/src/data-registry.ts`
 - Modify: `apps/server/src/scheduled.ts`
-- Modify: `apps/server/.env.schema`
 
 ## Tasks & Steps
 

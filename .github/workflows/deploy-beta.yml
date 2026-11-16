@@ -81,6 +81,7 @@ jobs:
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           CORS_ORIGIN: https://vox.vinhtran.io.vn
           SEPAY_WEBHOOK_API_KEY: ${{ secrets.SEPAY_WEBHOOK_API_KEY }}
+          SEPAY_API_TOKEN: ${{ secrets.SEPAY_API_TOKEN || '' }}
           SEPAY_BANK_ACCOUNT: ${{ secrets.SEPAY_BANK_ACCOUNT || '' }}
           SEPAY_SUB_ACCOUNT: ${{ secrets.SEPAY_SUB_ACCOUNT || '' }}
           SEPAY_BANK_CODE: ${{ vars.SEPAY_BANK_CODE || '' }}

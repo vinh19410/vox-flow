@@ -28,6 +28,7 @@ export type ApiEnv = {
   SCORING_PRICE_OUTPUT_PER_1M?: string;
   FREE_DAILY_BUDGET_VND?: string;
   SEPAY_WEBHOOK_API_KEY?: string;
+  SEPAY_API_TOKEN?: string;
   SEPAY_BANK_ACCOUNT?: string;
   SEPAY_SUB_ACCOUNT?: string;
   SEPAY_BANK_CODE?: string;

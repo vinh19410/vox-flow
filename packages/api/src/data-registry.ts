@@ -386,7 +386,9 @@ export const NON_PERSONAL_TABLES: Record<string, string> = {
   forecast_source:
     "Bảng forecast_source chứa thông tin nguồn gốc của đề thi (tự soạn, học viên hoặc web) phục vụ kiểm duyệt nội dung",
   payment_event:
-    "Bảng payment_event lưu nhật ký giao dịch webhook SePay không chứa dữ liệu định danh cá nhân (không lưu content/description/accumulated) phục vụ chống trùng và đối soát thanh toán (#20)",
+    "Bảng payment_event lưu nhật ký giao dịch webhook/API SePay không chứa dữ liệu định danh cá nhân (không lưu content/description/accumulated) phục vụ chống trùng và đối soát thanh toán (#20)",
+  payment_action:
+    "Bảng payment_action lưu lịch sử thao tác xử lý tay của quản trị viên (action, note, actorEmail) gắn với payment_event phục vụ kiểm toán đối soát (#20)",
 };
 
 export async function exportUserData(db: Database, userId: string) {

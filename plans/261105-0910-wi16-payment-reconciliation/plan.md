@@ -1,11 +1,11 @@
 ---
 title: "Đối soát thanh toán (`payment-reconciliation`)"
 description: "Tiền về sai hoặc trễ đều có đường xử lý, nên học viên không mất tiền oan và có thể bật thu tiền thật."
-status: pending
+status: in_progress
 priority: P1
 effort: 3d
 issue: 20
-branch: vinh19410/feat/payment-reconciliation
+branch: vinh19410/plan-16-i-so-t-thanh-to-n-payment-reconciliation
 tags: [backend, frontend, critical, advice]
 blockedBy: [project:261105-0910-wi08-sepay-setup, project:261105-0910-wi15-billing-qr]
 blocks: [project:261105-0910-wi17-first-real-students-gate]
@@ -50,8 +50,10 @@ Tiền về sai hoặc trễ đều có đường xử lý, nên học viên kh�
 - [ ] Có kiểm tra định kỳ phát hiện giao dịch webhook bị lỡ.
 - [ ] Có runbook xử lý từng trường hợp.
 
-## Câu hỏi mở
-- Thời hạn phản hồi học viên khi tiền về sai là bao lâu?
-- Thiếu tiền thì hoàn lại hay cho chuyển bù?
+## Quyết định đã chốt (Gate 1 - 2026-11-16)
+- Thời hạn phản hồi / xử lý học viên (SLA) khi tiền về sai hoặc trễ: **24 giờ** kể từ lúc giao dịch phát sinh.
+- Thiếu tiền (`underpaid`): **Chỉ hoàn tiền thủ công ngoài ngân hàng** và đánh dấu hoàn tiền (không nhận chuyển bù).
+- Thừa tiền (`overpaid`): **Không tự động kích hoạt**; giữ giao dịch ở hàng đợi `overpaid` để admin kiểm tra rồi kích hoạt tay (hoàn phần thừa ngoài ngân hàng) hoặc đánh dấu hoàn tiền toàn bộ.
+- Ghi chú môi trường Beta: tạm thời bỏ qua cấu hình live `SEPAY_API_TOKEN` và `ADMIN_EMAILS` trên environment `beta` bằng fallback rỗng an toàn; người sở hữu sẽ nạp sau khi kiểm thử thật.
 
 <!-- slug: wi16-payment-reconciliation -->
