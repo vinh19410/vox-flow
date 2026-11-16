@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: "Phân loại và phát hiện giao dịch lỗi"
-status: pending
+status: done
 priority: P1
 effort: ""
 dependencies: []

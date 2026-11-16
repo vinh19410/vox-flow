@@ -1,7 +1,7 @@
 ---
 title: "Đối soát thanh toán (`payment-reconciliation`)"
 description: "Tiền về sai hoặc trễ đều có đường xử lý, nên học viên không mất tiền oan và có thể bật thu tiền thật."
-status: in_progress
+status: done
 priority: P1
 effort: 3d
 issue: 20
@@ -41,14 +41,14 @@ Tiền về sai hoặc trễ đều có đường xử lý, nên học viên kh�
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | [Phase 1: Phân loại và phát hiện giao dịch lỗi](./phase-01-phan-loai-va-phat-hien-giao-dich-loi.md) | Pending |
-| 2 | [Phase 2: Công cụ xử lý và runbook](./phase-02-cong-cu-xu-ly-va-runbook.md) | Pending |
+| 1 | [Phase 1: Phân loại và phát hiện giao dịch lỗi](./phase-01-phan-loai-va-phat-hien-giao-dich-loi.md) | Done |
+| 2 | [Phase 2: Công cụ xử lý và runbook](./phase-02-cong-cu-xu-ly-va-runbook.md) | Done |
 
 ## Acceptance Criteria
-- [ ] Mọi giao dịch không khớp đều vào hàng đợi: thiếu tiền, thừa tiền, sai hoặc thiếu mã, trễ sau khi đơn hết hạn.
-- [ ] Người sở hữu kích hoạt tay hoặc đánh dấu hoàn tiền được, có lưu lại lịch sử.
-- [ ] Có kiểm tra định kỳ phát hiện giao dịch webhook bị lỡ.
-- [ ] Có runbook xử lý từng trường hợp.
+- [x] Mọi giao dịch không khớp đều vào hàng đợi: thiếu tiền, thừa tiền, sai hoặc thiếu mã, trễ sau khi đơn hết hạn.
+- [x] Người sở hữu kích hoạt tay hoặc đánh dấu hoàn tiền được, có lưu lại lịch sử.
+- [x] Có kiểm tra định kỳ phát hiện giao dịch webhook bị lỡ.
+- [x] Có runbook xử lý từng trường hợp.
 
 ## Quyết định đã chốt (Gate 1 - 2026-11-16)
 - Thời hạn phản hồi / xử lý học viên (SLA) khi tiền về sai hoặc trễ: **24 giờ** kể từ lúc giao dịch phát sinh.

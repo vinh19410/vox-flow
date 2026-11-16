@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Công cụ xử lý và runbook"
-status: pending
+status: done
 priority: P1
 effort: ""
 dependencies: [1]
