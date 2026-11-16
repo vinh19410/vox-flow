@@ -6,7 +6,7 @@ Các cấu hình tài khoản SePay, hợp đồng webhook, danh sách IP WAF v�
 
 ## Nguyên tắc chung và bảo mật
 
-- **Quyền truy cập hàng đợi:** Chỉ tài khoản quản trị có email nằm trong biến môi trường `ADMIN_EMAILS` (và đã xác thực email) mới truy cập được `/admin/payments`.
+- **Quyền truy cập hàng đợi:** Chỉ tài khoản quản trị có email nằm trong biến môi trường `ADMIN_EMAILS` mới truy cập được `/admin/payments` (theo cơ chế `adminProcedure`).
 - **Cô lập và bảo mật dữ liệu tài khoản:**
   - Không bao giờ ghi đầy đủ số tài khoản ngân hàng vào runbook, ghi chú thao tác, issue, PR hoặc commit git; khi cần tham chiếu chỉ ghi tối đa 4 chữ số cuối (ví dụ: `****1234`).
   - Bảng `payment_event` trên D1 **không lưu** nội dung chuyển khoản thô (`content`, `description`) và số dư sau giao dịch (`accumulated`) để tránh lộ dữ liệu sao kê cá nhân qua bản sao lưu D1 (xem `packages/db/src/schema/billing.ts` và `packages/api/src/data-registry.ts`).

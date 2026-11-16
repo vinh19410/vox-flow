@@ -14,7 +14,7 @@ import {
 } from "@vox-flow/db/schema";
 
 import { resolveBillingPlans } from "../billing/plans";
-import { activateOrderAtomic, sweepTransactions } from "../billing/reconcile";
+import { buildActivationStatements, sweepTransactions } from "../billing/reconcile";
 import { adminProcedure, router } from "../index";
 
 export const BILLING_SLA_MS = 24 * 60 * 60 * 1000;
@@ -165,40 +165,23 @@ export const adminBillingRouter = router({
         }
       }
 
-      const metricRows = await ctx.db
+      const overdueThresholdMs = nowMs - BILLING_SLA_MS;
+      const nearOverdueThresholdMs = nowMs - BILLING_NEAR_SLA_MS;
+
+      const [metricSummary] = await ctx.db
         .select({
-          resolutionStatus: paymentEvent.resolutionStatus,
-          createdAt: paymentEvent.createdAt,
+          pendingCount: sql<number>`COALESCE(SUM(CASE WHEN ${paymentEvent.resolutionStatus} = 'pending_review' THEN 1 ELSE 0 END), 0)`,
+          overdueCount: sql<number>`COALESCE(SUM(CASE WHEN ${paymentEvent.resolutionStatus} = 'pending_review' AND ${paymentEvent.createdAt} <= ${overdueThresholdMs} THEN 1 ELSE 0 END), 0)`,
+          nearOverdueCount: sql<number>`COALESCE(SUM(CASE WHEN ${paymentEvent.resolutionStatus} = 'pending_review' AND ${paymentEvent.createdAt} > ${overdueThresholdMs} AND ${paymentEvent.createdAt} <= ${nearOverdueThresholdMs} THEN 1 ELSE 0 END), 0)`,
+          resolvedCount: sql<number>`COALESCE(SUM(CASE WHEN ${paymentEvent.resolutionStatus} IN ('resolved', 'activated', 'refunded') THEN 1 ELSE 0 END), 0)`,
         })
         .from(paymentEvent)
         .where(baseNonOutbound);
 
-      let pendingCount = 0;
-      let overdueCount = 0;
-      let nearOverdueCount = 0;
-      let resolvedCount = 0;
-
-      for (const m of metricRows) {
-        if (m.resolutionStatus === "pending_review") {
-          pendingCount += 1;
-          const sla = computeSlaState({
-            createdAt: m.createdAt,
-            resolutionStatus: m.resolutionStatus,
-            nowMs,
-          });
-          if (sla.isOverdue) {
-            overdueCount += 1;
-          } else if (sla.isNearOverdue) {
-            nearOverdueCount += 1;
-          }
-        } else if (
-          m.resolutionStatus === "resolved" ||
-          m.resolutionStatus === "activated" ||
-          m.resolutionStatus === "refunded"
-        ) {
-          resolvedCount += 1;
-        }
-      }
+      const pendingCount = Number(metricSummary?.pendingCount ?? 0);
+      const overdueCount = Number(metricSummary?.overdueCount ?? 0);
+      const nearOverdueCount = Number(metricSummary?.nearOverdueCount ?? 0);
+      const resolvedCount = Number(metricSummary?.resolvedCount ?? 0);
 
       const items = rows.map((r) => {
         const sla = computeSlaState({
@@ -319,6 +302,7 @@ export const adminBillingRouter = router({
     .input(activateBillingEventInputSchema)
     .mutation(async ({ ctx, input }) => {
       const now = resolveNow(ctx.now);
+      const nowMs = now.getTime();
 
       const [event] = await ctx.db
         .select()
@@ -333,15 +317,28 @@ export const adminBillingRouter = router({
         });
       }
 
+      if (event.classification === "underpaid") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Giao dịch thiếu tiền chỉ hỗ trợ hoàn tiền thủ công ngoài ngân hàng, không thể kích hoạt",
+        });
+      }
+
       if (
         event.classification === "outbound" ||
-        event.resolutionStatus === "ignored" ||
-        event.resolutionStatus === "activated" ||
-        event.resolutionStatus === "refunded"
+        event.resolutionStatus !== "pending_review"
       ) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Giao dịch này không thể kích hoạt thủ công",
+        });
+      }
+
+      if (event.orderId && input.orderId && input.orderId !== event.orderId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Giao dịch đã gắn với đơn hàng khác",
         });
       }
 
@@ -380,41 +377,71 @@ export const adminBillingRouter = router({
         });
       }
 
-      const activation = await activateOrderAtomic({
+      const actionId = crypto.randomUUID();
+      const actionInsertStmt = ctx.db
+        .insert(paymentAction)
+        .select((qb) =>
+          qb
+            .select({
+              id: sql<string>`${actionId}`.as("id"),
+              eventId: paymentEvent.id,
+              orderId: sql<string | null>`${order.id}`.as("order_id"),
+              action: sql<"activate">`${"activate"}`.as("action"),
+              note: sql<string>`${input.note}`.as("note"),
+              actorEmail: sql<string>`${ctx.session.user.email}`.as("actor_email"),
+              createdAt: sql<Date>`${nowMs}`.as("created_at"),
+            })
+            .from(paymentEvent)
+            .where(
+              and(
+                eq(paymentEvent.id, event.id),
+                eq(paymentEvent.resolutionStatus, "pending_review"),
+                ne(paymentEvent.classification, "underpaid"),
+                ne(paymentEvent.classification, "outbound"),
+                sql`EXISTS (SELECT 1 FROM payment_order WHERE id = ${order.id} AND status IN ('pending', 'expired'))`,
+              ),
+            ),
+        )
+        .returning({ id: paymentAction.id });
+
+      const actionExists = sql`EXISTS (SELECT 1 FROM payment_action WHERE id = ${actionId})`;
+      const eventUpdateStmt = ctx.db
+        .update(paymentEvent)
+        .set({
+          orderId: order.id,
+          resolutionStatus: "activated",
+        })
+        .where(
+          and(
+            eq(paymentEvent.id, event.id),
+            eq(paymentEvent.resolutionStatus, "pending_review"),
+            actionExists,
+          ),
+        );
+
+      const { orderUpdateStmt, entitlementUpsertStmt } = buildActivationStatements({
         db: ctx.db,
         order,
         sepayId: event.sepayId,
         env: ctx.env,
         now,
         allowExpired: true,
+        requireActionId: actionId,
       });
 
-      if (activation.alreadyPaid || !activation.activated) {
+      const [insertedActions] = await ctx.db.batch([
+        actionInsertStmt,
+        eventUpdateStmt,
+        orderUpdateStmt,
+        entitlementUpsertStmt,
+      ]);
+
+      if (!insertedActions || insertedActions.length === 0) {
         throw new TRPCError({
           code: "CONFLICT",
           message: "ORDER_ALREADY_PAID",
         });
       }
-
-      const actionId = crypto.randomUUID();
-      await ctx.db.batch([
-        ctx.db
-          .update(paymentEvent)
-          .set({
-            orderId: order.id,
-            resolutionStatus: "activated",
-          })
-          .where(eq(paymentEvent.id, event.id)),
-        ctx.db.insert(paymentAction).values({
-          id: actionId,
-          eventId: event.id,
-          orderId: order.id,
-          action: "activate",
-          note: input.note,
-          actorEmail: ctx.session.user.email,
-          createdAt: now,
-        }),
-      ]);
 
       return {
         success: true,
@@ -455,6 +482,8 @@ export const adminBillingRouter = router({
         });
       }
 
+      const actionId = crypto.randomUUID();
+      const actionExists = sql`EXISTS (SELECT 1 FROM payment_action WHERE id = ${actionId})`;
       const batchStatements: BatchItem<"sqlite">[] = [];
 
       // Manual offline refund only (never triggers bank transfer).
@@ -478,7 +507,7 @@ export const adminBillingRouter = router({
                     remaining: sql`MAX(0, ${detailCredit.remaining} - ${plan.detailCredits})`,
                     updatedAt: now,
                   })
-                  .where(eq(detailCredit.userId, order.userId)),
+                  .where(and(eq(detailCredit.userId, order.userId), actionExists)),
               );
             } else {
               batchStatements.push(
@@ -493,6 +522,7 @@ export const adminBillingRouter = router({
                     and(
                       eq(subscription.userId, order.userId),
                       eq(subscription.lastOrderId, order.id),
+                      actionExists,
                     ),
                   ),
               );
@@ -504,28 +534,73 @@ export const adminBillingRouter = router({
               ctx.db
                 .update(paymentOrder)
                 .set({ status: "refunded" })
-                .where(eq(paymentOrder.id, order.id)),
+                .where(
+                  and(
+                    eq(paymentOrder.id, order.id),
+                    ne(paymentOrder.status, "refunded"),
+                    actionExists,
+                  ),
+                ),
             );
           }
         }
       }
 
-      const actionId = crypto.randomUUID();
+      const actionInsertStmt = ctx.db
+        .insert(paymentAction)
+        .select((qb) =>
+          qb
+            .select({
+              id: sql<string>`${actionId}`.as("id"),
+              eventId: paymentEvent.id,
+              orderId: sql<string | null>`${event.orderId ?? null}`.as("order_id"),
+              action: sql<"mark_refunded">`${"mark_refunded"}`.as("action"),
+              note: sql<string>`${input.note}`.as("note"),
+              actorEmail: sql<string>`${ctx.session.user.email}`.as("actor_email"),
+              createdAt: sql<Date>`${nowMs}`.as("created_at"),
+            })
+            .from(paymentEvent)
+            .where(
+              and(
+                eq(paymentEvent.id, event.id),
+                inArray(paymentEvent.resolutionStatus, [
+                  "pending_review",
+                  "activated",
+                  "resolved",
+                ]),
+                ne(paymentEvent.classification, "outbound"),
+              ),
+            ),
+        )
+        .returning({ id: paymentAction.id });
+
       const eventUpdateStmt = ctx.db
         .update(paymentEvent)
         .set({ resolutionStatus: "refunded" })
-        .where(eq(paymentEvent.id, event.id));
-      const actionInsertStmt = ctx.db.insert(paymentAction).values({
-        id: actionId,
-        eventId: event.id,
-        orderId: event.orderId ?? null,
-        action: "mark_refunded",
-        note: input.note,
-        actorEmail: ctx.session.user.email,
-        createdAt: now,
-      });
+        .where(
+          and(
+            eq(paymentEvent.id, event.id),
+            inArray(paymentEvent.resolutionStatus, [
+              "pending_review",
+              "activated",
+              "resolved",
+            ]),
+            actionExists,
+          ),
+        );
 
-      await ctx.db.batch([eventUpdateStmt, actionInsertStmt, ...batchStatements]);
+      const [insertedActions] = await ctx.db.batch([
+        actionInsertStmt,
+        eventUpdateStmt,
+        ...batchStatements,
+      ]);
+
+      if (!insertedActions || insertedActions.length === 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "EVENT_ALREADY_REFUNDED",
+        });
+      }
 
       return {
         success: true,

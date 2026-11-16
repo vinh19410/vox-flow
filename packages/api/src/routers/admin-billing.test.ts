@@ -758,6 +758,157 @@ describe("admin-billing router", () => {
         }),
       ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
+
+    it("rejects underpaid, already-resolved, and mismatched orderId on activate, and handles concurrent activate atomically", async () => {
+      const caller = makeCaller(ctx.db, adminUser, defaultEnv, () => now);
+
+      await ctx.db.insert(paymentOrder).values([
+        {
+          id: "ord_underpaid_block",
+          userId: studentUser1.id,
+          planId: "week",
+          amountVnd: 99_000,
+          transferCode: "VFUNDERACT1",
+          status: "pending",
+          expiresAt: new Date(now.getTime() + 600_000),
+          createdAt: now,
+        },
+        {
+          id: "ord_race_a",
+          userId: studentUser2.id,
+          planId: "pack",
+          amountVnd: 49_000,
+          transferCode: "VFRACEA0001",
+          status: "pending",
+          expiresAt: new Date(now.getTime() + 600_000),
+          createdAt: now,
+        },
+        {
+          id: "ord_race_b",
+          userId: studentUser2.id,
+          planId: "pack",
+          amountVnd: 49_000,
+          transferCode: "VFRACEB0001",
+          status: "pending",
+          expiresAt: new Date(now.getTime() + 600_000),
+          createdAt: now,
+        },
+      ]);
+
+      await ctx.db.insert(paymentEvent).values([
+        {
+          id: "ev_underpaid_block",
+          sepayId: 2010,
+          transferType: "in",
+          gateway: "VCB",
+          accountNumber: "1017588888",
+          transferAmount: 50_000,
+          extractedCode: "VFUNDERACT1",
+          referenceCode: "REF2010",
+          transactionDate: "2026-11-16 14:10:00",
+          orderId: "ord_underpaid_block",
+          matchStatus: "amount_mismatch",
+          classification: "underpaid",
+          resolutionStatus: "pending_review",
+          source: "webhook",
+          createdAt: now,
+        },
+        {
+          id: "ev_resolved_block",
+          sepayId: 2011,
+          transferType: "in",
+          gateway: "VCB",
+          accountNumber: "1017588888",
+          transferAmount: 99_000,
+          extractedCode: "VFUNDERACT1",
+          referenceCode: "REF2011",
+          transactionDate: "2026-11-16 14:11:00",
+          orderId: null,
+          matchStatus: "matched",
+          classification: "matched",
+          resolutionStatus: "resolved",
+          source: "webhook",
+          createdAt: now,
+        },
+        {
+          id: "ev_race_unknown",
+          sepayId: 2012,
+          transferType: "in",
+          gateway: "VCB",
+          accountNumber: "1017588888",
+          transferAmount: 49_000,
+          extractedCode: null,
+          referenceCode: "REF2012",
+          transactionDate: "2026-11-16 14:12:00",
+          orderId: null,
+          matchStatus: "unknown_code",
+          classification: "unknown_code",
+          resolutionStatus: "pending_review",
+          source: "webhook",
+          createdAt: now,
+        },
+      ]);
+
+      await expect(
+        caller.adminBilling.activate({
+          eventId: "ev_underpaid_block",
+          note: "Attempt activate underpaid",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+      await expect(
+        caller.adminBilling.activate({
+          eventId: "ev_resolved_block",
+          orderId: "ord_race_a",
+          note: "Attempt activate resolved event",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+      await expect(
+        caller.adminBilling.activate({
+          eventId: "ev_overpaid_1",
+          orderId: "ord_race_a",
+          note: "Attempt mismatch orderId",
+        }),
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+      const raceResults = await Promise.allSettled([
+        caller.adminBilling.activate({
+          eventId: "ev_race_unknown",
+          orderId: "ord_race_a",
+          note: "Race attempt A",
+        }),
+        caller.adminBilling.activate({
+          eventId: "ev_race_unknown",
+          orderId: "ord_race_b",
+          note: "Race attempt B",
+        }),
+      ]);
+
+      const fulfilled = raceResults.filter((r) => r.status === "fulfilled");
+      const rejected = raceResults.filter((r) => r.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+
+      const raceActions = await ctx.db
+        .select()
+        .from(paymentAction)
+        .where(eq(paymentAction.eventId, "ev_race_unknown"));
+      expect(raceActions).toHaveLength(1);
+
+      const [ordA] = await ctx.db
+        .select()
+        .from(paymentOrder)
+        .where(eq(paymentOrder.id, "ord_race_a"))
+        .limit(1);
+      const [ordB] = await ctx.db
+        .select()
+        .from(paymentOrder)
+        .where(eq(paymentOrder.id, "ord_race_b"))
+        .limit(1);
+      const paidCount = [ordA?.status, ordB?.status].filter((s) => s === "paid").length;
+      expect(paidCount).toBe(1);
+    });
   });
 
   describe("markRefunded procedure", () => {
@@ -1115,6 +1266,105 @@ describe("admin-billing router", () => {
       await expect(
         caller.adminBilling.markRefunded({ eventId: "ev_outbound_refund", note: "test" }),
       ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    });
+
+    it("marks unknown_code (null orderId) refunded and prevents double-deduction on concurrent markRefunded", async () => {
+      const caller = makeCaller(ctx.db, adminUser, defaultEnv, () => now);
+
+      await ctx.db.insert(paymentEvent).values({
+        id: "ev_unknown_refund",
+        sepayId: 3007,
+        transferType: "in",
+        gateway: "VCB",
+        accountNumber: "1017588888",
+        transferAmount: 77_000,
+        extractedCode: null,
+        referenceCode: "REF3007",
+        transactionDate: "2026-11-16 16:05:00",
+        orderId: null,
+        matchStatus: "unknown_code",
+        classification: "unknown_code",
+        resolutionStatus: "pending_review",
+        source: "webhook",
+        createdAt: now,
+      });
+
+      const unknownRes = await caller.adminBilling.markRefunded({
+        eventId: "ev_unknown_refund",
+        note: "Hoàn tiền giao dịch không mã",
+      });
+      expect(unknownRes).toMatchObject({
+        success: true,
+        eventId: "ev_unknown_refund",
+        orderId: null,
+      });
+
+      // Concurrent markRefunded on paid pack order deducts credits once (not twice)
+      await ctx.db
+        .insert(detailCredit)
+        .values({ userId: studentUser2.id, remaining: 6, lastOrderId: "ord_race_pack" })
+        .onConflictDoUpdate({
+          target: detailCredit.userId,
+          set: { remaining: 6, lastOrderId: "ord_race_pack" },
+        });
+
+      await ctx.db.insert(paymentOrder).values({
+        id: "ord_race_pack",
+        userId: studentUser2.id,
+        planId: "pack",
+        amountVnd: 49_000,
+        transferCode: "VFPACKRACE1",
+        status: "paid",
+        paidAt: now,
+        expiresAt: new Date(now.getTime() + 600_000),
+        createdAt: now,
+      });
+
+      await ctx.db.insert(paymentEvent).values({
+        id: "ev_race_pack_refund",
+        sepayId: 3008,
+        transferType: "in",
+        gateway: "VCB",
+        accountNumber: "1017588888",
+        transferAmount: 55_000,
+        extractedCode: "VFPACKRACE1",
+        referenceCode: "REF3008",
+        transactionDate: "2026-11-16 16:10:00",
+        orderId: "ord_race_pack",
+        matchStatus: "amount_mismatch",
+        classification: "overpaid",
+        resolutionStatus: "activated",
+        source: "webhook",
+        createdAt: now,
+      });
+
+      const results = await Promise.allSettled([
+        caller.adminBilling.markRefunded({
+          eventId: "ev_race_pack_refund",
+          note: "Hoàn lần 1",
+        }),
+        caller.adminBilling.markRefunded({
+          eventId: "ev_race_pack_refund",
+          note: "Hoàn lần 2",
+        }),
+      ]);
+
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+
+      const [credit] = await ctx.db
+        .select()
+        .from(detailCredit)
+        .where(eq(detailCredit.userId, studentUser2.id))
+        .limit(1);
+      // 6 - 3 (only once!) = 3
+      expect(credit?.remaining).toBe(3);
+
+      const actions = await ctx.db
+        .select()
+        .from(paymentAction)
+        .where(eq(paymentAction.eventId, "ev_race_pack_refund"));
+      expect(actions).toHaveLength(1);
     });
   });
 

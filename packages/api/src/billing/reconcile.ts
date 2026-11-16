@@ -145,6 +145,7 @@ export interface ActivateOrderParams {
   env?: ApiEnv;
   now: Date;
   allowExpired?: boolean;
+  requireActionId?: string;
 }
 
 export interface ActivateOrderResult {
@@ -152,8 +153,16 @@ export interface ActivateOrderResult {
   alreadyPaid: boolean;
 }
 
-function buildActivationStatements(params: ActivateOrderParams) {
-  const { db, order, sepayId = null, env, now, allowExpired = false } = params;
+export function buildActivationStatements(params: ActivateOrderParams) {
+  const {
+    db,
+    order,
+    sepayId = null,
+    env,
+    now,
+    allowExpired = false,
+    requireActionId,
+  } = params;
   const nowMs = now.getTime();
   const plans = resolveBillingPlans(env);
   const plan = plans[order.planId];
@@ -162,6 +171,10 @@ function buildActivationStatements(params: ActivateOrderParams) {
     ? inArray(paymentOrder.status, ["pending", "expired"])
     : eq(paymentOrder.status, "pending");
 
+  const actionExistsCondition = requireActionId
+    ? sql`EXISTS (SELECT 1 FROM payment_action WHERE id = ${requireActionId})`
+    : undefined;
+
   const orderUpdateStmt = db
     .update(paymentOrder)
     .set({
@@ -169,10 +182,14 @@ function buildActivationStatements(params: ActivateOrderParams) {
       ...(sepayId != null ? { sepayId } : {}),
       paidAt: now,
     })
-    .where(and(eq(paymentOrder.id, order.id), statusCondition))
+    .where(
+      actionExistsCondition
+        ? and(eq(paymentOrder.id, order.id), statusCondition, actionExistsCondition)
+        : and(eq(paymentOrder.id, order.id), statusCondition),
+    )
     .returning({ id: paymentOrder.id });
 
-  const orderActivatedWhere =
+  const orderActivatedBase =
     sepayId != null
       ? and(
           eq(paymentOrder.id, order.id),
@@ -185,6 +202,10 @@ function buildActivationStatements(params: ActivateOrderParams) {
           eq(paymentOrder.status, "paid"),
           eq(paymentOrder.paidAt, now),
         );
+
+  const orderActivatedWhere = actionExistsCondition
+    ? and(orderActivatedBase, actionExistsCondition)
+    : orderActivatedBase;
 
   if (plan.kind === "detail_pack") {
     const creditUpsertStmt = db
@@ -710,8 +731,14 @@ export async function sweepTransactions(
     }
 
     const pagination = parsed.data.meta?.pagination ?? parsed.data.pagination;
-    const lastPage = pagination?.last_page ?? 1;
-    if (page >= lastPage || transactions.length === 0) {
+    const lastPage = pagination?.last_page;
+    if (
+      transactions.length === 0 ||
+      (lastPage != null
+        ? page >= lastPage
+        : pagination?.has_more === false ||
+          (pagination?.has_more !== true && transactions.length < SWEEP_PER_PAGE))
+    ) {
       break;
     }
   }

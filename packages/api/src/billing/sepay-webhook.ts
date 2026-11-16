@@ -9,9 +9,18 @@ import { ingestSepayTransaction } from "./reconcile";
 
 const sepayPayloadSchema = z.object({
   id: z.number().int(),
-  gateway: z.string().default(""),
-  transactionDate: z.string().default(""),
-  accountNumber: z.string().default(""),
+  gateway: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? ""),
+  transactionDate: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? ""),
+  accountNumber: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? ""),
   subAccount: z
     .string()
     .nullish()
@@ -20,7 +29,10 @@ const sepayPayloadSchema = z.object({
     .string()
     .nullish()
     .transform((v) => v ?? null),
-  content: z.string().default(""),
+  content: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? ""),
   transferType: z.enum(["in", "out"]),
   transferAmount: z.number().int().nonnegative(),
   referenceCode: z
