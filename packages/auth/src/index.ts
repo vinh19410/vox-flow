@@ -6,6 +6,7 @@ import { betterAuth } from "better-auth";
 
 import { validateUserImage } from "./image-validation";
 import { normalizeOAuthUserName, validateUserName } from "./name-validation";
+import { parseAllowedOrigins } from "./origins";
 
 export {
   MAX_USER_IMAGE_LENGTH,
@@ -16,6 +17,11 @@ export {
   normalizeOAuthUserName,
   validateUserName,
 } from "./name-validation";
+export {
+  isOriginAllowed,
+  parseAllowedOrigins,
+  resolveCorsOriginHeader,
+} from "./origins";
 
 export type AuthConfig = {
   BETTER_AUTH_URL: string;
@@ -66,7 +72,9 @@ export function createAuth(
   database: Database,
   options: CreateAuthOptions = {},
 ) {
-  const cleanCorsOrigin = env.CORS_ORIGIN.replace(/\/+$/, "");
+  const trustedOrigins = parseAllowedOrigins(env.CORS_ORIGIN).filter(
+    (o) => o !== "*",
+  );
   const runtimeGlobal: {
     readonly Object: unknown;
     readonly process?:
@@ -80,7 +88,7 @@ export function createAuth(
       provider: "sqlite",
       schema,
     }),
-    trustedOrigins: [cleanCorsOrigin],
+    trustedOrigins,
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,

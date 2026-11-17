@@ -1,5 +1,9 @@
 import { trpcServer } from "@hono/trpc-server";
 import {
+  parseAllowedOrigins,
+  resolveCorsOriginHeader,
+} from "@vox-flow/auth";
+import {
   and,
   attempt,
   attemptAnswer,
@@ -52,7 +56,10 @@ app.use(logger());
 app.use(
   "/*",
   cors({
-    origin: ENV.CORS_ORIGIN.replace(/\/+$/, ""),
+    origin: (origin) => {
+      const allowedOrigins = parseAllowedOrigins(ENV.CORS_ORIGIN);
+      return resolveCorsOriginHeader(origin, allowedOrigins);
+    },
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,

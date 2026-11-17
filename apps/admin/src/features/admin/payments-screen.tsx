@@ -1,3 +1,8 @@
+import { Badge, type BadgeTone } from "@vox-flow/ui/ds/badge";
+import { Button } from "@vox-flow/ui/ds/button";
+import { Card } from "@vox-flow/ui/ds/card";
+import { Modal } from "@vox-flow/ui/ds/modal";
+import { PageHead } from "@vox-flow/ui/ds/page-head";
 import {
   AlertCircle,
   AlertTriangle,
@@ -13,12 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Badge, type BadgeTone } from "@/components/ds/badge";
-import { Button } from "@/components/ds/button";
-import { Card } from "@/components/ds/card";
-import { Modal } from "@/components/ds/modal";
-import { PageHead } from "@/layouts/page-head";
-import { vnd } from "@/lib/format";
+import { formatDateTime, vnd } from "@/lib/format";
 import { trpcClient } from "@/utils/trpc";
 
 export type PaymentClassification =
@@ -165,21 +165,6 @@ const ORDER_STATUS_LABEL: Record<PaymentOrderSummary["status"], string> = {
   expired: "Hết hạn",
   refunded: "Đã hoàn tiền",
 };
-
-function formatDateTime(value: Date | string | number): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return date.toLocaleString("vi-VN", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function isAuthError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -427,7 +412,7 @@ export function PaymentsScreen({
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4" data-testid="payment-metrics">
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Chờ xử lý</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Chờ xử lý</span>
             <Clock size={16} className="text-warn" />
           </div>
           <div className="mt-2 text-2xl font-bold text-ink" data-testid="metric-pending-count">
@@ -438,7 +423,7 @@ export function PaymentsScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Quá hạn SLA 24h</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Quá hạn SLA 24h</span>
             <AlertCircle size={16} className="text-bad" />
           </div>
           <div className="mt-2 text-2xl font-bold text-bad" data-testid="metric-overdue-count">
@@ -449,7 +434,7 @@ export function PaymentsScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">
+            <span className="text-xs font-semibold tracking-wider uppercase">
               Sắp quá hạn 18–24h
             </span>
             <AlertTriangle size={16} className="text-warn" />
@@ -465,7 +450,7 @@ export function PaymentsScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Đã xử lý</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Đã xử lý</span>
             <CheckCircle2 size={16} className="text-good" />
           </div>
           <div className="mt-2 text-2xl font-bold text-ink" data-testid="metric-resolved-count">
@@ -682,7 +667,7 @@ export function PaymentsScreen({
                         className="space-y-1.5 border-t border-paper-2 pt-3"
                         data-testid={`action-history-${item.id}`}
                       >
-                        <div className="text-xs font-semibold uppercase tracking-wider text-subtle">
+                        <div className="text-xs font-semibold tracking-wider text-subtle uppercase">
                           Lịch sử xử lý ({item.actions.length})
                         </div>
                         {item.actions.map((act) => (
