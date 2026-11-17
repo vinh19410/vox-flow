@@ -112,6 +112,9 @@ export default Alchemy.Stack(
       },
       env: {
         VITE_SERVER_URL: serverWorker.url.as<string>(),
+        VITE_FEATURE_BILLING: yield* Config.String("VITE_FEATURE_BILLING").pipe(
+          Config.withDefault("false"),
+        ),
       },
       dev: {
         port: 3001,
