@@ -3,15 +3,17 @@ import path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { checkAndWarnOverdueDisputes, requeueStaleScores } = vi.hoisted(() => ({
+const { checkAndWarnOverdueDisputes, requeueStaleScores, sweepTransactions } = vi.hoisted(() => ({
   checkAndWarnOverdueDisputes: vi.fn(),
   requeueStaleScores: vi.fn(),
+  sweepTransactions: vi.fn(),
 }));
 
 vi.mock("./env.server", () => ({ ENV: { SCORING_QUEUE: { send: vi.fn() } } }));
 vi.mock("./services", () => ({ getDb: () => ({}) }));
 vi.mock("@vox-flow/api/disputes/overdue", () => ({ checkAndWarnOverdueDisputes }));
 vi.mock("@vox-flow/api/scoring/requeue", () => ({ requeueStaleScores }));
+vi.mock("@vox-flow/api/billing/reconcile", () => ({ sweepTransactions }));
 
 import { handleScheduled, HOURLY_CRON, SCORING_SWEEP_CRON } from "./scheduled";
 
@@ -23,23 +25,27 @@ describe("handleScheduled", () => {
     vi.clearAllMocks();
     checkAndWarnOverdueDisputes.mockResolvedValue({ warnedCount: 0 });
     requeueStaleScores.mockResolvedValue({ requeued: 0, failed: 0 });
+    sweepTransactions.mockResolvedValue({ fetched: 0, inserted: 0, skipped: 0 });
   });
 
   it("runs only the scoring sweep on the 5-minute schedule", async () => {
     await run(SCORING_SWEEP_CRON);
     expect(requeueStaleScores).toHaveBeenCalledOnce();
     expect(checkAndWarnOverdueDisputes).not.toHaveBeenCalled();
+    expect(sweepTransactions).not.toHaveBeenCalled();
   });
 
-  it("keeps the dispute check hourly and leaves the sweep to the 5-minute schedule", async () => {
+  it("keeps the dispute check and payment sweep hourly and leaves the scoring sweep to the 5-minute schedule", async () => {
     await run(HOURLY_CRON);
     expect(checkAndWarnOverdueDisputes).toHaveBeenCalledOnce();
+    expect(sweepTransactions).toHaveBeenCalledOnce();
     expect(requeueStaleScores).not.toHaveBeenCalled();
   });
 
   it("runs every job for an unrecognised trigger", async () => {
     await run("manual");
     expect(checkAndWarnOverdueDisputes).toHaveBeenCalledOnce();
+    expect(sweepTransactions).toHaveBeenCalledOnce();
     expect(requeueStaleScores).toHaveBeenCalledOnce();
   });
 

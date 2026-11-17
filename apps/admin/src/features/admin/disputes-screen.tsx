@@ -1,27 +1,23 @@
+import { Badge } from "@vox-flow/ui/ds/badge";
+import { Button } from "@vox-flow/ui/ds/button";
+import { Card } from "@vox-flow/ui/ds/card";
+import { Modal } from "@vox-flow/ui/ds/modal";
+import { PageHead } from "@vox-flow/ui/ds/page-head";
 import {
   AlertCircle,
   AlertTriangle,
   CheckCircle,
   Clock,
   Eye,
-  FileText,
-  Filter,
   Lock,
   MessageSquare,
-  Play,
   RefreshCw,
-  Shield,
   Volume2,
   VolumeX,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { Badge } from "@/components/ds/badge";
-import { Button } from "@/components/ds/button";
-import { Card } from "@/components/ds/card";
-import { Modal } from "@/components/ds/modal";
 import { ENV } from "@/env.public";
-import { PageHead } from "@/layouts/page-head";
 import { trpcClient } from "@/utils/trpc";
 
 export interface DisputeItem {
@@ -190,7 +186,6 @@ export function DisputesScreen({
     }
   };
 
-
   const handleResolveSubmit = async () => {
     if (!selectedCase) return;
     try {
@@ -257,7 +252,7 @@ export function DisputesScreen({
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4" data-testid="dispute-metrics">
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Tỷ lệ đúng hạn</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Tỷ lệ đúng hạn</span>
             <CheckCircle size={16} className="text-good" />
           </div>
           <div className="mt-2 text-2xl font-bold text-ink" data-testid="metric-ontime-rate">
@@ -268,7 +263,7 @@ export function DisputesScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Báo lỗi tuần này</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Báo lỗi tuần này</span>
             <MessageSquare size={16} className="text-brand" />
           </div>
           <div className="mt-2 text-2xl font-bold text-ink" data-testid="metric-weekly-count">
@@ -279,7 +274,7 @@ export function DisputesScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Đang chờ xử lý</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Đang chờ xử lý</span>
             <Clock size={16} className="text-warn" />
           </div>
           <div className="mt-2 text-2xl font-bold text-ink" data-testid="metric-open-count">
@@ -290,7 +285,7 @@ export function DisputesScreen({
 
         <Card className="p-4">
           <div className="flex items-center justify-between text-subtle">
-            <span className="text-xs font-semibold uppercase tracking-wider">Sắp quá hạn (&lt;12h)</span>
+            <span className="text-xs font-semibold tracking-wider uppercase">Sắp quá hạn (&lt;12h)</span>
             <AlertTriangle size={16} className="text-bad" />
           </div>
           <div className="mt-2 text-2xl font-bold text-bad" data-testid="metric-near-overdue-count">
@@ -388,7 +383,7 @@ export function DisputesScreen({
                     )}
                   </div>
 
-                  <p className="text-sm text-subtle line-clamp-1">
+                  <p className="line-clamp-1 text-sm text-subtle">
                     Lý do: {item.reason || "(Không có lý do chi tiết)"}
                   </p>
 
@@ -413,6 +408,7 @@ export function DisputesScreen({
                     size="sm"
                     variant="accent"
                     onClick={() => openCaseModal(item)}
+                    disabled={loadingCase}
                     data-testid={`btn-resolve-${item.id}`}
                   >
                     <Eye size={14} />
@@ -434,16 +430,16 @@ export function DisputesScreen({
           onClose={() => setSelectedCase(null)}
           width="max-w-2xl"
         >
-          <div className="p-6 space-y-6" data-testid="dispute-case-modal">
+          <div className="space-y-6 p-6" data-testid="dispute-case-modal">
             <div>
               <h2 className="text-xl font-bold text-ink">Xử lý báo lỗi chấm thi</h2>
-              <p className="text-xs text-subtle mt-1">
+              <p className="mt-1 text-xs text-subtle">
                 Hồ sơ ID: {selectedCase.dispute.id} · Bài làm ID: {selectedCase.dispute.attemptId}
               </p>
             </div>
 
             {/* Student & Dispute Info */}
-            <div className="rounded-xl bg-paper-2/60 p-4 space-y-2 text-sm">
+            <div className="space-y-2 rounded-xl bg-paper-2/60 p-4 text-sm">
               <div className="flex justify-between">
                 <span className="text-subtle">Học viên:</span>
                 <span className="font-semibold text-ink">
@@ -459,16 +455,16 @@ export function DisputesScreen({
               </div>
               <div className="flex justify-between">
                 <span className="text-subtle">Lý do học viên nêu:</span>
-                <span className="text-ink max-w-sm text-right">
+                <span className="max-w-sm text-right text-ink">
                   {selectedCase.dispute.reason || "Không ghi"}
                 </span>
               </div>
             </div>
 
             {/* Audio Access & Player Section */}
-            <div className="border border-paper-2 rounded-xl p-4 space-y-3">
+            <div className="space-y-3 rounded-xl border border-paper-2 p-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-sm text-ink flex items-center gap-2">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
                   <Volume2 size={16} /> Bản ghi âm phần nói
                 </h3>
                 {selectedCase.dispute.shareConsent ? (
@@ -488,9 +484,9 @@ export function DisputesScreen({
                   {selectedCase.answers.map((ans) => (
                     <div
                       key={ans.id}
-                      className="rounded-lg bg-paper-2/40 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                      className="flex flex-col justify-between gap-2 rounded-lg bg-paper-2/40 p-3 sm:flex-row sm:items-center"
                     >
-                      <span className="text-xs text-ink font-medium">
+                      <span className="text-xs font-medium text-ink">
                         Part {ans.partNumber}: {ans.questionText}
                       </span>
                       {ans.audioUrl && (
@@ -515,7 +511,7 @@ export function DisputesScreen({
                   data-testid="audio-denied-notice"
                 >
                   <p className="font-semibold">⚠️ Không xem được audio</p>
-                  <p className="text-xs mt-1">
+                  <p className="mt-1 text-xs">
                     Học viên không đồng ý chia sẻ bản ghi âm cho lần báo lỗi này. Theo chính sách
                     quyền riêng tư, âm thanh bị khóa và bạn chỉ xem xét dựa trên dữ liệu văn bản.
                   </p>
@@ -527,10 +523,10 @@ export function DisputesScreen({
             {selectedCase.dispute.status === "open" ||
             selectedCase.dispute.status === "reviewing" ? (
               <div className="space-y-4 border-t border-paper-2 pt-4">
-                <h3 className="font-semibold text-sm text-ink">Quyết định xử lý</h3>
+                <h3 className="text-sm font-semibold text-ink">Quyết định xử lý</h3>
 
                 <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
                     <input
                       type="radio"
                       name="resStatus"
@@ -540,7 +536,7 @@ export function DisputesScreen({
                     />
                     Nâng band điểm (Chấp nhận)
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
                     <input
                       type="radio"
                       name="resStatus"
@@ -630,8 +626,8 @@ export function DisputesScreen({
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl bg-paper-2/40 p-4 space-y-2 text-sm">
-                <span className="text-xs font-semibold uppercase tracking-wider text-subtle">
+              <div className="space-y-2 rounded-xl bg-paper-2/40 p-4 text-sm">
+                <span className="text-xs font-semibold tracking-wider text-subtle uppercase">
                   Kết quả đã xử lý
                 </span>
                 <p className="text-ink">

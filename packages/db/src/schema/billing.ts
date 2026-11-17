@@ -55,7 +55,8 @@ export const paymentEvent = sqliteTable(
   "payment_event",
   {
     id: text("id").primaryKey(),
-    sepayId: integer("sepay_id").notNull(),
+    sepayId: integer("sepay_id"),
+    sepayUuid: text("sepay_uuid"),
     transferType: text("transfer_type", { enum: ["in", "out"] }).notNull(),
     gateway: text("gateway").notNull(),
     accountNumber: text("account_number").notNull(),
@@ -76,14 +77,59 @@ export const paymentEvent = sqliteTable(
         "order_not_pending",
       ],
     }).notNull(),
+    classification: text("classification", {
+      enum: [
+        "matched",
+        "underpaid",
+        "overpaid",
+        "unknown_code",
+        "expired_order",
+        "outbound",
+        "account_mismatch",
+        "already_paid",
+        "order_not_pending",
+      ],
+    })
+      .default("matched")
+      .notNull(),
+    resolutionStatus: text("resolution_status", {
+      enum: ["resolved", "pending_review", "activated", "refunded", "ignored"],
+    })
+      .default("resolved")
+      .notNull(),
+    source: text("source", { enum: ["webhook", "cron_sweep"] }).default("webhook").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
   },
   (table) => [
     uniqueIndex("payment_event_sepay_id_unique").on(table.sepayId),
+    uniqueIndex("payment_event_sepay_uuid_unique").on(table.sepayUuid),
     index("payment_event_order_id_idx").on(table.orderId),
     index("payment_event_match_status_idx").on(table.matchStatus),
+    index("payment_event_resolution_status_idx").on(table.resolutionStatus),
+    index("payment_event_ref_idx").on(table.referenceCode),
+  ],
+);
+
+export const paymentAction = sqliteTable(
+  "payment_action",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => paymentEvent.id, { onDelete: "cascade" }),
+    orderId: text("order_id").references(() => paymentOrder.id, { onDelete: "set null" }),
+    action: text("action", { enum: ["activate", "mark_refunded"] }).notNull(),
+    note: text("note").notNull(),
+    actorEmail: text("actor_email").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    index("payment_action_event_id_idx").on(table.eventId),
+    index("payment_action_created_at_idx").on(table.createdAt),
   ],
 );
 
@@ -123,5 +169,6 @@ export const detailUnlock = sqliteTable(
 export type PaymentOrder = typeof paymentOrder.$inferSelect;
 export type Subscription = typeof subscription.$inferSelect;
 export type PaymentEvent = typeof paymentEvent.$inferSelect;
+export type PaymentAction = typeof paymentAction.$inferSelect;
 export type DetailCredit = typeof detailCredit.$inferSelect;
 export type DetailUnlock = typeof detailUnlock.$inferSelect;

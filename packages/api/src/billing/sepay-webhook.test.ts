@@ -92,7 +92,7 @@ describe("SePay webhook handler (WI-15)", () => {
     expect(resMissingBank.status).toBe(500);
   });
 
-  it("activates subscription once on valid payment, ignores duplicate sepayId and second transaction, and preserves delayed transfers", async () => {
+  it("activates subscription once on valid payment within expiry, ignores duplicate sepayId and second transaction", async () => {
     const t0 = new Date("2026-11-16T10:00:00.000Z");
     await ctx.db.insert(paymentOrder).values({
       id: "ord_wh_week_1",
@@ -101,9 +101,8 @@ describe("SePay webhook handler (WI-15)", () => {
       amountVnd: 99_000,
       transferCode: "VFWEEK000001",
       status: "pending",
-      // Expired 20 minutes ago — delayed bank transfer or 33-minute SePay retry must still activate!
-      expiresAt: new Date(t0.getTime() - 20 * 60 * 1000),
-      createdAt: new Date(t0.getTime() - 35 * 60 * 1000),
+      expiresAt: new Date(t0.getTime() + 15 * 60 * 1000),
+      createdAt: new Date(t0.getTime() - 5 * 60 * 1000),
     });
 
     const basePayload = {
@@ -493,5 +492,170 @@ describe("SePay webhook handler (WI-15)", () => {
       .where(eq(subscription.userId, user2.id));
     expect(afterFreshExam?.pointsRemaining).toBe(180);
     expect(afterFreshExam?.expiresAt.getTime()).toBe(tPlus35Days.getTime() + 60 * DAY_MS);
+  });
+
+  it("queues overpaid webhook transactions into pending_review without auto-activating", async () => {
+    const t0 = new Date("2026-11-16T10:00:00.000Z");
+    await ctx.db.insert(paymentOrder).values({
+      id: "ord_wh_overpaid",
+      userId: user2.id,
+      planId: "pack",
+      amountVnd: 49_000,
+      transferCode: "VFOVER000001",
+      status: "pending",
+      expiresAt: new Date(t0.getTime() + 900_000),
+      createdAt: t0,
+    });
+
+    const [creditBefore] = await ctx.db
+      .select()
+      .from(detailCredit)
+      .where(eq(detailCredit.userId, user2.id));
+
+    const res = await handleSepayWebhook({
+      request: makeWebhookRequest(
+        {
+          id: 7001,
+          gateway: "Vietcombank",
+          transactionDate: "2026-11-16 17:00:00",
+          accountNumber: "1017588888",
+          subAccount: "",
+          code: "VFOVER000001",
+          content: "VFOVER000001",
+          transferType: "in",
+          transferAmount: 99_000,
+          referenceCode: "FT7001",
+        },
+        `Apikey ${defaultEnv.SEPAY_WEBHOOK_API_KEY}`,
+      ),
+      db: ctx.db,
+      env: defaultEnv,
+      now: () => t0,
+    });
+    expect(res).toEqual({ status: 200, body: { success: true } });
+
+    const [orderRow] = await ctx.db
+      .select()
+      .from(paymentOrder)
+      .where(eq(paymentOrder.id, "ord_wh_overpaid"));
+    expect(orderRow?.status).toBe("pending");
+
+    const [creditAfter] = await ctx.db
+      .select()
+      .from(detailCredit)
+      .where(eq(detailCredit.userId, user2.id));
+    expect(creditAfter?.remaining).toBe(creditBefore?.remaining ?? 0);
+
+    const [ev] = await ctx.db
+      .select()
+      .from(paymentEvent)
+      .where(eq(paymentEvent.sepayId, 7001));
+    expect(ev?.classification).toBe("overpaid");
+    expect(ev?.matchStatus).toBe("amount_mismatch");
+    expect(ev?.resolutionStatus).toBe("pending_review");
+    expect(ev?.source).toBe("webhook");
+  });
+
+  it("queues expired_order webhook transactions (by expiresAt or status) into pending_review without auto-activating", async () => {
+    const t0 = new Date("2026-11-16T10:00:00.000Z");
+    await ctx.db.insert(paymentOrder).values([
+      {
+        id: "ord_wh_exp_time",
+        userId: user2.id,
+        planId: "pack",
+        amountVnd: 49_000,
+        transferCode: "VFEXP0000001",
+        status: "pending",
+        expiresAt: new Date(t0.getTime() - 60_000),
+        createdAt: new Date(t0.getTime() - 960_000),
+      },
+      {
+        id: "ord_wh_exp_status",
+        userId: user2.id,
+        planId: "pack",
+        amountVnd: 49_000,
+        transferCode: "VFEXP0000002",
+        status: "expired",
+        expiresAt: new Date(t0.getTime() + 900_000),
+        createdAt: t0,
+      },
+    ]);
+
+    const [creditBefore] = await ctx.db
+      .select()
+      .from(detailCredit)
+      .where(eq(detailCredit.userId, user2.id));
+
+    const res1 = await handleSepayWebhook({
+      request: makeWebhookRequest(
+        {
+          id: 7002,
+          gateway: "Vietcombank",
+          transactionDate: "2026-11-16 17:00:00",
+          accountNumber: "1017588888",
+          subAccount: "",
+          code: "VFEXP0000001",
+          content: "VFEXP0000001",
+          transferType: "in",
+          transferAmount: 49_000,
+          referenceCode: "FT7002",
+        },
+        `Apikey ${defaultEnv.SEPAY_WEBHOOK_API_KEY}`,
+      ),
+      db: ctx.db,
+      env: defaultEnv,
+      now: () => t0,
+    });
+    expect(res1).toEqual({ status: 200, body: { success: true } });
+
+    const res2 = await handleSepayWebhook({
+      request: makeWebhookRequest(
+        {
+          id: 7003,
+          gateway: "Vietcombank",
+          transactionDate: "2026-11-16 17:01:00",
+          accountNumber: "1017588888",
+          subAccount: "",
+          code: "VFEXP0000002",
+          content: "VFEXP0000002",
+          transferType: "in",
+          transferAmount: 49_000,
+          referenceCode: "FT7003",
+        },
+        `Apikey ${defaultEnv.SEPAY_WEBHOOK_API_KEY}`,
+      ),
+      db: ctx.db,
+      env: defaultEnv,
+      now: () => t0,
+    });
+    expect(res2).toEqual({ status: 200, body: { success: true } });
+
+    const [creditAfter] = await ctx.db
+      .select()
+      .from(detailCredit)
+      .where(eq(detailCredit.userId, user2.id));
+    expect(creditAfter?.remaining).toBe(creditBefore?.remaining ?? 0);
+
+    const [order1] = await ctx.db
+      .select()
+      .from(paymentOrder)
+      .where(eq(paymentOrder.id, "ord_wh_exp_time"));
+    expect(order1?.status).toBe("pending");
+
+    const [ev1] = await ctx.db
+      .select()
+      .from(paymentEvent)
+      .where(eq(paymentEvent.sepayId, 7002));
+    expect(ev1?.classification).toBe("expired_order");
+    expect(ev1?.matchStatus).toBe("order_not_pending");
+    expect(ev1?.resolutionStatus).toBe("pending_review");
+
+    const [ev2] = await ctx.db
+      .select()
+      .from(paymentEvent)
+      .where(eq(paymentEvent.sepayId, 7003));
+    expect(ev2?.classification).toBe("expired_order");
+    expect(ev2?.matchStatus).toBe("order_not_pending");
+    expect(ev2?.resolutionStatus).toBe("pending_review");
   });
 });

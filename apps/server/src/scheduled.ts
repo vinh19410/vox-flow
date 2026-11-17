@@ -1,3 +1,5 @@
+import { sweepTransactions } from "@vox-flow/api/billing/reconcile";
+import type { ApiEnv } from "@vox-flow/api/context";
 import { checkAndWarnOverdueDisputes } from "@vox-flow/api/disputes/overdue";
 import { requeueStaleScores } from "@vox-flow/api/scoring/requeue";
 
@@ -22,6 +24,24 @@ async function runOverdueDisputeCheck(): Promise<void> {
   }
 }
 
+async function runPaymentSweep(): Promise<void> {
+  try {
+    const result = await sweepTransactions({
+      db: getDb(),
+      env: ENV as unknown as ApiEnv,
+    });
+    if (result.skippedReason) {
+      console.log(`[scheduled] Payment sweep skipped: ${result.skippedReason}`);
+      return;
+    }
+    console.log(
+      `[scheduled] Payment sweep: fetched ${result.fetched}, inserted ${result.inserted}, skipped ${result.skipped}`,
+    );
+  } catch (error) {
+    console.error("[scheduled] Error sweeping SePay transactions:", error);
+  }
+}
+
 async function runScoringSweep(): Promise<void> {
   try {
     const result = await requeueStaleScores(getDb(), ENV.SCORING_QUEUE);
@@ -35,9 +55,9 @@ async function runScoringSweep(): Promise<void> {
 
 /**
  * Both schedules fire at minute 0 as separate events, so each event runs only
- * its own jobs: the hourly event keeps the dispute check hourly and the
- * 5-minute event runs the scoring sweep. An unknown cron (e.g. a manual
- * trigger) runs everything.
+ * its own jobs: the hourly event keeps the dispute check and payment sweep
+ * hourly, and the 5-minute event runs the scoring sweep. An unknown cron (e.g.
+ * a manual trigger) runs everything.
  */
 export async function handleScheduled(
   event: { scheduledTime: number; cron: string },
@@ -49,6 +69,7 @@ export async function handleScheduled(
     return;
   }
   await runOverdueDisputeCheck();
+  await runPaymentSweep();
   if (event.cron !== HOURLY_CRON) {
     await runScoringSweep();
   }

@@ -1,7 +1,7 @@
 ---
 phase: 2
 title: "Công cụ xử lý và runbook"
-status: pending
+status: done
 priority: P1
 effort: ""
 dependencies: [1]
@@ -14,9 +14,12 @@ Người sở hữu xử lý được giao dịch lỗi.
 
 ## Files to Create / Modify
 - Create: `packages/api/src/routers/admin-billing.ts`
+- Create: `packages/api/src/routers/admin-billing.test.ts`
 - Modify: `packages/api/src/routers/index.ts`
 - Create: `apps/web/src/routes/admin/payments.tsx`
 - Create: `apps/web/src/features/admin/payments-screen.tsx`
+- Create: `apps/web/src/features/admin/__tests__/payments-screen.test.tsx`
+- Modify: `apps/web/src/lib/__tests__/route-guards.test.ts`
 - Create: `docs/runbooks/payment-reconciliation.md`
 
 ## Tasks & Steps

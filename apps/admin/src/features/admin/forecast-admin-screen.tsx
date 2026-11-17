@@ -1,3 +1,8 @@
+import { Badge } from "@vox-flow/ui/ds/badge";
+import { Button } from "@vox-flow/ui/ds/button";
+import { Card } from "@vox-flow/ui/ds/card";
+import { Modal } from "@vox-flow/ui/ds/modal";
+import { PageHead } from "@vox-flow/ui/ds/page-head";
 import {
   Archive,
   CheckCircle2,
@@ -6,17 +11,13 @@ import {
   FileText,
   Plus,
   RefreshCw,
+  Search,
   ShieldAlert,
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Badge } from "@/components/ds/badge";
-import { Button } from "@/components/ds/button";
-import { Card } from "@/components/ds/card";
-import { Modal } from "@/components/ds/modal";
-import { PageHead } from "@/layouts/page-head";
 import { trpcClient } from "@/utils/trpc";
 
 export type AdminForecastSource = {
@@ -41,15 +42,58 @@ export type AdminForecastTopic = {
 
 export interface ForecastAdminScreenProps {
   initialTopics?: AdminForecastTopic[];
+  initialQuarter?: string;
   accessDeniedForTest?: boolean;
+}
+
+export function getCurrentQuarter(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const q = Math.floor(date.getMonth() / 3) + 1;
+  return `${year}-Q${q}`;
+}
+
+export function formatQuarterLabel(quarter: string): string {
+  const match = /^(\d{4})-Q([1-4])$/.exec(quarter);
+  if (!match) return quarter;
+  return `${match[1]} - Quý ${match[2]}`;
+}
+
+export function buildQuarterOptions(
+  topics: AdminForecastTopic[],
+  selectedQuarter: string,
+  now: Date = new Date(),
+): string[] {
+  const currentYear = now.getFullYear();
+  const set = new Set<string>();
+  for (let y = currentYear - 1; y <= currentYear + 1; y++) {
+    for (let q = 1; q <= 4; q++) {
+      set.add(`${y}-Q${q}`);
+    }
+  }
+  for (const topic of topics) {
+    if (topic.quarter) {
+      set.add(topic.quarter);
+    }
+  }
+  if (selectedQuarter && selectedQuarter !== "all") {
+    set.add(selectedQuarter);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 
 export function ForecastAdminScreen({
   initialTopics,
+  initialQuarter,
   accessDeniedForTest = false,
 }: ForecastAdminScreenProps) {
   const [topics, setTopics] = useState<AdminForecastTopic[]>(initialTopics ?? []);
-  const [quarter, setQuarter] = useState("2026-Q1");
+  const [quarter, setQuarter] = useState<string>(
+    () => initialQuarter ?? (initialTopics ? "all" : getCurrentQuarter()),
+  );
+  const [customQuarterInput, setCustomQuarterInput] = useState("");
+  const [enteringCustomQuarter, setEnteringCustomQuarter] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [partFilter, setPartFilter] = useState<"all" | 1 | 2 | 3>("all");
   const [filter, setFilter] = useState<"all" | "draft" | "published" | "archived">("all");
   const [loading, setLoading] = useState(false);
   const [accessDenied, setAccessDenied] = useState(accessDeniedForTest);
@@ -59,10 +103,15 @@ export function ForecastAdminScreen({
   const [editingTopic, setEditingTopic] = useState<AdminForecastTopic | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editQuestionsText, setEditQuestionsText] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Create State
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  const [newQuarter, setNewQuarter] = useState(() =>
+    initialQuarter && initialQuarter !== "all" ? initialQuarter : getCurrentQuarter(),
+  );
   const [newPart, setNewPart] = useState(1);
   const [newQuestionsText, setNewQuestionsText] = useState("");
   const [newSourceType, setNewSourceType] = useState<"manual" | "student" | "web">("manual");
@@ -70,14 +119,19 @@ export function ForecastAdminScreen({
   const [newSourceContent, setNewSourceContent] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const loadTopics = async () => {
+  const quarterOptions = useMemo(
+    () => buildQuarterOptions(topics, quarter),
+    [topics, quarter],
+  );
+
+  const loadTopics = async (targetQuarter: string = quarter) => {
     try {
       setLoading(true);
       setActionError(null);
       if (trpcClient?.forecastAdmin?.listDrafts?.query) {
-        const data = await trpcClient.forecastAdmin.listDrafts.query({
-          quarter,
-        });
+        const data = await trpcClient.forecastAdmin.listDrafts.query(
+          targetQuarter === "all" ? {} : { quarter: targetQuarter },
+        );
         setTopics(data as AdminForecastTopic[]);
         setAccessDenied(false);
       }
@@ -95,7 +149,7 @@ export function ForecastAdminScreen({
 
   useEffect(() => {
     if (!initialTopics && !accessDeniedForTest) {
-      void loadTopics();
+      void loadTopics(quarter);
     }
   }, [quarter]);
 
@@ -134,32 +188,42 @@ export function ForecastAdminScreen({
   };
 
   const handleSaveEdit = async () => {
-    if (!editingTopic) return;
+    if (!editingTopic || editSaving) return;
+    const trimmedTitle = editTitle.trim();
+    if (!trimmedTitle) {
+      setEditError("Tiêu đề chủ đề không được để trống.");
+      return;
+    }
     const questions = editQuestionsText
       .split("\n")
       .map((q) => q.trim())
       .filter(Boolean);
 
     try {
+      setEditSaving(true);
+      setEditError(null);
       setActionError(null);
       if (trpcClient?.forecastAdmin?.updateDraft?.mutate) {
         await trpcClient.forecastAdmin.updateDraft.mutate({
           id: editingTopic.id,
-          title: editTitle,
+          title: trimmedTitle,
           questions,
         });
       }
       setTopics((prev) =>
         prev.map((t) =>
           t.id === editingTopic.id
-            ? { ...t, title: editTitle, questions }
+            ? { ...t, title: trimmedTitle, questions }
             : t,
         ),
       );
       setEditingTopic(null);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : "Lưu thay đổi thất bại";
+      setEditError(errMsg);
       setActionError(errMsg);
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -170,7 +234,16 @@ export function ForecastAdminScreen({
       return;
     }
 
-    if (newSourceType === "web" && (!newSourceUrl.trim() || !/^https?:\/\//i.test(newSourceUrl.trim()))) {
+    const trimmedQuarter = newQuarter.trim();
+    if (!trimmedQuarter) {
+      setCreateError("Vui lòng nhập quý cho chủ đề.");
+      return;
+    }
+
+    if (
+      newSourceType === "web" &&
+      (!newSourceUrl.trim() || !/^https?:\/\//i.test(newSourceUrl.trim()))
+    ) {
       setCreateError("Nguồn web bắt buộc có URL hợp lệ (bắt đầu bằng http:// hoặc https://).");
       return;
     }
@@ -192,7 +265,7 @@ export function ForecastAdminScreen({
       if (trpcClient?.forecastAdmin?.createDraft?.mutate) {
         const created = await trpcClient.forecastAdmin.createDraft.mutate({
           title: newTitle.trim(),
-          quarter,
+          quarter: trimmedQuarter,
           part: newPart,
           questions,
           sources,
@@ -200,6 +273,7 @@ export function ForecastAdminScreen({
         setTopics((prev) => [
           {
             ...created,
+            quarter: trimmedQuarter,
             questions,
             sources: sources.map((s, idx) => ({ id: `s_${idx}`, ...s })),
             realReportCount: 0,
@@ -210,7 +284,7 @@ export function ForecastAdminScreen({
         const localCreated: AdminForecastTopic = {
           id: `draft_${Date.now()}`,
           title: newTitle.trim(),
-          quarter,
+          quarter: trimmedQuarter,
           part: newPart,
           questions,
           status: "draft",
@@ -218,6 +292,10 @@ export function ForecastAdminScreen({
           sources: sources.map((s, idx) => ({ id: `s_${idx}`, ...s })),
         };
         setTopics((prev) => [localCreated, ...prev]);
+      }
+
+      if (quarter !== "all" && quarter !== trimmedQuarter) {
+        setQuarter(trimmedQuarter);
       }
 
       setCreating(false);
@@ -230,6 +308,14 @@ export function ForecastAdminScreen({
       const errMsg = err instanceof Error ? err.message : "Tạo bản nháp thất bại";
       setCreateError(errMsg);
     }
+  };
+
+  const handleApplyCustomQuarter = () => {
+    const trimmed = customQuarterInput.trim();
+    if (!trimmed) return;
+    setQuarter(trimmed);
+    setEnteringCustomQuarter(false);
+    setCustomQuarterInput("");
   };
 
   if (accessDenied) {
@@ -246,13 +332,17 @@ export function ForecastAdminScreen({
     );
   }
 
+  const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredTopics = topics.filter((t) => {
-    if (filter === "all") return true;
-    return t.status === filter;
+    if (quarter !== "all" && t.quarter !== quarter) return false;
+    if (partFilter !== "all" && t.part !== partFilter) return false;
+    if (filter !== "all" && t.status !== filter) return false;
+    if (normalizedSearch && !t.title.toLowerCase().includes(normalizedSearch)) return false;
+    return true;
   });
 
   return (
-    <>
+    <div className="mx-auto max-w-6xl px-4 py-8">
       <PageHead
         eyebrow="Quản trị"
         title="Duyệt đề Forecast"
@@ -268,20 +358,106 @@ export function ForecastAdminScreen({
 
         {/* Controls & Filter Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-ink-2">Quý:</span>
-            <select
-              value={quarter}
-              onChange={(e) => setQuarter(e.target.value)}
-              className="rounded-lg border border-border bg-paper px-3 py-1.5 text-sm font-semibold text-ink shadow-sm focus:outline-none"
-            >
-              <option value="2026-Q1">2026 - Quý 1</option>
-              <option value="2026-Q2">2026 - Quý 2</option>
-              <option value="2026-Q3">2026 - Quý 3</option>
-              <option value="2026-Q4">2026 - Quý 4</option>
-            </select>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search by title */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-ink-3" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Tìm kiếm theo tiêu đề..."
+                aria-label="Tìm kiếm theo tiêu đề"
+                data-testid="input-search-title"
+                className="w-60 rounded-lg border border-border bg-paper py-1.5 pr-3 pl-9 text-sm text-ink shadow-sm focus:border-brand focus:outline-none"
+              />
+            </div>
 
-            <div className="ml-4 flex items-center rounded-lg border border-border bg-paper p-1">
+            {/* Quarter filter */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="forecast-quarter-select" className="text-sm font-medium text-ink-2">
+                Quý:
+              </label>
+              <select
+                id="forecast-quarter-select"
+                aria-label="Lọc theo quý"
+                data-testid="select-quarter"
+                value={enteringCustomQuarter ? "__custom__" : quarter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "__custom__") {
+                    setEnteringCustomQuarter(true);
+                  } else {
+                    setEnteringCustomQuarter(false);
+                    setQuarter(val);
+                  }
+                }}
+                className="rounded-lg border border-border bg-paper px-3 py-1.5 text-sm font-semibold text-ink shadow-sm focus:outline-none"
+              >
+                <option value="all">Tất cả quý</option>
+                {quarterOptions.map((q) => (
+                  <option key={q} value={q}>
+                    {formatQuarterLabel(q)}
+                  </option>
+                ))}
+                <option value="__custom__">Quý khác...</option>
+              </select>
+
+              {enteringCustomQuarter && (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={customQuarterInput}
+                    onChange={(e) => setCustomQuarterInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleApplyCustomQuarter();
+                      }
+                    }}
+                    placeholder="VD: 2028-Q1"
+                    aria-label="Nhập quý tùy chỉnh"
+                    data-testid="input-custom-quarter"
+                    className="w-28 rounded-lg border border-border bg-paper px-2.5 py-1.5 text-sm text-ink focus:border-brand focus:outline-none"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleApplyCustomQuarter}
+                    data-testid="btn-apply-custom-quarter"
+                  >
+                    Áp dụng
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Part filter */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="forecast-part-select" className="text-sm font-medium text-ink-2">
+                Phần:
+              </label>
+              <select
+                id="forecast-part-select"
+                aria-label="Lọc theo Part"
+                data-testid="select-part-filter"
+                value={partFilter}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPartFilter(val === "all" ? "all" : (Number(val) as 1 | 2 | 3));
+                }}
+                className="rounded-lg border border-border bg-paper px-3 py-1.5 text-sm font-semibold text-ink shadow-sm focus:outline-none"
+              >
+                <option value="all">Tất cả Part</option>
+                <option value={1}>Part 1</option>
+                <option value={2}>Part 2</option>
+                <option value={3}>Part 3</option>
+              </select>
+            </div>
+
+            {/* Status filter tabs */}
+            <div className="flex items-center rounded-lg border border-border bg-paper p-1">
               {(
                 [
                   ["all", "Tất cả"],
@@ -310,7 +486,7 @@ export function ForecastAdminScreen({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void loadTopics()}
+              onClick={() => void loadTopics(quarter)}
               disabled={loading}
               className="gap-1.5"
             >
@@ -321,6 +497,7 @@ export function ForecastAdminScreen({
               size="sm"
               onClick={() => {
                 setCreateError(null);
+                setNewQuarter(quarter === "all" ? getCurrentQuarter() : quarter);
                 setCreating(true);
               }}
               className="gap-1.5"
@@ -345,6 +522,9 @@ export function ForecastAdminScreen({
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="rounded bg-paper-2 px-2 py-0.5 text-xs font-bold text-ink">
                         Part {topic.part}
+                      </span>
+                      <span className="rounded bg-paper-2 px-2 py-0.5 text-xs font-medium text-ink-2">
+                        {topic.quarter}
                       </span>
                       <h3 className="text-base font-bold text-ink">
                         {topic.title}
@@ -463,10 +643,18 @@ export function ForecastAdminScreen({
       {editingTopic && (
         <Modal
           open={Boolean(editingTopic)}
-          onClose={() => setEditingTopic(null)}
+          onClose={() => {
+            if (!editSaving) {
+              setEditError(null);
+              setEditingTopic(null);
+            }
+          }}
         >
-          <div className="p-6 space-y-4">
+          <div className="space-y-4 p-6">
             <h3 className="text-lg font-bold text-ink">Chỉnh sửa đề thi nháp</h3>
+            {editError && (
+              <div className="rounded-lg bg-bad-soft p-2.5 text-xs text-bad">{editError}</div>
+            )}
             <div>
               <label className="block text-xs font-semibold text-ink-2">
                 Tiêu đề chủ đề
@@ -475,6 +663,7 @@ export function ForecastAdminScreen({
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
+                disabled={editSaving}
                 className="mt-1 w-full rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
               />
             </div>
@@ -487,6 +676,7 @@ export function ForecastAdminScreen({
                 rows={4}
                 value={editQuestionsText}
                 onChange={(e) => setEditQuestionsText(e.target.value)}
+                disabled={editSaving}
                 className="mt-1 w-full rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
               />
             </div>
@@ -495,12 +685,16 @@ export function ForecastAdminScreen({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setEditingTopic(null)}
+                disabled={editSaving}
+                onClick={() => {
+                  setEditError(null);
+                  setEditingTopic(null);
+                }}
               >
                 Hủy
               </Button>
-              <Button size="sm" onClick={() => void handleSaveEdit()}>
-                Lưu thay đổi
+              <Button size="sm" disabled={editSaving} onClick={() => void handleSaveEdit()}>
+                {editSaving ? "Đang lưu..." : "Lưu thay đổi"}
               </Button>
             </div>
           </div>
@@ -513,7 +707,7 @@ export function ForecastAdminScreen({
           open={creating}
           onClose={() => setCreating(false)}
         >
-          <div className="p-6 space-y-4">
+          <div className="space-y-4 p-6">
             <h3 className="text-lg font-bold text-ink">Thêm bản nháp đề mới</h3>
 
             {createError && (
@@ -535,30 +729,66 @@ export function ForecastAdminScreen({
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-ink-2">
-                Phần thi (Part)
-              </label>
-              <select
-                value={newPart}
-                onChange={(e) => setNewPart(Number(e.target.value))}
-                className="mt-1 rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
-              >
-                <option value={1}>Part 1</option>
-                <option value={2}>Part 2</option>
-                <option value={3}>Part 3</option>
-              </select>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label
+                  htmlFor="new-draft-quarter"
+                  className="block text-xs font-semibold text-ink-2"
+                >
+                  Quý (Quarter)
+                </label>
+                <input
+                  id="new-draft-quarter"
+                  type="text"
+                  list="forecast-quarter-options"
+                  placeholder="VD: 2026-Q4"
+                  value={newQuarter}
+                  onChange={(e) => setNewQuarter(e.target.value)}
+                  data-testid="input-new-quarter"
+                  className="mt-1 w-full rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
+                />
+                <datalist id="forecast-quarter-options">
+                  {quarterOptions.map((q) => (
+                    <option key={q} value={q} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="new-draft-part"
+                  className="block text-xs font-semibold text-ink-2"
+                >
+                  Phần thi (Part)
+                </label>
+                <select
+                  id="new-draft-part"
+                  value={newPart}
+                  onChange={(e) => setNewPart(Number(e.target.value))}
+                  data-testid="select-new-part"
+                  className="mt-1 w-full rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
+                >
+                  <option value={1}>Part 1</option>
+                  <option value={2}>Part 2</option>
+                  <option value={3}>Part 3</option>
+                </select>
+              </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-ink-2">
+              <label
+                htmlFor="new-draft-source"
+                className="block text-xs font-semibold text-ink-2"
+              >
                 Nguồn đề (Source)
               </label>
               <select
+                id="new-draft-source"
                 value={newSourceType}
                 onChange={(e) =>
                   setNewSourceType(e.target.value as "manual" | "student" | "web")
                 }
+                data-testid="select-new-source"
                 className="mt-1 rounded-lg border border-border bg-paper px-3 py-2 text-sm text-ink focus:outline-none"
               >
                 <option value="manual">Tự soạn (Manual)</option>
@@ -626,6 +856,6 @@ export function ForecastAdminScreen({
           </div>
         </Modal>
       )}
-    </>
+    </div>
   );
 }

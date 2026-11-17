@@ -3,6 +3,7 @@ import { and, eq, inArray, ne, or } from "drizzle-orm";
 import type { Database } from "@vox-flow/db";
 import {
   account,
+  adminUserAction,
   attempt,
   attemptAnswer,
   attemptScore,
@@ -376,6 +377,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
       await ctx.db.delete(scoringRetryLog).where(eq(scoringRetryLog.userId, userId));
     },
   },
+  admin_user_action: {
+    tableName: "admin_user_action",
+    // Bảng audit thao tác vận hành của admin (actorEmail, note nội bộ) — không
+    // thuộc dữ liệu xuất cho học viên, nhưng xóa sạch theo userId khi xóa tài khoản.
+    export: async () => [],
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(adminUserAction).where(eq(adminUserAction.userId, userId));
+    },
+  },
 };
 
 export const NON_PERSONAL_TABLES: Record<string, string> = {
@@ -386,7 +396,9 @@ export const NON_PERSONAL_TABLES: Record<string, string> = {
   forecast_source:
     "Bảng forecast_source chứa thông tin nguồn gốc của đề thi (tự soạn, học viên hoặc web) phục vụ kiểm duyệt nội dung",
   payment_event:
-    "Bảng payment_event lưu nhật ký giao dịch webhook SePay không chứa dữ liệu định danh cá nhân (không lưu content/description/accumulated) phục vụ chống trùng và đối soát thanh toán (#20)",
+    "Bảng payment_event lưu nhật ký giao dịch webhook/API SePay không chứa dữ liệu định danh cá nhân (không lưu content/description/accumulated) phục vụ chống trùng và đối soát thanh toán (#20)",
+  payment_action:
+    "Bảng payment_action lưu lịch sử thao tác xử lý tay của quản trị viên (action, note, actorEmail) gắn với payment_event phục vụ kiểm toán đối soát (#20)",
 };
 
 export async function exportUserData(db: Database, userId: string) {
