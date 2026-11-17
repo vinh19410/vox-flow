@@ -3,6 +3,7 @@ import { and, eq, inArray, ne, or } from "drizzle-orm";
 import type { Database } from "@vox-flow/db";
 import {
   account,
+  adminUserAction,
   attempt,
   attemptAnswer,
   attemptScore,
@@ -374,6 +375,15 @@ export const DATA_REGISTRY: Record<string, TablePersonalDataHandler> = {
     },
     erase: async (ctx, userId) => {
       await ctx.db.delete(scoringRetryLog).where(eq(scoringRetryLog.userId, userId));
+    },
+  },
+  admin_user_action: {
+    tableName: "admin_user_action",
+    // Bảng audit thao tác vận hành của admin (actorEmail, note nội bộ) — không
+    // thuộc dữ liệu xuất cho học viên, nhưng xóa sạch theo userId khi xóa tài khoản.
+    export: async () => [],
+    erase: async (ctx, userId) => {
+      await ctx.db.delete(adminUserAction).where(eq(adminUserAction.userId, userId));
     },
   },
 };

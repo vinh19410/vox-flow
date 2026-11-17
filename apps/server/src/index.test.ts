@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildLinkedPromptKey } from "@vox-flow/api/exam/linked-prompt-store";
 
 const { mockBucket, mockGet, mockPut, mockDelete, mockList, mockUpsert, mockState, mockDb, mockAuth, mockEnv } = vi.hoisted(() => {
@@ -1180,5 +1180,79 @@ describe("GET /api/tts/* routes", () => {
       const sentBody = JSON.parse(fetchSpy.mock.calls[0]![1]?.body as string) as { text: string };
       expect(sentBody.text).toBe("Do you prefer waking up early?");
     });
+  });
+});
+
+describe("CORS multi-origin middleware", () => {
+  afterEach(() => {
+    mockEnv.CORS_ORIGIN = "*";
+  });
+
+  it("allows every configured origin in comma-separated CORS_ORIGIN and rejects unknown origins", async () => {
+    mockEnv.CORS_ORIGIN = "http://localhost:3001,http://localhost:3002";
+
+    const res3001 = await app.request("/", {
+      headers: { Origin: "http://localhost:3001" },
+    });
+    expect(res3001.status).toBe(200);
+    expect(res3001.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3001",
+    );
+    expect(res3001.headers.get("access-control-allow-credentials")).toBe("true");
+
+    const res3002 = await app.request("/", {
+      headers: { Origin: "http://localhost:3002" },
+    });
+    expect(res3002.status).toBe(200);
+    expect(res3002.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3002",
+    );
+    expect(res3002.headers.get("access-control-allow-credentials")).toBe("true");
+
+    const preflight3002 = await app.request("/trpc/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://localhost:3002",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    expect(preflight3002.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3002",
+    );
+    expect(preflight3002.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
+
+    const evilRes = await app.request("/", {
+      headers: { Origin: "https://evil.example.com" },
+    });
+    expect(evilRes.status).toBe(200);
+    expect(evilRes.headers.get("access-control-allow-origin")).toBeNull();
+
+    const evilPreflight = await app.request("/trpc/health", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://evil.example.com",
+        "Access-Control-Request-Method": "POST",
+      },
+    });
+    expect(evilPreflight.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("reflects request Origin when CORS_ORIGIN is '*' with credentials: true", async () => {
+    mockEnv.CORS_ORIGIN = "*";
+
+    const withOrigin = await app.request("/", {
+      headers: { Origin: "http://localhost:3002" },
+    });
+    expect(withOrigin.status).toBe(200);
+    expect(withOrigin.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:3002",
+    );
+    expect(withOrigin.headers.get("access-control-allow-credentials")).toBe("true");
+
+    const withoutOrigin = await app.request("/");
+    expect(withoutOrigin.status).toBe(200);
+    expect(withoutOrigin.headers.get("access-control-allow-origin")).toBe("*");
   });
 });

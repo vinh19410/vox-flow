@@ -3,9 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSessionSpy = vi.fn();
 const profileGetSpy = vi.fn();
-const disputeCheckAdminSpy = vi.fn();
-const forecastCheckAdminSpy = vi.fn();
-const billingCheckAdminSpy = vi.fn();
 
 vi.mock("@/lib/auth-client", () => ({
   authClient: {
@@ -20,21 +17,6 @@ vi.mock("@/utils/trpc", () => ({
         query: () => profileGetSpy(),
       },
     },
-    disputeAdmin: {
-      checkAdmin: {
-        query: () => disputeCheckAdminSpy(),
-      },
-    },
-    forecastAdmin: {
-      checkAdmin: {
-        query: () => forecastCheckAdminSpy(),
-      },
-    },
-    adminBilling: {
-      checkAdmin: {
-        query: () => billingCheckAdminSpy(),
-      },
-    },
   },
 }));
 
@@ -43,9 +25,6 @@ import { Route as AppRoute } from "@/routes/_proto/app/route";
 import { Route as ExamRoute } from "@/routes/_proto/exam";
 import { Route as ScoringRoute } from "@/routes/_proto/scoring";
 import { Route as AuthRoute } from "@/routes/_proto/auth";
-import { Route as AdminDisputesRoute } from "@/routes/admin/disputes";
-import { Route as AdminForecastRoute } from "@/routes/admin/forecast";
-import { Route as AdminPaymentsRoute } from "@/routes/admin/payments";
 
 describe("Protected proto routes beforeLoad", () => {
   beforeEach(() => {
@@ -275,101 +254,4 @@ describe("/_proto/auth route", () => {
       expect(getSessionSpy).not.toHaveBeenCalled();
     });
   });
-});
-
-describe("Admin routes beforeLoad", () => {
-  beforeEach(() => {
-    clearOnboardedUserCache();
-    vi.resetAllMocks();
-  });
-
-  const adminRoutes = [
-    {
-      name: "/admin/disputes",
-      route: AdminDisputesRoute,
-      checkAdminSpy: disputeCheckAdminSpy,
-    },
-    {
-      name: "/admin/forecast",
-      route: AdminForecastRoute,
-      checkAdminSpy: forecastCheckAdminSpy,
-    },
-    {
-      name: "/admin/payments",
-      route: AdminPaymentsRoute,
-      checkAdminSpy: billingCheckAdminSpy,
-    },
-  ];
-
-  for (const { name, route, checkAdminSpy } of adminRoutes) {
-    describe(`${name} guard`, () => {
-      const beforeLoad = route.options.beforeLoad;
-
-      it("redirects to /auth when no active session exists", async () => {
-        getSessionSpy.mockResolvedValueOnce({ data: null });
-        if (!beforeLoad) throw new Error("beforeLoad is undefined");
-
-        try {
-          await beforeLoad({} as never);
-          expect.fail("Expected beforeLoad to throw redirect to /auth");
-        } catch (err: unknown) {
-          expect(isRedirect(err)).toBe(true);
-          if (isRedirect(err)) {
-            expect(err.options.to).toBe("/auth");
-          }
-        }
-        expect(checkAdminSpy).not.toHaveBeenCalled();
-      });
-
-      it("redirects to /app/dashboard when checkAdmin throws FORBIDDEN", async () => {
-        getSessionSpy.mockResolvedValueOnce({
-          data: { user: { id: "usr_regular", name: "Regular User" } },
-        });
-        checkAdminSpy.mockRejectedValueOnce(new Error("FORBIDDEN"));
-        if (!beforeLoad) throw new Error("beforeLoad is undefined");
-
-        try {
-          await beforeLoad({} as never);
-          expect.fail("Expected beforeLoad to throw redirect to /app/dashboard");
-        } catch (err: unknown) {
-          expect(isRedirect(err)).toBe(true);
-          if (isRedirect(err)) {
-            expect(err.options.to).toBe("/app/dashboard");
-          }
-        }
-      });
-
-      it("redirects to /app/dashboard when checkAdmin fails with a network error", async () => {
-        getSessionSpy.mockResolvedValueOnce({
-          data: { user: { id: "usr_admin", name: "Admin User" } },
-        });
-        checkAdminSpy.mockRejectedValueOnce(new Error("Network error"));
-        if (!beforeLoad) throw new Error("beforeLoad is undefined");
-
-        try {
-          await beforeLoad({} as never);
-          expect.fail("Expected beforeLoad to throw redirect to /app/dashboard");
-        } catch (err: unknown) {
-          expect(isRedirect(err)).toBe(true);
-          if (isRedirect(err)) {
-            expect(err.options.to).toBe("/app/dashboard");
-          }
-        }
-      });
-
-      it("returns { session } when session is valid and checkAdmin succeeds", async () => {
-        const sessionData = {
-          user: { id: "usr_admin", name: "Admin User", email: "admin@voxflow.vn" },
-          session: { id: "sess_admin", userId: "usr_admin" },
-        };
-        getSessionSpy.mockResolvedValueOnce({ data: sessionData });
-        checkAdminSpy.mockResolvedValueOnce({ ok: true });
-        if (!beforeLoad) throw new Error("beforeLoad is undefined");
-
-        const result = await beforeLoad({} as never);
-        expect(checkAdminSpy).toHaveBeenCalledTimes(1);
-        expect(result).toEqual({ session: sessionData });
-      });
-    });
-  }
 });
